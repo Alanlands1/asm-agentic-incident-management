@@ -402,51 +402,15 @@ mark.keep{background:rgba(26,95,69,.14);color:var(--green)}
 </div>
 
 <header class="hero">
-  <p class="kick"><i></i>Plan v0.2 · Data Quality agent · the first of three</p>
+  <p class="kick"><i></i>Plan · Data Quality agent · the first of three</p>
   <h1 style="margin-top:14px">Rules first. One call.<br><span class="grad">A person sends the email.</span></h1>
-  <p class="sub">The agent decides whether an engineer can act on a ticket, names what is missing for that application, and produces the chasing email a person accepts, edits or rejects. v0.1 was reviewed with the ai-architect skill; every finding is folded in here. The markdown source is <em>docs/plan-data-quality.md</em>.</p>
+  <p class="sub">The agent decides whether an engineer can act on a ticket, names what is missing for that application, and produces the chasing email a person accepts, edits or rejects. The markdown source is <em>docs/plan-data-quality.md</em>.</p>
   <div class="legend" style="margin-top:26px">
     <span><i style="background:var(--ink)"></i>code decides</span>
     <span><i style="background:var(--crimson)"></i>one model call</span>
     <span><i style="background:var(--green)"></i>a person decides</span>
   </div>
 </header>
-
-<!-- ===================================================== CHANGES -->
-<section class="block">
-  <p class="kick"><i></i>Changes from v0.1</p>
-  <h2>What the review changed, finding by finding</h2>
-  <div class="glass verdict">
-    <div>
-      <div class="outcome good" style="display:inline-flex"><svg><use href="#i-circle-check"/></svg>Review verdict: build it with these changes</div>
-      <p>No fatal finding. Five majors and eight minors, all applied. The biggest: the model no longer writes the email. It returns one question per missing item and code assembles the letter, so the ticket number and the requester's name never pass through the model, and the validation rules that rejected the plan's own template on 11 of 15 tickets now apply to 200-character questions where they are cheap and correct.</p>
-      <p><b>One reversal of the original request:</b> LangGraph is out of v0.1. Five nodes and one gate are sixty lines of Python, and the only thing the framework buys, resume on requester reply, does not exist until a mailbox poll does. It comes back at v0.2 if the engineers want it then. The decision is written down either way.</p>
-    </div>
-    <div class="nums">
-      <div class="glass num"><b>0</b><span>fatal</span></div>
-      <div class="glass num"><b>5</b><span>major, all applied</span></div>
-      <div class="glass num"><b>8</b><span>minor, all applied</span></div>
-      <div class="glass num"><b>6</b><span>nits, applied</span></div>
-    </div>
-  </div>
-  <ul class="glass changes plain" style="margin-top:18px">
-    <li><span class="n">01</span>Model returns questions; code writes the email. Ticket ref and name never reach the model.</li>
-    <li><span class="n">02</span>Idempotency key is (ticket, agent, input hash, prompt version). Decided tickets are skipped unless the input changed, so a prompt bump re-chases nobody.</li>
-    <li><span class="n">03</span>PII class list is the privacy owner's call. Identifiers become typed reversible tokens. Phone regex anchored so <code>INV-2026-91226</code> survives. Redaction eval asserts it.</li>
-    <li><span class="n">04</span>Eval: application accuracy added, coverage is F1 with a spurious-ask count, the 15 are named the tuning set, the real-ticket slice is the only holdout, the rater is named.</li>
-    <li><span class="n">05</span>LangGraph deferred to the v0.2 decision. Gate is a status on the run row. ADR 0001 in milestone 0.</li>
-    <li><span class="n">06</span>Residency: the first-party API cannot pin Canada, so the route is the vendor's Bedrock client in a Canadian region with client-side refusal middleware. Verification line to fill in.</li>
-    <li><span class="n">07</span>Taxonomy gains <code>location</code> and <code>requested_access</code>. <code>service_request</code> is its own verdict with no chase.</li>
-    <li><span class="n">08</span>Reject takes a reason: ticket is fine, draft unusable, wrong application. Each maps to a status.</li>
-    <li><span class="n">09</span>Signals first, verdict second, so the attachment signal always reaches the model. Thresholds marked provisional. "11 of 15" corrected to 13 raw, 14 stripped.</li>
-    <li><span class="n">10</span>Triage selects <code>dq_passed OR urgent</code>. An urgent incomplete ticket is triaged and chased at once.</li>
-    <li><span class="n">11</span>Latency p95 60 s, a dashboard line, not a rollback trigger. The 4 to 8 s guess was about half the truth.</li>
-    <li><span class="n">12</span>One HTMX review page in milestone 3. A CLI is not where anyone edits a letter.</li>
-    <li><span class="n">13</span>Questions are checked for URLs, redaction tokens and credential words.</li>
-    <li><span class="n">Added</span>Redaction is Microsoft Presidio with spaCy NER, in process, instead of hand-written regexes. Covers third-party names, keeps business identifiers, and moves the named-entity pass from milestone 4 into milestone 2.</li>
-    <li><span class="n">Nits</span>Checklist moved out of the cached prefix. Kill switch read per run, global plus per agent. Breaker is per run and says so. <code>confidence</code> dropped. Volume stated as a ceiling. Retention covers output and edited text.</li>
-  </ul>
-</section>
 
 <!-- ===================================================== JOB -->
 <section class="block">
@@ -464,7 +428,7 @@ mark.keep{background:rgba(26,95,69,.14);color:var(--green)}
   </div>
   <div class="grid two" style="margin-top:18px">
     <article class="glass card"><div class="top"><span class="app grey sm"><svg><use href="#i-clipboard-list"/></svg></span><b class="big">Assumptions, because the brief did not say</b></div><ul class='plain'><li><svg><use href="#i-circle-check"/></svg><span>Trigger is ingestion: pending tickets whose latest run has no human decision or a changed input hash.</span></li><li><svg><use href="#i-circle-check"/></svg><span>Per-app checklists are derived from the seven KB pages; the support lead corrects them.</span></li><li><svg><use href="#i-circle-check"/></svg><span>The gate is the decision endpoint from the code review plus one HTMX page.</span></li><li><svg><use href="#i-circle-check"/></svg><span>Volume unknown. The sample has 67 open tickets over 8 days, so 8 to 10 a day; 40 is the planning ceiling.</span></li></ul></article>
-    <article class="glass card"><div class="top"><span class="app gold sm"><svg><use href="#i-flask-conical"/></svg></span><b class="big">Measured before it was written</b></div><p>Candidate rules were run against all 100 tickets and the answer key, then re-run independently by the review.</p><ul class='plain'><li><svg><use href="#i-circle-check"/></svg><span>Incomplete tickets caught by rules alone: 14 of 15, with zero false fails.</span></li><li><svg><use href="#i-circle-check"/></svg><span>Good tickets cleared with no model call: 37 of 85.</span></li><li><svg><use href="#i-circle-check"/></svg><span>Left for the model: 49. Every should-pass body is at least 63 characters; 14 of 15 should-fail are under 50 after signature stripping.</span></li></ul></article>
+    <article class="glass card"><div class="top"><span class="app gold sm"><svg><use href="#i-flask-conical"/></svg></span><b class="big">Measured before it was written</b></div><p>Candidate rules were run against all 100 tickets and the answer key.</p><ul class='plain'><li><svg><use href="#i-circle-check"/></svg><span>Incomplete tickets caught by rules alone: 14 of 15, with zero false fails.</span></li><li><svg><use href="#i-circle-check"/></svg><span>Good tickets cleared with no model call: 37 of 85.</span></li><li><svg><use href="#i-circle-check"/></svg><span>Left for the model: 49. Every should-pass body is at least 63 characters; 14 of 15 should-fail are under 50 after signature stripping.</span></li></ul></article>
   </div>
 </section>
 
@@ -505,7 +469,7 @@ expected_vs_actual, not_an_incident</div><p>The answer key's free text (&quot;ap
   </div>
   <div class="grid two" style="margin-top:18px">
     <article class="glass card"><div class="top"><span class="app grey sm"><svg><use href="#i-git-branch"/></svg></span><b class="big">Code, call, or gate: each with its reason</b></div><ul class='plain'><li><svg><use href="#i-circle-check"/></svg><span><b>prepare, rules, compose, record: code.</b> Deterministic, auditable, run when AI is off.</span></li><li><svg><use href="#i-circle-check"/></svg><span><b>assess: one structured model call.</b> Needs language understanding of a 70-character email and app-specific questions.</span></li><li><svg><use href="#i-circle-check"/></svg><span><b>gate: a person.</b> Advisory only, by project rule. A status on the run row, not a framework interrupt.</span></li><li><svg><use href="#i-circle-check"/></svg><span>Nothing in parallel. Nothing on its own clock; the two-day reminder is deferred.</span></li></ul></article>
-    <article class="glass card"><div class="top"><span class="app gold sm"><svg><use href="#i-git-merge"/></svg></span><b class="big">On LangGraph</b></div><p>The original request asked for it, the design repo bans it, and the review found the v0.1 justification did not hold: the only thing it buys is resume on reply, which is v0.2. So v0.1 is <code>run_ticket()</code> calling five plain functions. When the reply path is built, the engineers evaluate LangGraph against &quot;call the same function with the new text&quot; and adopt it only if the resume semantics are worth a dependency and a second state store. The decision is dated in <code>docs/adr/0001-orchestration.md</code> and ARCHITECTURE.md is updated to match. The nodes do not change under either answer.</p></article>
+    <article class="glass card"><div class="top"><span class="app gold sm"><svg><use href="#i-git-merge"/></svg></span><b class="big">On LangGraph</b></div><p>The original request asked for it, the design repo bans it, and the only thing it buys is resume on reply, which is v0.2. So v0.1 is <code>run_ticket()</code> calling five plain functions. When the reply path is built, the engineers evaluate LangGraph against &quot;call the same function with the new text&quot; and adopt it only if the resume semantics are worth a dependency and a second state store. The decision is dated in <code>docs/adr/0001-orchestration.md</code> and ARCHITECTURE.md is updated to match. The nodes do not change under either answer.</p></article>
   </div>
 </section>
 
@@ -722,7 +686,7 @@ expected_vs_actual, not_an_incident</div><p>The answer key's free text (&quot;ap
 </section>
 
 <footer>
-  <span>Data Quality agent · Plan v0.2 · October 2026 · written and reviewed with the ai-architect skill</span>
+  <span>Data Quality agent · Plan · October 2026 · written with the ai-architect skill</span>
   <span>The client and the bank are not named on purpose · <a href="review.html">← Code review</a></span>
 </footer>
 </main>

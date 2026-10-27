@@ -1,35 +1,8 @@
-# Data Quality agent: Plan v0.2
+# Data Quality agent: Plan
 
 Scope: the first agent only. It decides whether an engineer can act on a ticket, names what is missing, and produces the "missing information" email that a person sends. Triage and Resolution are out of scope except for the hand-off fields at the end of section 4.
 
-Numbers marked *measured* were run against the 100 tickets in `data/tickets/ams_tickets.xlsx` and the answer key in `evaluation/ground_truth.xlsx` on 2026-10-27, and re-run independently by the review. Numbers marked *guess* say how they will be firmed up.
-
-## Changes from v0.1
-
-v0.1 was reviewed with the ai-architect skill (`docs/review-data-quality.md`). Verdict: build it with these changes. Every major and minor finding is folded in below.
-
-| Finding | What changed |
-|---|---|
-| 1 Email validation rejected the plan's own template; the model should not write the email | The model returns one question per missing item. Code assembles the email. The ticket number and the requester's name never pass through the model. |
-| 2 Idempotency key broke on prompt bumps and on reply re-check | Key is now (ticket, agent, input hash, prompt version). A ticket with a human decision is skipped unless its input changed. |
-| 3 PII scope narrower than the project rule; phone regex ate invoice numbers | PII class list is an open question for the client's privacy owner. Identifiers become typed reversible tokens. Phone regex anchored. Redaction eval asserts identifiers survive. |
-| 4 Eval was a training-set score with holes | Application accuracy added. Coverage is F1 with a spurious-ask count. The 15 are named as the tuning set; the real-ticket slice is the only holdout. Rater named. Borderline rows acknowledged. |
-| 5 LangGraph justified by a feature that is deferred | v0.1 runs the nodes in a plain function. The gate is a status on the run row. LangGraph is re-decided at v0.2 with the reply path in hand, and the decision is written down either way. |
-| 6 Residency is more than a class swap | Stack names the Bedrock client in a Canadian region, refusal fallback via SDK middleware, with a verification line to fill in. |
-| 7 Taxonomy and verdict holes | `location` and `requested_access` added. `service_request` is its own verdict with no chase. |
-| 8 Reject meant two things | Reject takes a reason; each reason maps to a status. |
-| 9 Unreachable rule, one-character margins, a number that did not reproduce | Signals first, verdict second. Thresholds marked provisional. Count corrected. |
-| 10 Urgent tickets had no mechanism | Triage's selection query is written down. |
-| 11 Latency guess optimistic; rollback trigger wrong-headed | p95 target 60 s, dashboard line, not a rollback trigger. |
-| 12 Gate under-specified | One HTMX page in milestone 3. |
-| 13 No URL or token checks on model text | Added to question validation. |
-| Nits | Checklist moved out of the cached prefix. Kill switch read per run, global plus per-agent. Breaker is per run. `confidence` dropped. Volume stated as a ceiling. Retention covers output and edited text. |
-
-**Added after the review:** redaction is Microsoft Presidio with spaCy NER rather than hand-written regexes. It covers the third-party names the regex could not, runs in process so it does not touch residency, and moves the named-entity pass from milestone 4 into milestone 2. Details in the prepare step and the stack table.
-
-One change is a reversal of the original request: LangGraph is out of v0.1. The reason is the review's, and it is honest: five nodes and one gate are sixty lines of Python, and the only thing the framework buys, resume on requester reply, does not exist until a mailbox poll does. It comes back at v0.2 if the engineers want it then. See open question 3.
-
----
+Numbers marked *measured* were run against the 100 tickets in `data/tickets/ams_tickets.xlsx` and the answer key in `evaluation/ground_truth.xlsx` on 2026-10-27. Numbers marked *guess* say how they will be firmed up.
 
 ## 1. The job
 
@@ -126,7 +99,7 @@ ingest (exists) ──► tickets.pipeline_status = pending
 
 Nothing runs in parallel. Nothing runs on its own clock in v0.1; the two-day reminder from the design repo is deferred.
 
-**On LangGraph.** The original request asked for it, the design repo bans it, and the review found the v0.1 justification did not hold: the only thing it buys is resume on reply, which is v0.2. So v0.1 is `run_ticket()` calling five plain functions, and the gate is `agent_runs.status = proposed`. When the reply path is built, the engineers evaluate LangGraph against "call the same function with the new text" and adopt it only if the resume semantics are worth a dependency and a second state store. Either way the decision is dated and written in `docs/adr/0001-orchestration.md`, and ARCHITECTURE.md in the design repo is updated to match. The nodes do not change under either answer.
+**On LangGraph.** The original request asked for it, the design repo bans it, and the only thing it buys is resume on reply, which is v0.2. So v0.1 is `run_ticket()` calling five plain functions, and the gate is `agent_runs.status = proposed`. When the reply path is built, the engineers evaluate LangGraph against "call the same function with the new text" and adopt it only if the resume semantics are worth a dependency and a second state store. Either way the decision is dated and written in `docs/adr/0001-orchestration.md`, and ARCHITECTURE.md in the design repo is updated to match. The nodes do not change under either answer.
 
 ## 4. Each step in detail
 
