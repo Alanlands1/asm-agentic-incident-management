@@ -1,0 +1,5 @@
+$kind: http-request
+description: One model call per ticket the rules leave undecided. Unchanged tickets are skipped on re-runs.
+url: "{{baseUrl}}/data-quality/run"
+method: POST
+order: 2000

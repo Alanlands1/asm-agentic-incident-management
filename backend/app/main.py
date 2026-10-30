@@ -1,16 +1,18 @@
 """FastAPI Application factory and lifecycle."""
 
-from contextlib import asynccontextmanager
 import logging
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.v1.router import api_router
-from app.core.config import settings
-from app.core.exceptions import global_exception_handler
-from app.core.logging import setup_logging
-from app.core.middleware import RequestLoggingMiddleware
-from app.db.session import init_db
+from app.common.config import settings
+from app.common.exceptions import global_exception_handler
+from app.common.logging import setup_logging
+from app.common.middleware import RequestLoggingMiddleware
+from app.db.session import SessionLocal, init_db
+from app.platform.admin.runtime_config import apply_overrides
+from app.routes import api_router
 
 logger = logging.getLogger("app.main")
 
@@ -21,6 +23,8 @@ async def lifespan(app: FastAPI):
     setup_logging()
     logger.info(f"Starting {settings.PROJECT_NAME} [{settings.ENVIRONMENT}]")
     init_db()
+    with SessionLocal() as db:
+        apply_overrides(db)  # admin changes survive a restart
     yield
     logger.info(f"Shutting down {settings.PROJECT_NAME}")
 

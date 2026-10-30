@@ -1,6 +1,6 @@
 import pytest
 
-from app.privacy.masking import Masker, MaskedText, UnknownPlaceholderError
+from app.common.privacy.masking import MaskedText, Masker, UnknownPlaceholderError
 
 TICKET = (
     "Hi, this is Priya Raman (E48213) from the Pune site. PayrollPro shows ORA-01555 on INV-2026-91226 since Monday 09:30. "
@@ -33,6 +33,12 @@ def test_generic_words_are_kept(masker):
     text = "The order report shows top-10 items and the payroll dashboard is slow."
     assert masker.mask(text) == text
     assert masker.mask("Hi,\n\nScanner not working at my station.") == "Hi,\n\nScanner not working at my station."
+
+
+def test_ticket_without_reporter_name_is_still_masked():
+    """Mailbox tickets can arrive with no sender name; NER still has to find people in the text."""
+    masked = Masker(known_names=[None, " "]).mask("Ravi Kumar says PayrollPro is down")
+    assert masked == "<PERSON_1> says <APP_1> is down"
 
 
 def test_signature_department_is_not_part_of_the_name():

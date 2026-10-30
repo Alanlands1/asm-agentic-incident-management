@@ -9,6 +9,7 @@ from sqlalchemy.pool import StaticPool
 from app.db.session import Base, get_db
 from app.main import app
 from app.models import ticket  # noqa: F401  (registers models on Base.metadata)
+from app.platform.admin import models  # noqa: F401  (config_overrides, config_changes)
 
 
 @pytest.fixture

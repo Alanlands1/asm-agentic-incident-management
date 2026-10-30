@@ -18,5 +18,8 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
+
+**/docs/*
+
 # Office lock files (open Excel workbooks)
 ~$*

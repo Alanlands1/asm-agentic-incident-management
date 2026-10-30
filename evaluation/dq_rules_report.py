@@ -15,11 +15,11 @@ from sqlalchemy.pool import StaticPool
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "backend"))
 
-from app.core.config import settings  # noqa: E402
+from app.agents.data_quality.pipeline import run_data_quality  # noqa: E402
+from app.common.config import settings  # noqa: E402
 from app.db.session import Base  # noqa: E402
 from app.models.ticket import AgentRun  # noqa: E402
-from app.services.data_quality import run_data_quality  # noqa: E402
-from app.services.ingestion import ingest_workbook  # noqa: E402
+from app.platform.tickets.ingestion import ingest_workbook  # noqa: E402
 
 
 def answer_key() -> dict[str, dict]:

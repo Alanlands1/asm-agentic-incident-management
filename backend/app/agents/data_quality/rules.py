@@ -5,28 +5,21 @@ anything not stopped here is left to the model.
 """
 
 from dataclasses import dataclass
-from enum import StrEnum
-from typing import Optional
 
 from app.agents.data_quality.config import get_config
 from app.agents.data_quality.signals import Signals, compute_signals
-
-
-class Verdict(StrEnum):
-    NOT_AN_INCIDENT = "not_an_incident"
-    NEEDS_INFO = "needs_info"
-    UNCERTAIN = "uncertain"
+from app.agents.data_quality.verdict import Verdict
 
 
 @dataclass(frozen=True)
 class RuleResult:
     verdict: Verdict
-    rule: Optional[str]
+    rule: str | None
     reason: str
     signals: Signals
 
 
-def evaluate(summary: str, body: str, attachments: Optional[str] = None, application: Optional[str] = None) -> RuleResult:
+def evaluate(summary: str, body: str, attachments: str | None = None, application: str | None = None) -> RuleResult:
     """Apply the rules in order; the first one that fires decides."""
     config = get_config()
     signals = compute_signals(summary, body, attachments, application, config)

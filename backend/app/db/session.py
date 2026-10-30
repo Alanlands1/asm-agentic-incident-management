@@ -1,10 +1,11 @@
 """Database engine, session factory and FastAPI dependency."""
 
 from typing import Iterator
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
-from app.core.config import settings
+from app.common.config import settings
 
 
 class Base(DeclarativeBase):
@@ -21,6 +22,7 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False
 def init_db() -> None:
     """Create tables that do not exist yet."""
     from app.models import ticket  # noqa: F401  (registers models on Base.metadata)
+    from app.platform.admin import models  # noqa: F401  (config_overrides, config_changes)
 
     Base.metadata.create_all(bind=engine)
 

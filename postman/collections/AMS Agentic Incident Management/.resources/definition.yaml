@@ -1,0 +1,7 @@
+$kind: collection
+description: "Local API. Start the backend first (uvicorn app.main:app --port 8000). Set adminKey in the collection variables to the ADMIN_API_KEY in backend/.env before using the Admin folder. Data Quality checks call the model when LLM_ENABLED=true: each one costs real tokens."
+variables:
+  baseUrl: http://localhost:8000/api/v1
+  ticketId: MBX-00004
+  adminKey: ""
+  adminUser: your-name

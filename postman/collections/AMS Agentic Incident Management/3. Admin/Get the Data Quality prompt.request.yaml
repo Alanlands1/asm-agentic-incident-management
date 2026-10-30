@@ -1,0 +1,5 @@
+$kind: http-request
+description: 'Other names: data_quality_rules, pii, apps. To change one, GET it, edit, and PUT {"document": <the whole document>}.'
+url: "{{baseUrl}}/admin/documents/data_quality_prompts"
+method: GET
+order: 5000
