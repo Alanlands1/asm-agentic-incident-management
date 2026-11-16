@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
+from app.api.v1.endpoints import knowledge
 from app.db.session import get_db
 from app.models.ticket import Ticket
 from app.schemas.closure import (
@@ -17,6 +18,7 @@ from app.schemas.closure import (
 from app.services.closure import check_ticket, run_closure
 from app.services.closure import review as closure_review
 from app.services.closure.run import RESOLVED
+from app.services.knowledge import run_knowledge
 
 router = APIRouter(prefix="/closure", tags=["closure quality"])
 
@@ -26,10 +28,13 @@ async def run(
     include_history: bool = Query(False, description="Also score tickets that were already closed when they arrived"),
     db: AsyncSession = Depends(get_db),
 ) -> ClosureRunResponse:
-    """Score the close notes of every resolved or closed ticket. Safe to re-run: unchanged notes are skipped."""
+    """Score the close notes of every resolved or closed ticket, then let Knowledge Builder learn from the notes that
+    passed (or that an engineer fixed). Safe to re-run: unchanged notes and cases are skipped."""
     result = await db.run_sync(run_closure, include_history)
+    learned = await db.run_sync(run_knowledge)
     return ClosureRunResponse(
-        evaluated=result.evaluated, skipped=result.skipped, model_errors=result.model_errors, by_verdict=dict(result.by_verdict)
+        evaluated=result.evaluated, skipped=result.skipped, model_errors=result.model_errors, by_verdict=dict(result.by_verdict),
+        knowledge=knowledge.run_response(learned),
     )
 
 

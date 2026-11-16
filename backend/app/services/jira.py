@@ -30,8 +30,10 @@ from app.models.ticket import AgentRun, Comment, PipelineStatus, Review, Ticket
 from app.privacy.masking import Masker
 from app.services import atlassian
 from app.services.atlassian import AtlassianError
+from app.services.closure import run_closure
 from app.services.comments import add_comment
 from app.services.data_quality import last_run, run_data_quality
+from app.services.knowledge import run_knowledge
 from app.services.resolution import run_resolution
 from app.services.triage import review as triage_review
 from app.services.triage import run_triage, sla
@@ -371,7 +373,8 @@ async def move_triaged(db: AsyncSession) -> int:
 
 
 def _agents_in_thread() -> None:
-    """Data Quality, then Triage, in a worker thread with its own event loop and database engine.
+    """Data Quality, then Triage; then, for resolved tickets, Closure Quality and Knowledge Builder. In a worker thread
+    with its own event loop and database engine.
 
     The agents call the model synchronously (up to a minute per call); on the API's loop that would freeze every request.
     """
@@ -387,6 +390,10 @@ def _agents_in_thread() -> None:
             async with sessions() as db:
                 await announce(db, started)
                 await move_triaged(db)
+            async with sessions() as db:
+                await db.run_sync(run_closure)
+            async with sessions() as db:  # after Closure Quality: it learns only from notes that passed
+                await db.run_sync(run_knowledge)
         finally:
             await engine.dispose()
 

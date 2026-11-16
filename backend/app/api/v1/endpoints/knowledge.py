@@ -18,6 +18,7 @@ from app.schemas.knowledge import (
     ResolvedCaseOut,
 )
 from app.services.knowledge import coverage, drafts, problems, run_knowledge
+from app.services.knowledge.run import RunResult
 
 router = APIRouter(prefix="/knowledge", tags=["knowledge builder"])
 
@@ -26,7 +27,10 @@ router = APIRouter(prefix="/knowledge", tags=["knowledge builder"])
 async def run(db: AsyncSession = Depends(get_db)) -> KnowledgeRunResponse:
     """Save every resolved ticket whose close notes passed as a masked case, and match it to a knowledge-base article.
     Safe to re-run: unchanged cases are skipped."""
-    result = await db.run_sync(run_knowledge)
+    return run_response(await db.run_sync(run_knowledge))
+
+
+def run_response(result: RunResult) -> KnowledgeRunResponse:
     return KnowledgeRunResponse(
         evaluated=result.evaluated, skipped=result.skipped, model_errors=result.model_errors, by_status=dict(result.by_status),
         drafts=dict(result.drafts), open_problems=result.problems,
