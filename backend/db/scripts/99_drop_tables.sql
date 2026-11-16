@@ -1,4 +1,7 @@
 -- DESTRUCTIVE: removes all ticket and data quality data. Dev/test only.
+DROP TABLE IF EXISTS problem_candidates;
+DROP TABLE IF EXISTS resolved_cases;
+DROP TABLE IF EXISTS kb_drafts;
 DROP TABLE IF EXISTS agent_feedback;
 DROP TABLE IF EXISTS first_messages;
 DROP TABLE IF EXISTS confluence_syncs;

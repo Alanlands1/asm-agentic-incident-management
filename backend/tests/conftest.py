@@ -17,7 +17,8 @@ from app.main import app
 from app.models import ticket  # noqa: F401  (registers models on Base.metadata)
 
 os.environ["TZ"] = "UTC"  # texts for people carry the server's local time; the tests expect UTC
-time.tzset()
+if hasattr(time, "tzset"):  # not on Windows
+    time.tzset()
 
 
 @pytest.fixture(autouse=True)
