@@ -8,12 +8,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.agents.triage.config import get_config
-from app.agents.triage.model_check import TriageAssessment, assess_priority, triage_priority_spec, verified
+from app.agents.triage.model_check import TriageAssessment, assess_priority, impact, triage_priority_spec, verified
 from app.agents.triage.rules import Decision, Facts, RuleResult, decide, evaluate, find_rule, without_rulebook
 from app.agents.triage.signals import clean_text
 from app.agents.triage.verdict import Verdict
 from app.core.config import settings
 from app.llm import CallAudit, ModelError
+from app.llm.client import effort, model_id
 from app.models.ticket import AgentRun, PipelineStatus, Storm, Ticket
 from app.services.data_quality import OutageBreaker, fingerprint, last_run, reporter_text
 from app.services.triage.storms import detect_storms
@@ -34,7 +35,8 @@ class RunResult:
 
 def _input_hash(ticket: Ticket, body: str) -> str:
     """What the triage saw: a change to the ticket, the rulebook, or the model and its prompt re-triages it."""
-    stages = f"{settings.LLM_MODEL}|{triage_priority_spec().prompt_version}" if settings.LLM_ENABLED else "rules"
+    model = f"{model_id('triage')}|{effort('triage')}|{triage_priority_spec().prompt_version}"
+    stages = model if settings.LLM_ENABLED else "rules"
     return fingerprint(ticket.summary, body, ticket.application, str(ticket.opened_at), str(ticket.storm_id),
                        get_config().version, stages)
 
@@ -57,7 +59,7 @@ def _recommendation(ticket: Ticket, decision: Decision | None, reason: str, ai: 
         "rule": decision.rule if decision else None,
         "must_follow": decision.must_follow if decision else None,
         "reason": reason,
-        "ai": ai,  # not_needed | used | off | failed
+        "ai": ai,  # not_needed (follows a storm) | used | off | failed
     }
 
 
@@ -77,19 +79,17 @@ def model_decision(ticket: Ticket, body: str, outcome: RuleResult) -> tuple[Deci
 
 
 def triage_ticket(db: Session, ticket: Ticket, use_model: bool = True) -> tuple[AgentRun, ModelError | None]:
-    """Rules first; the model once for tickets the rules cannot settle. Without a usable model answer the rules'
-    own answer (leaning high) is used. Returns the final run and the model error, if there was one."""
+    """Rules first, then the model once on every ticket: it reports the impact, and the facts the rules could not find.
+    A priority the rules settled stands. Without a usable model answer the rules' own answer (leaning high) is used.
+    Returns the final run and the model error, if there was one."""
     config = get_config()
     body = reporter_text(ticket)
     outcome = evaluate(ticket.summary, body, ticket.application, ticket.opened_at, in_storm=ticket.storm_id is not None)
     rules_output = {"stage": "rules", "rules_version": config.version, "missing": list(outcome.missing),
                     "application": outcome.signals.application, "storm_id": ticket.storm_id, "signals": asdict(outcome.signals)}
     final = AgentRun(ticket_id=ticket.id, agent=AGENT, verdict=outcome.verdict, input_hash=_input_hash(ticket, body),
-                     output={**rules_output, **_recommendation(ticket, outcome.decision, outcome.reason, "not_needed")})
+                     output={**rules_output, **_recommendation(ticket, outcome.decision, outcome.reason, "off")})
     db.add(final)
-    if outcome.verdict != Verdict.UNCERTAIN:
-        ticket.pipeline_status = PipelineStatus.TRIAGED
-        return final, None
 
     error, ai = None, "off"
     if settings.LLM_ENABLED and use_model:
@@ -97,15 +97,19 @@ def triage_ticket(db: Session, ticket: Ticket, use_model: bool = True) -> tuple[
             decision, answer, dropped, audit = model_decision(ticket, body, outcome)
         except ModelError as exc:
             error, ai = exc, "failed"
+            final.output = {**final.output, "ai": ai}  # counted on the dashboard
         else:
-            final = AgentRun(
-                ticket_id=ticket.id, agent=AGENT, verdict=Verdict.of(decision.priority), input_hash=final.input_hash,
-                output={"stage": "model", "rules_version": config.version, "storm_id": ticket.storm_id,
-                        "application": answer.application or outcome.signals.application,
-                        **_recommendation(ticket, decision, decision.reason, "used"),
-                        "answer": answer.model_dump(), "dropped_facts": dropped, "audit": asdict(audit)},
-            )
-            db.add(final)
+            found = {"impact": impact(answer), "answer": answer.model_dump(), "dropped_facts": dropped, "audit": asdict(audit)}
+            if outcome.verdict != Verdict.UNCERTAIN:  # the rules had every fact: their priority stands
+                final.output = {**final.output, "ai": "used", **found}
+            else:
+                final = AgentRun(
+                    ticket_id=ticket.id, agent=AGENT, verdict=Verdict.of(decision.priority), input_hash=final.input_hash,
+                    output={"stage": "model", "rules_version": config.version, "storm_id": ticket.storm_id,
+                            "application": answer.application or outcome.signals.application,
+                            **_recommendation(ticket, decision, decision.reason, "used"), **found},
+                )
+                db.add(final)
 
     if final.verdict == Verdict.UNCERTAIN:
         if outcome.fallback:
@@ -126,7 +130,7 @@ def _follow_main(db: Session, ticket: Ticket, storm: Storm, main_run: AgentRun) 
     run = AgentRun(
         ticket_id=ticket.id, agent=AGENT, verdict=main_run.verdict, input_hash=_input_hash(ticket, reporter_text(ticket)),
         output={"stage": "storm", "rules_version": get_config().version, "application": old["application"],
-                "storm_id": storm.id, "linked_to": storm.main_ticket_id,
+                "storm_id": storm.id, "linked_to": storm.main_ticket_id, "impact": old.get("impact"),
                 **_recommendation(ticket, decision, reason, "not_needed")},
     )
     db.add(run)
@@ -140,7 +144,7 @@ def run_triage(db: Session) -> RunResult:
     detect_storms(db)
     tickets = db.scalars(
         select(Ticket)
-        .where(Ticket.pipeline_status == PipelineStatus.DQ_PASSED)
+        .where(Ticket.pipeline_status == PipelineStatus.DQ_PASSED, Ticket.closed_at.is_(None))  # closed in the source: left alone
         .options(selectinload(Ticket.agent_runs), selectinload(Ticket.comments))
     ).all()
     storms = {s.id: s for s in db.scalars(select(Storm).where(Storm.id.in_({t.storm_id for t in tickets if t.storm_id})))}

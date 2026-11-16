@@ -93,8 +93,11 @@ def _without_overlaps(results: list[RecognizerResult]) -> list[RecognizerResult]
 
 
 class Masker:
-    def __init__(self, known_names: Iterable[str | None] = (), known_emails: Iterable[str | None] = ()):
-        """known_names / known_emails come from the ticket's own fields and are always masked, even where NER misses them."""
+    def __init__(
+        self, known_names: Iterable[str | None] = (), known_emails: Iterable[str | None] = (), beside: Iterable[str | None] = ()
+    ):
+        """known_names / known_emails come from the ticket's own fields and are always masked, even where NER misses them.
+        beside are texts already masked that the result is read next to; numbering starts after their placeholders."""
         system = {a.casefold() for a in load_registry("pii.yaml")["system_accounts"]}
         self._names = sorted({
             n.strip() for n in known_names
@@ -109,6 +112,10 @@ class Masker:
             if e and e.strip() and not PLACEHOLDER.fullmatch(e.strip())
         ]
         self._issued: dict[tuple[str, str], str] = {}  # (label, normalised value) -> placeholder
+        self._taken: Counter = Counter()  # label -> highest number in the texts beside
+        for placeholder in PLACEHOLDER.findall(" ".join(t for t in beside if t)):
+            label, _, number = placeholder[1:-1].rpartition("_")
+            self._taken[label] = max(self._taken[label], int(number))
         self._values: dict[str, str] = {}  # placeholder -> original value
         self.counts: Counter = Counter()  # findings per label; safe to log
 
@@ -116,7 +123,7 @@ class Masker:
         v = " ".join(value.casefold().split())
         key = (label, self._name_parts.get(v, v) if label == "PERSON" else v)  # "Priya" and "Priya Raman" are one person
         if key not in self._issued:
-            self._issued[key] = f"<{label}_{sum(k[0] == label for k in self._issued) + 1}>"
+            self._issued[key] = f"<{label}_{self._taken[label] + sum(k[0] == label for k in self._issued) + 1}>"
             self._values[self._issued[key]] = value
         self.counts[label] += 1
         return self._issued[key]

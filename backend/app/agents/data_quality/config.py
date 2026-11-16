@@ -14,6 +14,7 @@ class DQConfig:
     placeholder: frozenset[str]  # normalised, see normalise()
     filler: tuple[re.Pattern, ...]
     test_ticket: tuple[re.Pattern, ...]
+    service_request: tuple[re.Pattern, ...]
     ticket_reference: re.Pattern
     previous_ticket: tuple[re.Pattern, ...]
     identifier: tuple[re.Pattern, ...]
@@ -43,6 +44,7 @@ def _build(version: int) -> DQConfig:
         placeholder=frozenset(normalise(p) for p in rules["placeholder"]) - {""},
         filler=tuple(re.compile(p, re.I) for p in rules["filler"]),
         test_ticket=tuple(re.compile(p, re.I) for p in rules["test_ticket"]),
+        service_request=tuple(re.compile(p, re.I) for p in rules.get("service_request", [])),  # newer than some stored copies
         ticket_reference=re.compile(rules["ticket_reference"]),
         previous_ticket=tuple(re.compile(p, re.I) for p in rules["previous_ticket"]),
         identifier=tuple(re.compile(p) for p in rules["identifier"]),

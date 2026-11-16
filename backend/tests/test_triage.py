@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 from app.agents.triage.config import get_config
-from app.agents.triage.model_check import TriageAssessment, verified
+from app.agents.triage.model_check import TriageAssessment, impact, verified
 from app.agents.triage.rules import Decision, evaluate, without_rulebook
 from app.core import registry
 from app.core.config import bump_config_version, settings
@@ -22,6 +22,8 @@ from tests.test_llm import _reply, provider  # noqa: F401  (fixture)
 
 OCTOBER_10 = datetime(2026, 10, 10, 9, 0)  # outside every window
 OCTOBER_22 = datetime(2026, 10, 22, 9, 0)  # payroll window
+NO_IMPACT = {f"{pillar}_{part}": value for pillar in ("regulatory", "financial", "system")
+             for part, value in (("impact", "none"), ("quote", None))}
 
 
 def test_application_rule_from_the_knowledge_base():
@@ -111,18 +113,22 @@ def test_application_outside_the_rulebook_keeps_the_reporters_priority():
 
 
 def test_model_facts_need_a_real_quote():
-    base = {"application": "StockSense", "rule": "scanner_sync", "context_applies": True, "reason": "r"}
+    base = {"application": "StockSense", "rule": "scanner_sync", "context_applies": True, "reason": "r", **NO_IMPACT,
+            "system_impact": "medium", "system_quote": "All pickers at the site are idle",
+            "financial_impact": "high", "financial_quote": "orders worth millions are stuck"}  # not in the ticket
     text = "The scanners at Pune show SYNC-ERR-12. All pickers at the site are idle."
     claim = TriageAssessment(scope="wide", scope_quote="all pickers at the site", context_quote=None, **base)
     kept, dropped = verified(claim, text)
-    assert (kept.scope, kept.context_applies, dropped) == ("wide", False, ["context"])
+    assert (kept.scope, kept.context_applies, dropped) == ("wide", False, ["context", "financial_impact"])
+    assert impact(kept) == {"regulatory": {"level": "none", "quote": None}, "financial": {"level": "none", "quote": None},
+                            "system": {"level": "medium", "quote": "All pickers at the site are idle"}}
     claim = TriageAssessment(scope="wide", scope_quote="the whole warehouse", context_quote=None, **base)
     invented, dropped = verified(claim, text)
-    assert (invented.scope, dropped) == ("unknown", ["scope", "context"])
+    assert (invented.scope, dropped) == ("unknown", ["scope", "context", "financial_impact"])
 
 
 def test_model_answer_must_name_a_rule_from_the_rulebook():
-    base = {"scope": "wide", "scope_quote": None, "context_applies": False, "context_quote": None, "reason": "r"}
+    base = {"scope": "wide", "scope_quote": None, "context_applies": False, "context_quote": None, "reason": "r", **NO_IMPACT}
     TriageAssessment(application="OrderHub", rule="checkout_failing", **base)
     TriageAssessment(application=None, rule="security_incident", **base)
     with pytest.raises(ValidationError):
@@ -154,7 +160,7 @@ def test_run_records_priorities_and_skips_unchanged_tickets(db):
     ticket = db.get(Ticket, "AMS-1209")  # reported P1, an account lock before a customer meeting
     assert ticket.pipeline_status == PipelineStatus.TRIAGED
     output = db.scalars(select(AgentRun).where(AgentRun.ticket_id == "AMS-1209")).one().output
-    assert (output["priority"], output["reported_priority"], output["downgrade"], output["ai"]) == (3, 1, True, "not_needed")
+    assert (output["priority"], output["reported_priority"], output["downgrade"], output["ai"]) == (3, 1, True, "off")
 
     scanner = db.scalars(select(AgentRun).where(AgentRun.ticket_id == "MBX-00006")).one().output
     assert (scanner["ai"], scanner["leaned_high"], scanner["needs_review"]) == ("off", True, True)  # model off: rules' answer
@@ -180,7 +186,8 @@ def test_a_rulebook_change_re_triages(db, monkeypatch):
 def test_model_stage_reports_facts_and_the_code_sets_the_priority(db, provider):  # noqa: F811
     answer = TriageAssessment(application="StockSense", rule="scanner_sync", scope="single",
                               scope_quote="My handheld scanner HHD-PUN-098", context_applies=False, context_quote=None,
-                              reason="One scanner")
+                              reason="One scanner", **{**NO_IMPACT, "system_impact": "low",
+                                                       "system_quote": "My handheld scanner HHD-PUN-098"})
     fake = provider(_reply(answer))
     run, error = triage_ticket(db, db.get(Ticket, "MBX-00006"))
 
@@ -193,7 +200,21 @@ def test_model_stage_reports_facts_and_the_code_sets_the_priority(db, provider):
     system = request["system"][0]
     assert "StockSense (Tier 1)" in system["text"] and "PAY_CALC_MONTHLY" in system["text"]
     assert system["cache_control"] == {"type": "ephemeral"}  # the rulebook is cached across calls
-    assert run.output["audit"]["prompt_version"] == "triage_priority@3"
+    assert run.output["audit"]["prompt_version"] == "triage_priority@4"
+    assert run.output["impact"]["system"] == {"level": "low", "quote": "My handheld scanner HHD-PUN-098"}
+
+
+def test_a_ticket_the_rules_settle_still_gets_its_impact_from_the_model(db, provider):  # noqa: F811
+    answer = TriageAssessment(application="SalesConnect CRM", rule="account_locked", scope="wide", scope_quote=None,
+                              context_applies=False, context_quote=None, reason="One login",
+                              **{**NO_IMPACT, "system_impact": "low", "system_quote": "My CRM login is locked"})
+    provider(_reply(answer))
+    run, error = triage_ticket(db, db.get(Ticket, "AMS-1209"))
+
+    assert error is None
+    assert (run.verdict, run.output["stage"], run.output["ai"]) == ("P3", "rules", "used")  # the rules' priority stands
+    assert run.output["impact"]["system"]["level"] == "low" and run.output["audit"]
+    assert len(db.scalars(select(AgentRun).where(AgentRun.ticket_id == "AMS-1209")).all()) == 1
 
 
 def test_model_outage_falls_back_to_the_rules(db, provider):  # noqa: F811

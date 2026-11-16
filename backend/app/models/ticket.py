@@ -61,6 +61,7 @@ class Ticket(Base):
     closed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
 
     pipeline_status: Mapped[str] = mapped_column(String(32), index=True, default=PipelineStatus.PENDING)
+    guidance: Mapped[Optional[str]] = mapped_column(Text)  # a person's note to the agents: facts, a question, the known answer
     storm_id: Mapped[Optional[int]] = mapped_column(ForeignKey("storms.id", ondelete="SET NULL"), index=True)
 
     raw: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)  # untouched source row
@@ -124,6 +125,21 @@ class Review(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     agent_run: Mapped[AgentRun] = relationship()
+
+
+class Feedback(Base):
+    """A person's star rating of one agent's result, with the reason. Ratings of Resolution answers re-rank the runbooks."""
+
+    __tablename__ = "agent_feedback"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    ticket_id: Mapped[str] = mapped_column(ForeignKey("tickets.id", ondelete="CASCADE"), index=True)
+    agent_run_id: Mapped[int] = mapped_column(ForeignKey("agent_runs.id", ondelete="CASCADE"), index=True)
+    agent: Mapped[str] = mapped_column(String(32), index=True)  # data_quality, triage, resolution, closure_quality
+    stars: Mapped[int] = mapped_column(Integer)  # 1 (wrong) .. 5 (exactly right)
+    reason: Mapped[str] = mapped_column(Text)
+    reviewer: Mapped[str] = mapped_column(String(256))  # as given by the caller; not verified until there are logins
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class Storm(Base):

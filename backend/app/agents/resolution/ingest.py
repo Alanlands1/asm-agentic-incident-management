@@ -7,6 +7,7 @@ Run from backend/:  ../.venv/bin/python -m app.agents.resolution.ingest [--embed
 import asyncio
 import logging
 from datetime import UTC
+from pathlib import Path
 
 from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert
@@ -43,8 +44,9 @@ def _row(chunk: Chunk, context: str) -> dict:
     }
 
 
-async def ingest_kb() -> dict[str, int]:
-    docs = chunk_knowledge_base(settings.KB_DIR)
+async def ingest_kb(directory: Path | None = None) -> dict[str, int]:
+    directory = directory or settings.KB_DIR  # another folder of runbooks, e.g. the pages copied from Confluence
+    docs = chunk_knowledge_base(directory)
 
     async with AsyncSessionLocal() as db:
         stored = {
@@ -63,7 +65,7 @@ async def ingest_kb() -> dict[str, int]:
         changed = [c for c in chunks if stored.get((source, c.chunk_index)) != c.content_hash]
         unchanged += len(chunks) - len(changed)
         if changed:
-            document = (settings.KB_DIR / source).read_text(encoding="utf-8")
+            document = (directory / source).read_text(encoding="utf-8")
             contexts = await asyncio.to_thread(contextualize, document, changed)
             writes.extend(_row(chunk, ctx) for chunk, ctx in zip(changed, contexts, strict=True))
 

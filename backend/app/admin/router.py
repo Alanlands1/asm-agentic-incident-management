@@ -6,13 +6,15 @@ every admin endpoint answers 503.
 
 import secrets
 
+import yaml
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from app.admin import runtime_config
 from app.admin.runtime_config import ConfigError
-from app.admin.schemas import ChangeOut, DocumentIn, DocumentOut, SettingIn, SettingOut
+from app.admin.schemas import ChangeOut, DocumentIn, DocumentOut, DocumentText, DocumentTextIn, SettingIn, SettingOut
+from app.core import registry
 from app.core.config import settings
 from app.db.session import get_db
 
@@ -94,6 +96,33 @@ async def put_document(name: str, payload: DocumentIn, db: AsyncSession = Depend
     except ConfigError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return get_document(name)
+
+
+@router.get("/documents/{name}/yaml", response_model=DocumentText, summary="One reference document as YAML text")
+def get_document_text(name: str) -> DocumentText:
+    try:
+        filename = runtime_config.DOCUMENT_FILES[name]
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=f"Unknown document {name}") from exc
+    if filename in registry.overrides:
+        text = yaml.safe_dump(registry.overrides[filename], sort_keys=False, allow_unicode=True)
+        return DocumentText(name=name, overridden=True, text=text)
+    return DocumentText(name=name, overridden=False, text=(settings.REGISTRY_DIR / filename).read_text(encoding="utf-8"))
+
+
+@router.put("/documents/{name}/yaml", response_model=DocumentText, summary="Replace a reference document from YAML text")
+async def put_document_text(
+    name: str, payload: DocumentTextIn, db: AsyncSession = Depends(get_db), by: str = Depends(claimed_by)
+) -> DocumentText:
+    """Parsed, then checked like PUT /documents/{name}: a broken document is refused and nothing changes."""
+    if name not in runtime_config.DOCUMENT_FILES:
+        raise HTTPException(status_code=404, detail=f"Unknown document {name}")
+    try:
+        document = yaml.safe_load(payload.text)
+    except yaml.YAMLError as exc:
+        raise HTTPException(status_code=422, detail=f"Not valid YAML: {exc}") from exc
+    await put_document(name, DocumentIn(document=document), db, by)
+    return get_document_text(name)
 
 
 @router.delete("/documents/{name}", response_model=DocumentOut, summary="Go back to the file in data/registry")

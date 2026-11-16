@@ -9,6 +9,10 @@ const getApiBase = () => {
   return "http://127.0.0.1:8000/api/v1";
 };
 
+// The API's times without a zone are UTC; marked as such here so every page shows them in the viewer's local time.
+const ZONELESS = /^\d{4}-\d\d-\d\dT\d\d:\d\d(:\d\d(\.\d+)?)?$/;
+const utc = (_key: string, value: unknown) => (typeof value === "string" && ZONELESS.test(value) ? `${value}Z` : value);
+
 export class ApiError extends Error {
   status: number;
   constructor(status: number, message: string) {
@@ -42,5 +46,5 @@ export async function apiClient<T>(endpoint: string, options?: RequestInit): Pro
     throw new ApiError(res.status, message || `HTTP request failed: ${res.status}`);
   }
 
-  return res.json();
+  return JSON.parse(await res.text(), utc);
 }

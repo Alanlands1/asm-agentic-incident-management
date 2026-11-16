@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.db.session import get_db
 from app.models.ticket import PipelineStatus, Ticket
 from app.schemas.storm import FirstMessageOut, SlaItemOut
@@ -17,6 +18,8 @@ from app.schemas.triage import (
     TriageCheckResponse,
     TriageRunResponse,
 )
+from app.services import jira
+from app.services.atlassian import AtlassianError
 from app.services.triage import review as triage_review
 from app.services.triage import run_triage, sla, triage_ticket
 
@@ -35,7 +38,7 @@ async def run(db: AsyncSession = Depends(get_db)) -> TriageRunResponse:
 
 @router.post("/tickets/{ticket_id}/check", response_model=TriageCheckResponse, summary="Triage one ticket")
 async def check_one_ticket(ticket_id: str, db: AsyncSession = Depends(get_db)) -> TriageCheckResponse:
-    """Rules, then the model once if the rules cannot settle it. Without the model the rules' own answer is used."""
+    """Rules, then the model once: the impact, and any fact the rules lack. Without the model the rules' own answer is used."""
     return await db.run_sync(_check_one, ticket_id)
 
 
@@ -73,21 +76,28 @@ async def review_queue(limit: int = Query(50, ge=1, le=500), db: AsyncSession = 
 
 @router.post("/tickets/{ticket_id}/review", response_model=ReviewOut, status_code=201, summary="Record an engineer's decision")
 async def review_ticket(ticket_id: str, payload: ReviewCreate, db: AsyncSession = Depends(get_db)) -> ReviewOut:
-    """Accept, edit or reject the latest recommendation. The ticket moves on to Resolution; the source is not changed."""
-    return await db.run_sync(_review_one, ticket_id, payload)
+    """Accept, edit or reject the latest recommendation. The ticket moves on to Resolution.
+
+    With JIRA_WRITE_BACK on, a Jira issue's priority is set to the reviewed one first; if Jira refuses, nothing is recorded."""
+    ticket, final = await db.run_sync(_checked, ticket_id, payload)
+    if settings.JIRA_WRITE_BACK and ticket.source == "JIRA" and final and final != ticket.reported_priority:
+        try:
+            await jira.set_priority(ticket.id, final)
+        except AtlassianError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return await db.run_sync(lambda s: ReviewOut.model_validate(triage_review.review(s, ticket, **payload.model_dump())))
 
 
-def _review_one(db: Session, ticket_id: str, payload: ReviewCreate) -> ReviewOut:
+def _checked(db: Session, ticket_id: str, payload: ReviewCreate) -> tuple[Ticket, int | None]:
     ticket = db.get(Ticket, ticket_id)
     if ticket is None:
         raise HTTPException(status_code=404, detail=f"Ticket {ticket_id} not found")
     if ticket.pipeline_status != PipelineStatus.TRIAGED:
         raise HTTPException(status_code=409, detail=f"Ticket {ticket_id} is {ticket.pipeline_status}, not triaged")
     try:
-        decision = triage_review.review(db, ticket, **payload.model_dump())
+        return ticket, triage_review.final_priority(ticket, payload.action, payload.priority, payload.reason_code)
     except triage_review.ReviewError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return ReviewOut.model_validate(decision)
 
 
 @router.get("/review-report", response_model=ReviewReportOut, summary="How often engineers change the recommendation")

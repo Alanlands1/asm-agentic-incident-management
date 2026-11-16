@@ -62,14 +62,14 @@ export interface DQRuleUpdateInput {
 
 export interface DQRun {
   id: number;
-  run_type: DQRunType;
+  trigger: DQRunType;
   scope: ApplyToScope;
-  source?: string | null;
-  tickets_scanned: number;
+  tickets_evaluated: number;
   tickets_flagged: number;
   status: DQRunStatus;
   rules_snapshot: Record<string, unknown>[];
-  created_at: string;
+  started_at: string;
+  finished_at?: string | null;
   reverted_at?: string | null;
 }
 
@@ -77,11 +77,9 @@ export interface DQRunMatchTicket {
   ticket_id: string;
   rule_id: number;
   rule_name: string;
-  matched_at: string;
-  short_description?: string;
-  service?: string;
-  priority?: string;
-  state?: string;
+  ticket_short_description?: string | null;
+  ticket_service?: string | null;
+  ticket_priority?: string | null;
 }
 
 export interface DQRunDetail extends DQRun {
@@ -91,7 +89,7 @@ export interface DQRunDetail extends DQRun {
 export interface DQRunCreateInput {
   scope: ApplyToScope;
   source?: string | null;
-  run_type?: DQRunType;
+  trigger?: DQRunType;
 }
 
 export interface DQRuleFilterParams {

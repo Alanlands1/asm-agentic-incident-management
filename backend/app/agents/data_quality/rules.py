@@ -27,6 +27,10 @@ def evaluate(summary: str, body: str, attachments: str | None = None, applicatio
     if any(p.search(text) for p in config.test_ticket for text in (summary, body)):
         return RuleResult(Verdict.NOT_AN_INCIDENT, "test_ticket", "Looks like a test ticket", signals)
 
+    if any(p.search(text) for p in config.service_request for text in (summary, body)):
+        reason = "Looks like a request for access or a service, not something broken"
+        return RuleResult(Verdict.NOT_AN_INCIDENT, "service_request", reason, signals)
+
     if signals.placeholder_only:
         return RuleResult(Verdict.NEEDS_INFO, "placeholder", "Description is only a placeholder, no detail", signals)
 
@@ -34,7 +38,7 @@ def evaluate(summary: str, body: str, attachments: str | None = None, applicatio
         reason = (
             "Only an attachment, no description of the problem"
             if signals.attachment_only
-            else f"Description too short to act on ({signals.body_length} characters)"
+            else "The description is too short to act on"
         )
         return RuleResult(Verdict.NEEDS_INFO, "near_empty", reason, signals)
 

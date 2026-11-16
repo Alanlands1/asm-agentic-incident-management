@@ -2,22 +2,14 @@
 
 import { useState } from "react";
 import { AgentWorkflowLayout } from "@/components/layout/agent-workflow-layout";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import { PageHeader } from "@/components/console/page-header";
+import { StatTile } from "@/components/console/stat-tile";
+import { ListRow } from "@/components/console/list-row";
+import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import {
-  BookOpen,
-  CheckCircle2,
-  FileText,
-  Search,
-  ExternalLink,
-  Sparkles,
-  Layers,
-  HelpCircle,
-  Copy,
-  Check
-} from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { CircleCheck, Search, Copy, Check } from "lucide-react";
 
 interface KBArticle {
   id: string;
@@ -120,200 +112,152 @@ export default function ResolutionPage() {
 
   return (
     <AgentWorkflowLayout currentStep={3}>
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-[#e0e1dc] pb-6">
-        <div>
-          <div className="text-xs font-semibold text-[#005656] uppercase tracking-wider mb-1">
-            Knowledge-Assisted Remediation
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#222222]">
-            Resolution Agent & Runbook Synthesizer
-          </h1>
-          <p className="text-[#5e605d] text-sm mt-1 max-w-2xl">
-            Stage 3 takes triaged incidents and searches technical knowledge bases and standard operating procedures to synthesize verified resolution plans and drafts.
-          </p>
-        </div>
+      <PageHeader
+        title="Resolution"
+        context="Searches application runbooks for triaged incidents and drafts resolution steps."
+      />
 
-        <div className="flex items-center gap-2">
-          <Badge className="bg-[#b08824] text-white px-3 py-1 text-xs font-medium border-none">
-            7 Enterprise Runbooks Indexed
-          </Badge>
-        </div>
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <StatTile variant="primary" label="Runbooks indexed" value={7} />
+        <StatTile label="Core applications" value={7} />
       </div>
 
-      {/* Overview Cards */}
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Card className="border-[#e0e1dc] bg-white shadow-xs border-l-4 border-l-[#005656]">
-          <CardHeader className="pb-2">
-            <div className="text-xs font-semibold text-[#005656]">Gate 03 Verification</div>
-            <CardTitle className="text-base font-bold text-[#222222]">Validated & Triaged Input</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-xs text-[#5e605d] leading-relaxed">
-              Receives incidents that have passed deterministic Data Quality checks (Step 1) and have had their operational priority normalized (Step 2).
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-[#e0e1dc] bg-white shadow-xs border-l-4 border-l-[#b08824]">
-          <CardHeader className="pb-2">
-            <div className="text-xs font-semibold text-[#b08824]">Knowledge Base Corpus</div>
-            <CardTitle className="text-base font-bold text-[#222222]">7 Core Applications</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-xs text-[#5e605d] leading-relaxed">
-              Indexes standard runbooks across CRM, Billing, Inventory, BI, Payroll, Employee Portal, and Order Hub architectures.
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-[#e0e1dc] bg-white shadow-xs border-l-4 border-l-[#a20a29]">
-          <CardHeader className="pb-2">
-            <div className="text-xs font-semibold text-[#a20a29]">Resolution Output</div>
-            <CardTitle className="text-base font-bold text-[#222222]">Actionable Work Order</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-xs text-[#5e605d] leading-relaxed">
-              Synthesizes root causes, exact CLI / Admin console remediation steps, and safe rollback verification for AMS support engineers.
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Remediation Workspace */}
-      <div className="grid gap-6 lg:grid-cols-12">
-        {/* Left column: Runbook Article Search */}
-        <div className="lg:col-span-7 space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-bold tracking-tight text-[#222222]">Application Runbooks & Error Patterns</h2>
-            <span className="text-xs font-medium text-[#005656] bg-[#f0f4f4] px-2.5 py-1 rounded">
-              {filteredArticles.length} Runbook Articles
-            </span>
-          </div>
-
-          <div className="flex flex-col sm:flex-row gap-2">
-            <div className="relative flex-1">
-              <Search className="h-3.5 w-3.5 absolute left-3 top-3 text-[#5e605d]" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search by KB code, symptom, or root cause..."
-                className="w-full text-xs h-9 pl-8 pr-3 rounded-md border border-[#e0e1dc] bg-white text-[#222222] focus:outline-none focus:ring-1 focus:ring-[#005656]"
-              />
+      <div className="grid items-start gap-4 min-[1100px]:grid-cols-[minmax(0,1fr)_340px]">
+        <Card className="gap-0 py-0">
+          <div className="flex flex-col gap-3 border-b border-border px-4 py-3">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <h2 className="text-sm font-semibold">Application runbooks and error patterns</h2>
+              <span className="text-xs text-muted-foreground tabular-nums">{filteredArticles.length} articles</span>
             </div>
-
-            <select
-              value={selectedApp}
-              onChange={(e) => setSelectedApp(e.target.value)}
-              className="text-xs h-9 rounded-md border border-[#e0e1dc] bg-white px-3 text-[#222222] focus:outline-none focus:ring-1 focus:ring-[#005656]"
-            >
-              <option value="ALL">All Applications</option>
-              <option value="SalesConnect CRM">SalesConnect CRM</option>
-              <option value="BillingEngine">BillingEngine</option>
-              <option value="StockSense">StockSense</option>
-              <option value="InsightBI">InsightBI</option>
-              <option value="PayrollPro">PayrollPro</option>
-              <option value="EmployeePortal">EmployeePortal</option>
-            </select>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <div className="relative flex-1">
+                <Search className="pointer-events-none absolute top-2 left-2.5 size-4 text-muted-foreground" aria-hidden="true" />
+                <Input
+                  type="text"
+                  aria-label="Search runbooks"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search by KB code, symptom, or root cause..."
+                  className="pl-8"
+                />
+              </div>
+              <select
+                aria-label="Application"
+                value={selectedApp}
+                onChange={(e) => setSelectedApp(e.target.value)}
+                className="h-8 rounded-lg border border-input bg-background px-2.5 text-[13px] text-foreground outline-none transition-colors duration-[80ms] focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              >
+                <option value="ALL">All Applications</option>
+                <option value="SalesConnect CRM">SalesConnect CRM</option>
+                <option value="BillingEngine">BillingEngine</option>
+                <option value="StockSense">StockSense</option>
+                <option value="InsightBI">InsightBI</option>
+                <option value="PayrollPro">PayrollPro</option>
+                <option value="EmployeePortal">EmployeePortal</option>
+              </select>
+            </div>
           </div>
-
-          <div className="border border-[#e0e1dc] rounded-lg bg-white overflow-hidden shadow-xs divide-y divide-[#e0e1dc]">
+          <ul role="list">
             {filteredArticles.map((article) => {
               const isSelected = selectedArticle?.id === article.id;
               return (
-                <div
+                <ListRow
                   key={article.id}
-                  onClick={() => setSelectedArticle(article)}
-                  className={`p-4 cursor-pointer transition-colors ${
-                    isSelected ? "bg-[#fdf2f4] border-l-4 border-l-[#a20a29]" : "hover:bg-[#fbfbfb]"
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-2 mb-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-mono font-bold text-[#a20a29]">{article.id}</span>
-                      <span className="text-xs font-medium text-[#5e605d]">• {article.appName}</span>
-                    </div>
-                    <Badge variant="outline" className="text-[10px] border-[#e0e1dc] text-[#5e605d]">
-                      {article.criticality}
-                    </Badge>
-                  </div>
-                  <div className="text-xs font-bold text-[#222222] mb-1">{article.title}</div>
-                  <div className="text-[11px] text-[#5e605d] line-clamp-2">
-                    <span className="font-semibold text-[#222222]">Root cause:</span> {article.rootCause}
-                  </div>
-                </div>
+                  className={`relative transition-colors duration-[80ms] ${isSelected ? "bg-selected" : "hover:bg-accent"}`}
+                  itemKey={article.id}
+                  title={
+                    <button
+                      type="button"
+                      aria-pressed={isSelected}
+                      onClick={() => setSelectedArticle(article)}
+                      className="rounded-sm text-left outline-none after:absolute after:inset-0 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                    >
+                      {article.title}
+                    </button>
+                  }
+                  meta={`${article.appName} · Root cause: ${article.rootCause}`}
+                  trailing={<Badge>{article.criticality}</Badge>}
+                />
               );
             })}
-          </div>
-        </div>
+          </ul>
+        </Card>
 
-        {/* Right column: Synthesized Remediation Plan */}
-        <div className="lg:col-span-5 space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-bold tracking-tight text-[#222222]">Synthesized Resolution Draft</h2>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleCopyDraft}
-              className="h-8 text-xs gap-1.5 border-[#e0e1dc] text-[#222222] hover:bg-[#f0f4f4]"
-            >
-              {copied ? <Check className="h-3.5 w-3.5 text-[#005656]" /> : <Copy className="h-3.5 w-3.5" />}
-              {copied ? "Copied" : "Copy Draft"}
-            </Button>
-          </div>
-
-          {selectedArticle ? (
-            <Card className="border-[#e0e1dc] bg-white shadow-xs">
-              <CardHeader className="pb-3 border-b border-[#e0e1dc] bg-[#fbfbfb]">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-mono font-bold text-[#005656]">{selectedArticle.id}</span>
-                  <Badge className="bg-[#005656] text-white text-[10px]">{selectedArticle.appId}</Badge>
-                </div>
-                <CardTitle className="text-sm font-bold text-[#222222]">{selectedArticle.title}</CardTitle>
-                <CardDescription className="text-xs text-[#5e605d]">
-                  Target System: {selectedArticle.appName} • {selectedArticle.criticality}
-                </CardDescription>
-              </CardHeader>
-
-              <CardContent className="p-5 space-y-4 text-xs">
-                <div>
-                  <h4 className="font-bold text-[#222222] mb-1">Identified Root Cause</h4>
-                  <p className="text-[#5e605d] bg-[#f0f4f4] p-2.5 rounded-md leading-relaxed">
-                    {selectedArticle.rootCause}
-                  </p>
-                </div>
-
-                <div>
-                  <h4 className="font-bold text-[#222222] mb-1.5">Prescribed Remediation Steps</h4>
-                  <div className="border border-[#e0e1dc] rounded-md p-3 space-y-2 bg-white">
-                    <div className="flex items-start gap-2">
-                      <span className="h-4 w-4 rounded-full bg-[#f0f4f4] text-[#005656] text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">1</span>
-                      <span className="text-[#222222]">{selectedArticle.resolutionSummary}</span>
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <span className="h-4 w-4 rounded-full bg-[#f0f4f4] text-[#005656] text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">2</span>
-                      <span className="text-[#5e605d]">Verify service health logs and validate caller confirmation.</span>
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <span className="h-4 w-4 rounded-full bg-[#f0f4f4] text-[#005656] text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">3</span>
-                      <span className="text-[#5e605d]">Mark incident resolved with Presidio-masked caller audit trail.</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="border-t border-[#e0e1dc] pt-3 text-[11px] text-[#5e605d] flex items-center justify-between">
-                  <span>Standard Operating Runbook Verified</span>
-                  <span className="text-[#005656] font-semibold">Ready for Deployment</span>
-                </div>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="p-8 text-center border border-[#e0e1dc] rounded-lg bg-white text-[#5e605d] text-xs">
-              Select an article on the left to inspect its synthesized resolution plan.
+        {selectedArticle ? (
+          <Card className="gap-0 py-0">
+            <div className="flex flex-col gap-1 border-b border-border px-4 py-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-mono text-xs text-muted-foreground">{selectedArticle.id}</span>
+                <Badge>{selectedArticle.appId}</Badge>
+              </div>
+              <h2 className="text-sm font-semibold text-foreground">{selectedArticle.title}</h2>
+              <p className="text-xs text-muted-foreground">
+                Target system: {selectedArticle.appName} · {selectedArticle.criticality}
+              </p>
             </div>
-          )}
-        </div>
+
+            <div className="flex flex-col gap-4 px-4 py-4">
+              <div className="flex flex-col gap-1">
+                <h3 className="text-xs font-medium text-muted-foreground">Identified root cause</h3>
+                <p className="rounded-lg bg-muted p-2.5 text-body">{selectedArticle.rootCause}</p>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <h3 className="text-xs font-medium text-muted-foreground">Prescribed remediation steps</h3>
+                <ol className="flex flex-col gap-2">
+                  {[
+                    selectedArticle.resolutionSummary,
+                    "Verify service health logs and validate caller confirmation.",
+                    "Mark incident resolved with Presidio-masked caller audit trail.",
+                  ].map((step, i) => (
+                    <li key={i} className="flex items-start gap-2">
+                      <span className="grid size-5 shrink-0 place-items-center rounded-full bg-selected text-xs font-semibold tabular-nums">
+                        {i + 1}
+                      </span>
+                      <span className={i === 0 ? "text-foreground" : "text-body"}>{step}</span>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3 text-xs text-muted-foreground">
+                <span className="inline-flex items-center gap-1.5">
+                  <CircleCheck className="size-4" aria-hidden="true" />
+                  Runbook verified, ready for deployment
+                </span>
+                <Button size="sm" variant="secondary" onClick={handleCopyDraft}>
+                  {copied ? <Check /> : <Copy />}
+                  {copied ? "Copied" : "Copy draft"}
+                </Button>
+              </div>
+            </div>
+          </Card>
+        ) : (
+          <Card className="px-4 text-center text-muted-foreground">
+            Select an article to inspect its synthesized resolution plan.
+          </Card>
+        )}
+      </div>
+
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(320px,1fr))] gap-4">
+        <Card className="gap-1 px-4">
+          <h2 className="text-sm font-semibold">Validated and triaged input</h2>
+          <p className="text-body">
+            Receives incidents that have passed deterministic Data Quality checks (Step 1) and have had their operational priority normalized (Step 2).
+          </p>
+        </Card>
+        <Card className="gap-1 px-4">
+          <h2 className="text-sm font-semibold">Knowledge base corpus</h2>
+          <p className="text-body">
+            Indexes standard runbooks across CRM, Billing, Inventory, BI, Payroll, Employee Portal, and Order Hub architectures.
+          </p>
+        </Card>
+        <Card className="gap-1 px-4">
+          <h2 className="text-sm font-semibold">Resolution output</h2>
+          <p className="text-body">
+            Synthesizes root causes, exact CLI / Admin console remediation steps, and safe rollback verification for AMS support engineers.
+          </p>
+        </Card>
       </div>
     </AgentWorkflowLayout>
   );

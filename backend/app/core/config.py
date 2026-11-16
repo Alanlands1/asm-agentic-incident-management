@@ -54,6 +54,11 @@ class Settings(BaseSettings):
     LLM_PROVIDER: Literal["anthropic", "bedrock"] = "anthropic"
     LLM_MODEL: str = "claude-sonnet-5-5"  # same accuracy as Opus on the triage eval at half the cost
     LLM_EFFORT: Literal["low", "medium", "high", "xhigh", "max"] = "low"  # classification-sized tasks
+    # Per agent; None = use LLM_MODEL / LLM_EFFORT above.
+    DQ_LLM_MODEL: str | None = Field(None, min_length=1)
+    DQ_LLM_EFFORT: Literal["low", "medium", "high", "xhigh", "max"] | None = None
+    TRIAGE_LLM_MODEL: str | None = Field(None, min_length=1)
+    TRIAGE_LLM_EFFORT: Literal["low", "medium", "high", "xhigh", "max"] | None = None
     LLM_REFUSAL_FALLBACK: bool = True  # Claude API only; not supported by every model
     LLM_TIMEOUT_S: float = Field(60.0, gt=0)
     LLM_TRANSPORT_RETRIES: int = Field(2, ge=0, le=10)  # network, timeout, 429 and 5xx retries inside the SDK
@@ -79,6 +84,15 @@ class Settings(BaseSettings):
     # Triage run
     TRIAGE_OUTAGE_BREAKER: int = Field(5, ge=1)  # same, for the Triage model stage
 
+    # Jira Cloud (read-only pull into servicenow_tickets). Unset URL, email or token = Jira switched off.
+    ATLASSIAN_BASE_URL: str = ""
+    ATLASSIAN_EMAIL: str = ""
+    ATLASSIAN_API_TOKEN: SecretStr = SecretStr("")
+    JIRA_SYNC_MINUTES: int = Field(0, ge=0)  # 0 = no automatic sync, only "Sync now"
+    SLA_AUTO_WARN: bool = False  # true = the system comments on a Jira issue at every 25% of its SLA target (if JIRA_WRITE_BACK)
+    JIRA_WRITE_BACK: bool = False  # true = comments, reviewed priorities and the triaged status are written to the Jira issue
+    CONFLUENCE_SYNC_MINUTES: int = Field(0, ge=0)  # knowledge base copy; 0 = only "Sync now"
+
     # Closure Quality run
     CLOSURE_OUTAGE_BREAKER: int = Field(5, ge=1)  # same, for the Closure Quality model stage
 
@@ -102,6 +116,10 @@ ADMIN_EDITABLE = frozenset({
     "LLM_PROVIDER",
     "LLM_MODEL",
     "LLM_EFFORT",
+    "DQ_LLM_MODEL",
+    "DQ_LLM_EFFORT",
+    "TRIAGE_LLM_MODEL",
+    "TRIAGE_LLM_EFFORT",
     "LLM_REFUSAL_FALLBACK",
     "LLM_TIMEOUT_S",
     "LLM_TRANSPORT_RETRIES",
@@ -110,6 +128,8 @@ ADMIN_EDITABLE = frozenset({
     "DQ_OUTAGE_BREAKER",
     "TRIAGE_OUTAGE_BREAKER",
     "CLOSURE_OUTAGE_BREAKER",
+    "JIRA_SYNC_MINUTES",
+    "CONFLUENCE_SYNC_MINUTES",
 })
 
 settings = Settings()

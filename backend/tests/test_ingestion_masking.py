@@ -1,5 +1,6 @@
 """Comprehensive tests for Presidio PII masking before DB ingestion."""
 
+from datetime import datetime
 from io import BytesIO
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -233,7 +234,7 @@ def test_ingest_workbook_masks_ticket_pii(tmp_path):
         "Open",
         "Dev Lead",
         "Fix verified with Sunil Verma",
-        "2026-10-15 08:00:00",
+        datetime(2026, 11, 8, 16, 55, 16, 496000),
         None,
     ])
     file_path = tmp_path / "test_tickets.xlsx"
@@ -258,4 +259,6 @@ def test_ingest_workbook_masks_ticket_pii(tmp_path):
     # Raw dict should also have PII values masked
     assert ticket.raw["reporter"] == "<PERSON_1>"
     assert ticket.raw["reporter_email"] == "<EMAIL_1>"
+    # ...but a date is not text: its digits must not be taken for a phone number
+    assert ticket.raw["created"] == "2026-11-08T16:55:16.496000"
 

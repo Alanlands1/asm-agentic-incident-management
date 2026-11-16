@@ -130,7 +130,7 @@ def test_open_p1_p2_with_sla_risk_and_first_message(db):  # noqa: F811
     salary = items["AMS-1215"]  # the salary file the bank has not received: P1, opened 18:32
     assert (salary.priority, salary.priority_from, salary.sla.state) == (1, "recommended", "watch")
     assert salary.message.text.startswith("PayrollPro: Salary transfer file not delivered to the bank")
-    assert "Ref AMS-1215. Next update 21:30." in salary.message.text
+    assert "Ref AMS-1215. Next update 21:30 UTC." in salary.message.text
     assert salary.ticket.reporter_name not in salary.message.text  # never a name
     assert all(i.priority <= 2 for i in items.values())
     ordered = [i.sla.state for i in open_p1_p2(db, datetime(2026, 10, 25, 21, 0))]

@@ -41,3 +41,14 @@ class ChangeOut(BaseModel):
     new_value: Any = Field(..., description="null when the override was removed")
     claimed_by: str = Field(..., description="From X-Admin-User; not verified until real logins exist")
     changed_at: datetime
+
+
+class DocumentText(BaseModel):
+    """A reference document as YAML text. The repo file keeps its comments; an admin version is plain YAML."""
+    name: str = Field(..., examples=["storms"])
+    overridden: bool
+    text: str
+
+
+class DocumentTextIn(BaseModel):
+    text: str = Field(..., max_length=500_000)

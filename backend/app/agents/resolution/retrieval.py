@@ -69,10 +69,19 @@ async def search_all(
     vectors: list[list[float] | None],
     filters: Filters | None = None,
     top_n: int = 20,
+    weights: dict[str, float] | None = None,
 ) -> list[RetrievedChunk]:
-    """Every query through retrieve(), fused. vectors[i] is the embedding of queries[i], or None for full-text only."""
+    """Every query through retrieve(), fused. vectors[i] is the embedding of queries[i], or None for full-text only.
+    weights (KB id -> factor, from engineers' ratings) then move a runbook's chunks up or down."""
     results = [await retrieve(db, q, v, filters, top_n) for q, v in zip(queries, vectors, strict=True)]
-    return fuse_chunks(results, top_n)
+    return reweigh(fuse_chunks(results, top_n), weights or {})
+
+
+def reweigh(chunks: list[RetrievedChunk], weights: dict[str, float]) -> list[RetrievedChunk]:
+    """Each chunk's score times its runbook's weight (1.0 when it has none), best first again."""
+    if not weights:
+        return chunks
+    return sorted((replace(c, score=c.score * weights.get(c.kb_id, 1.0)) for c in chunks), key=lambda c: c.score, reverse=True)
 
 
 def _dense_sql(where: str) -> str:

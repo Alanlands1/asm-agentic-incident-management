@@ -11,6 +11,9 @@ def test_strip_body_removes_greeting_and_signature():
 
 def test_test_ticket_is_not_an_incident():
     assert evaluate("Test", "test ticket please ignore").verdict == Verdict.NOT_AN_INCIDENT
+    request = evaluate("Access request: new joiner needs a viewer role", "Our new analyst joins on Monday and needs a licence.")
+    assert (request.verdict, request.rule) == (Verdict.NOT_AN_INCIDENT, "service_request")
+    assert evaluate("Access request page returns error 500 for everyone", "x").rule != "service_request"  # something is broken
 
 
 def test_near_empty_ticket_needs_info():
@@ -85,3 +88,22 @@ async def test_reporter_reply_reopens_ticket_for_a_fresh_check(client):
 async def test_comment_on_unknown_ticket_returns_404(client):
     response = await client.post("/api/v1/tickets/INC9999999/comments", json={"author_email": "a@b.c", "body": "hi"})
     assert response.status_code == 404
+
+
+async def test_a_changed_note_makes_the_ticket_due_for_a_new_check(client):
+    await client.post("/api/v1/ingest")
+    await client.post("/api/v1/data-quality/run")
+    assert (await client.post("/api/v1/data-quality/run")).json()["evaluated"] == 0
+
+    note = await client.put("/api/v1/tickets/MBX-00006/guidance", json={"text": "The renderer was restarted last month."})
+    assert note.status_code == 200
+    assert (await client.post("/api/v1/data-quality/run")).json()["evaluated"] == 1
+
+
+async def test_a_note_sends_a_ticket_awaiting_information_back_for_a_fresh_check(client):
+    await client.post("/api/v1/ingest")
+    await client.post("/api/v1/data-quality/run")
+    assert await _status(client, "MBX-00012") == "awaiting_info"
+
+    await client.put("/api/v1/tickets/MBX-00012/guidance", json={"text": "It is PayrollPro, the March payslip PDF is blank."})
+    assert await _status(client, "MBX-00012") == "pending"

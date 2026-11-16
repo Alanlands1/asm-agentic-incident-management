@@ -2,20 +2,14 @@
 
 import { useState } from "react";
 import { AgentWorkflowLayout } from "@/components/layout/agent-workflow-layout";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import { PageHeader } from "@/components/console/page-header";
+import { StatTile } from "@/components/console/stat-tile";
+import { ListRow } from "@/components/console/list-row";
+import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import {
-  ShieldAlert,
-  ArrowRight,
-  Sparkles,
-  AlertTriangle,
-  Scale,
-  Clock,
-  CheckCircle2,
-  Filter
-} from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { ArrowRight, Scale, Clock, CircleCheck } from "lucide-react";
 
 interface PriorityRule {
   id: string;
@@ -76,12 +70,41 @@ const TRIAGE_RULES: PriorityRule[] = [
 ];
 
 const SLA_MATRIX = [
-  { priority: "P1 - Critical", targetResponse: "15 mins", targetResolution: "4 hours", color: "text-[#a20a29]", bg: "bg-[#fdf2f4]" },
-  { priority: "P2 - High", targetResponse: "30 mins", targetResolution: "8 hours", color: "text-[#b08824]", bg: "bg-[#fbf7ee]" },
-  { priority: "P3 - Moderate", targetResponse: "2 hours", targetResolution: "24 hours", color: "text-[#005656]", bg: "bg-[#f0f4f4]" },
-  { priority: "P4 - Low", targetResponse: "4 hours", targetResolution: "72 hours", color: "text-[#5e605d]", bg: "bg-[#fbfbfb]" },
-  { priority: "P5 - Planning", targetResponse: "24 hours", targetResolution: "Next Sprint", color: "text-[#5e605d]", bg: "bg-[#fbfbfb]" },
+  { priority: "P1 - Critical", targetResponse: "15 mins", targetResolution: "4 hours" },
+  { priority: "P2 - High", targetResponse: "30 mins", targetResolution: "8 hours" },
+  { priority: "P3 - Moderate", targetResponse: "2 hours", targetResolution: "24 hours" },
+  { priority: "P4 - Low", targetResponse: "4 hours", targetResolution: "72 hours" },
+  { priority: "P5 - Planning", targetResponse: "24 hours", targetResolution: "Next Sprint" },
 ];
+
+const SELECT_CLASS =
+  "h-8 w-full rounded-lg border border-input bg-background px-2.5 text-[13px] text-foreground outline-none transition-colors duration-[80ms] focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
+
+/** Priority chip for a level 1-5. P5 has no chip of its own, so it shares the quiet P4 style. */
+function PriorityChip({ level }: { level: number }) {
+  const variant = `p${Math.min(level, 4)}` as "p1" | "p2" | "p3" | "p4";
+  return <Badge variant={variant}>P{level}</Badge>;
+}
+
+/** "1 - Critical" -> 1 */
+const levelOf = (priority: string) => Number(priority.match(/\d/)?.[0] ?? 0);
+
+function PriorityChange({ from, to }: { from: string; to: string }) {
+  return (
+    <span
+      role="img"
+      aria-label={`Reported P${levelOf(from)}, normalized to P${levelOf(to)}`}
+      className="inline-flex items-center gap-1"
+    >
+      <PriorityChip level={levelOf(from)} />
+      <ArrowRight className="size-3.5 text-muted-foreground" aria-hidden="true" />
+      <PriorityChip level={levelOf(to)} />
+    </span>
+  );
+}
+
+const promotedCount = TRIAGE_RULES.filter((r) => levelOf(r.normalized) < levelOf(r.reported)).length;
+const demotedCount = TRIAGE_RULES.filter((r) => levelOf(r.normalized) > levelOf(r.reported)).length;
 
 export default function TriagePage() {
   const [selectedApp, setSelectedApp] = useState("SalesConnect CRM");
@@ -122,228 +145,160 @@ export default function TriagePage() {
 
   return (
     <AgentWorkflowLayout currentStep={2}>
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-[#e0e1dc] pb-6">
-        <div>
-          <div className="text-xs font-semibold text-[#005656] uppercase tracking-wider mb-1">
-            Priority & SLA Governance
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#222222]">
-            Triage & Priority Normalization Agent
-          </h1>
-          <p className="text-[#5e605d] text-sm mt-1 max-w-2xl">
-            Stage 2 receives validated tickets from the Data Quality Agent. It objectively evaluates urgency and business impact against organizational runbooks, overriding reporter inflation.
+      <PageHeader
+        title="Triage"
+        context="Re-evaluates the priority of validated tickets against business impact rules and overrides inflated reporter priorities."
+      />
+
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)] [&>*:first-child]:col-span-2 sm:[&>*:first-child]:col-span-1">
+        <StatTile variant="primary" label="Active policies" value={TRIAGE_RULES.length} />
+        <StatTile label="Promote priority" value={promotedCount} />
+        <StatTile label="Demote priority" value={demotedCount} />
+      </div>
+
+      <Card className="gap-0 py-0">
+        <div className="border-b border-border px-4 py-3">
+          <h2 className="text-sm font-semibold">Priority reclassification policies</h2>
+          <p className="text-xs text-muted-foreground">
+            Policies that normalize ticket urgency based on business impact.
           </p>
         </div>
-
-        <div className="flex items-center gap-2">
-          <Badge className="bg-[#005656] text-white px-3 py-1 text-xs font-medium border-none">
-            Runbook Taxonomy Active
-          </Badge>
-        </div>
-      </div>
-
-      {/* Overview Cards */}
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Card className="border-[#e0e1dc] bg-white shadow-xs border-l-4 border-l-[#005656]">
-          <CardHeader className="pb-2">
-            <div className="text-xs font-semibold text-[#005656]">Gate 02 Verification</div>
-            <CardTitle className="text-base font-bold text-[#222222]">Input from Step 1</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-xs text-[#5e605d] leading-relaxed">
-              Consumes only clean tickets where Data Quality flag is valid (<span className="font-mono text-[#005656]">dq_flag = false</span>) and personal caller data has been masked via Presidio.
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-[#e0e1dc] bg-white shadow-xs border-l-4 border-l-[#a20a29]">
-          <CardHeader className="pb-2">
-            <div className="text-xs font-semibold text-[#a20a29]">Inflation Deflation</div>
-            <CardTitle className="text-base font-bold text-[#222222]">Objective Reclassification</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-xs text-[#5e605d] leading-relaxed">
-              Prevents queue saturation caused by subjective user submissions. Maps true operational criticality to contracted SLA response windows.
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-[#e0e1dc] bg-white shadow-xs border-l-4 border-l-[#b08824]">
-          <CardHeader className="pb-2">
-            <div className="text-xs font-semibold text-[#b08824]">Next Stage</div>
-            <CardTitle className="text-base font-bold text-[#222222]">Hand-off to Step 3</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-xs text-[#5e605d] leading-relaxed">
-              Triaged and prioritized incidents are passed to the Resolution Agent for automated runbook lookup and remediation drafting.
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Interactive Triage Simulator */}
-      <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-bold tracking-tight text-[#222222]">Interactive Triage Evaluation Simulator</h2>
-            <p className="text-xs text-[#5e605d]">
-              Test how the Triage Agent analyzes incident claims and adjusts priority according to runbook taxonomies.
-            </p>
-          </div>
-          <span className="text-xs font-medium text-[#005656] bg-[#f0f4f4] px-2.5 py-1 rounded">
-            Real-Time Engine Testbench
-          </span>
-        </div>
-
-        <Card className="border-[#e0e1dc] bg-white shadow-xs">
-          <CardContent className="p-6 space-y-5">
-            <div className="grid gap-4 sm:grid-cols-3">
-              <div>
-                <label className="text-xs font-semibold text-[#222222] block mb-1.5">Target Application</label>
-                <select
-                  value={selectedApp}
-                  onChange={(e) => setSelectedApp(e.target.value)}
-                  className="w-full text-xs h-9 rounded-md border border-[#e0e1dc] bg-white px-3 text-[#222222] focus:outline-none focus:ring-1 focus:ring-[#005656]"
-                >
-                  <option value="SalesConnect CRM">SalesConnect CRM (Tier 2)</option>
-                  <option value="BillingEngine">BillingEngine (Tier 1)</option>
-                  <option value="StockSense">StockSense (Tier 2)</option>
-                  <option value="InsightBI">InsightBI (Tier 3)</option>
-                  <option value="PayrollPro">PayrollPro (Tier 1)</option>
-                  <option value="EmployeePortal">EmployeePortal (Tier 3)</option>
-                  <option value="OrderHub">OrderHub (Tier 2)</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-[#222222] block mb-1.5">Reporter Claimed Priority</label>
-                <select
-                  value={reportedPriority}
-                  onChange={(e) => setReportedPriority(e.target.value)}
-                  className="w-full text-xs h-9 rounded-md border border-[#e0e1dc] bg-white px-3 text-[#222222] focus:outline-none focus:ring-1 focus:ring-[#005656]"
-                >
-                  <option value="1 - Critical">1 - Critical (Claims Emergency)</option>
-                  <option value="2 - High">2 - High</option>
-                  <option value="3 - Moderate">3 - Moderate</option>
-                  <option value="4 - Low">4 - Low</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-[#222222] block mb-1.5">Action</label>
-                <Button
-                  onClick={handleSimulateTriage}
-                  className="w-full h-9 text-xs bg-[#005656] hover:bg-[#004242] text-white font-semibold gap-1.5"
-                >
-                  <Sparkles className="h-3.5 w-3.5" />
-                  Evaluate Priority
-                </Button>
-              </div>
-            </div>
-
-            <div>
-              <label className="text-xs font-semibold text-[#222222] block mb-1.5">Incident Short Description</label>
-              <input
-                type="text"
-                value={ticketSummary}
-                onChange={(e) => setTicketSummary(e.target.value)}
-                className="w-full text-xs h-9 rounded-md border border-[#e0e1dc] bg-white px-3 text-[#222222] focus:outline-none focus:ring-1 focus:ring-[#005656]"
-                placeholder="Describe the reported issue..."
-              />
-            </div>
-
-            {simulatedResult && (
-              <div className="p-4 rounded-lg border border-[#e0e1dc] bg-[#fbfbfb] space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Scale className="h-4 w-4 text-[#005656]" />
-                    <span className="text-xs font-bold text-[#222222]">Triage Verdict: {simulatedResult.action}</span>
-                  </div>
-                  <Badge className="bg-[#a20a29] text-white text-xs">
-                    Normalized: {simulatedResult.normalized}
-                  </Badge>
-                </div>
-                <p className="text-xs text-[#5e605d]">
-                  <strong className="text-[#222222]">Policy Justification:</strong> {simulatedResult.justification}
-                </p>
-                <div className="text-xs font-medium text-[#005656] pt-1">
-                  ⏱️ {simulatedResult.sla}
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </section>
-
-      {/* Enforced Enterprise Triage Policies */}
-      <section className="space-y-3 pt-2">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-bold tracking-tight text-[#222222]">Enforced Priority Reclassification Policies</h2>
-            <p className="text-xs text-[#5e605d]">
-              Predefined organizational policies that automatically normalize ticket urgency based on business impact.
-            </p>
-          </div>
-          <span className="text-xs font-medium text-[#005656] bg-[#f0f4f4] px-2.5 py-1 rounded">
-            5 Active Policies
-          </span>
-        </div>
-
-        <div className="border border-[#e0e1dc] rounded-lg bg-white overflow-hidden shadow-xs">
-          <Table>
-            <TableHeader className="bg-[#f0f4f4]/60">
-              <TableRow className="border-b border-[#e0e1dc]">
-                <TableHead className="text-xs font-semibold text-[#005656]">Policy ID</TableHead>
-                <TableHead className="text-xs font-semibold text-[#005656]">Condition Trigger</TableHead>
-                <TableHead className="text-xs font-semibold text-[#005656]">Reported</TableHead>
-                <TableHead className="text-xs font-semibold text-[#005656]">Normalized Result</TableHead>
-                <TableHead className="text-xs font-semibold text-[#005656]">Impact Tier</TableHead>
-                <TableHead className="text-xs font-semibold text-[#005656]">Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {TRIAGE_RULES.map((rule) => (
-                <TableRow key={rule.id} className="border-b border-[#e0e1dc] hover:bg-[#fbfbfb]">
-                  <TableCell className="text-xs font-mono font-medium text-[#222222]">{rule.id}</TableCell>
-                  <TableCell className="text-xs text-[#222222]">
-                    <div className="font-medium">{rule.condition}</div>
-                    <div className="text-[11px] text-[#5e605d]">{rule.rationale}</div>
-                  </TableCell>
-                  <TableCell className="text-xs text-[#a20a29] font-medium">{rule.reported}</TableCell>
-                  <TableCell className="text-xs font-semibold text-[#005656]">{rule.normalized}</TableCell>
-                  <TableCell className="text-xs text-[#5e605d]">{rule.impactTier}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className="border-[#005656] text-[#005656] text-[10px]">
-                      {rule.status}
-                    </Badge>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      </section>
-
-      {/* Target SLA Windows */}
-      <section className="space-y-3 pt-2">
-        <h2 className="text-lg font-bold tracking-tight text-[#222222]">Contracted SLA Resolution Targets</h2>
-        <div className="grid gap-3 sm:grid-cols-5">
-          {SLA_MATRIX.map((tier) => (
-            <div key={tier.priority} className={`p-4 rounded-lg border border-[#e0e1dc] ${tier.bg} space-y-1.5`}>
-              <div className={`text-xs font-bold ${tier.color}`}>{tier.priority}</div>
-              <div className="text-xs text-[#222222]">
-                <span className="text-[#5e605d]">Response: </span>
-                <span className="font-semibold">{tier.targetResponse}</span>
-              </div>
-              <div className="text-xs text-[#222222]">
-                <span className="text-[#5e605d]">Resolution: </span>
-                <span className="font-semibold">{tier.targetResolution}</span>
-              </div>
-            </div>
+        <ul role="list">
+          {TRIAGE_RULES.map((rule) => (
+            <ListRow
+              key={rule.id}
+              lead={<PriorityChange from={rule.reported} to={rule.normalized} />}
+              itemKey={rule.id}
+              title={rule.condition}
+              meta={`${rule.impactTier} · ${rule.rationale}`}
+              trailing={
+                <span className="inline-flex items-center gap-1.5">
+                  <CircleCheck className="size-4" aria-hidden="true" />
+                  {rule.status}
+                </span>
+              }
+            />
           ))}
+        </ul>
+      </Card>
+
+      <Card className="gap-4 px-4">
+        <div>
+          <h2 className="text-sm font-semibold">Try a ticket</h2>
+          <p className="text-xs text-muted-foreground">
+            See how the Triage Agent adjusts a reported priority under the policies above.
+          </p>
         </div>
-      </section>
+        <div className="grid gap-4 sm:grid-cols-3 sm:items-end">
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="triage-app" className="text-xs font-medium text-foreground">Target application</label>
+            <select
+              id="triage-app"
+              value={selectedApp}
+              onChange={(e) => setSelectedApp(e.target.value)}
+              className={SELECT_CLASS}
+            >
+              <option value="SalesConnect CRM">SalesConnect CRM (Tier 2)</option>
+              <option value="BillingEngine">BillingEngine (Tier 1)</option>
+              <option value="StockSense">StockSense (Tier 2)</option>
+              <option value="InsightBI">InsightBI (Tier 3)</option>
+              <option value="PayrollPro">PayrollPro (Tier 1)</option>
+              <option value="EmployeePortal">EmployeePortal (Tier 3)</option>
+              <option value="OrderHub">OrderHub (Tier 2)</option>
+            </select>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="triage-reported" className="text-xs font-medium text-foreground">Reported priority</label>
+            <select
+              id="triage-reported"
+              value={reportedPriority}
+              onChange={(e) => setReportedPriority(e.target.value)}
+              className={SELECT_CLASS}
+            >
+              <option value="1 - Critical">1 - Critical (Claims Emergency)</option>
+              <option value="2 - High">2 - High</option>
+              <option value="3 - Moderate">3 - Moderate</option>
+              <option value="4 - Low">4 - Low</option>
+            </select>
+          </div>
+
+          <Button onClick={handleSimulateTriage}>
+            <Scale />
+            Evaluate priority
+          </Button>
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="triage-summary" className="text-xs font-medium text-foreground">Short description</label>
+          <Input
+            id="triage-summary"
+            type="text"
+            value={ticketSummary}
+            onChange={(e) => setTicketSummary(e.target.value)}
+            placeholder="Describe the reported issue..."
+          />
+        </div>
+
+        {simulatedResult && (
+          <div role="status" className="flex flex-col gap-2 rounded-lg border border-border bg-muted p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-[13px] font-semibold text-foreground">Verdict: {simulatedResult.action}</span>
+              <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                Normalized
+                <PriorityChip level={levelOf(simulatedResult.normalized)} />
+                {simulatedResult.normalized}
+              </span>
+            </div>
+            <p className="text-body">
+              <span className="font-medium text-foreground">Policy justification:</span> {simulatedResult.justification}
+            </p>
+            <div className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Clock className="size-4" aria-hidden="true" />
+              {simulatedResult.sla}
+            </div>
+          </div>
+        )}
+      </Card>
+
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(320px,1fr))] gap-4">
+        <Card className="gap-0 py-0">
+          <div className="border-b border-border px-4 py-3">
+            <h2 className="text-sm font-semibold">Contracted SLA targets</h2>
+          </div>
+          <ul role="list">
+            {SLA_MATRIX.map((tier) => (
+              <ListRow
+                key={tier.priority}
+                lead={<PriorityChip level={levelOf(tier.priority)} />}
+                title={tier.priority.replace(/^P\d - /, "")}
+                meta={`Response ${tier.targetResponse} · Resolution ${tier.targetResolution}`}
+              />
+            ))}
+          </ul>
+        </Card>
+
+        <Card className="gap-1 px-4">
+          <h2 className="text-sm font-semibold">Input from Data Quality</h2>
+          <p className="text-body">
+            Consumes only clean tickets where the Data Quality flag is valid (<span className="font-mono text-foreground">dq_flag = false</span>) and personal caller data has been masked via Presidio.
+          </p>
+        </Card>
+
+        <Card className="gap-1 px-4">
+          <h2 className="text-sm font-semibold">Objective reclassification</h2>
+          <p className="text-body">
+            Prevents queue saturation caused by subjective user submissions. Maps true operational criticality to contracted SLA response windows.
+          </p>
+        </Card>
+
+        <Card className="gap-1 px-4">
+          <h2 className="text-sm font-semibold">Hand-off to Resolution</h2>
+          <p className="text-body">
+            Triaged and prioritized incidents are passed to the Resolution Agent for automated runbook lookup and remediation drafting.
+          </p>
+        </Card>
+      </div>
     </AgentWorkflowLayout>
   );
 }
