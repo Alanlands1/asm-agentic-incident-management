@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BookOpen, CheckCheck, CheckCircle2, ClipboardList, Database, FileText, History, LayoutDashboard,
-  ListChecks, Plug, ShieldCheck, SlidersHorizontal, Ticket, TrendingUp, TriangleAlert, Users, type LucideIcon,
+  Library, ListChecks, Plug, ShieldCheck, SlidersHorizontal, Ticket, TrendingUp, TriangleAlert, Users, type LucideIcon,
 } from "lucide-react";
 import { cn } from "cn";
 import { ROLES, useViewAs } from "@/lib/view-as";
@@ -57,6 +57,7 @@ const ADMIN_GROUPS: { label: string; items: NavItem[] }[] = [
       { label: "Triage", href: "/agents/triage", step: 2, match: (p) => p.startsWith("/agents/triage") },
       { label: "Resolution", href: "/agents/resolution", step: 3, match: (p) => p.startsWith("/agents/resolution") },
       { label: "Closure Quality", href: "/agents/closure", step: 4, match: (p) => p.startsWith("/agents/closure") },
+      { label: "Knowledge Builder", href: "/agents/knowledge", step: 5, match: (p) => p.startsWith("/agents/knowledge") },
     ],
   },
   {
@@ -73,7 +74,7 @@ const ADMIN_GROUPS: { label: string; items: NavItem[] }[] = [
 const ICONS: Record<string, LucideIcon> = {
   "/": LayoutDashboard, "/incidents": TriangleAlert, "/trends": TrendingUp, "/tickets": Ticket, "/review": CheckCircle2,
   "/dq-rules": ListChecks, "/agents/data-quality": ShieldCheck, "/agents/triage": SlidersHorizontal,
-  "/agents/resolution": BookOpen, "/agents/closure": CheckCheck, "/settings/jira": Plug, "/settings/confluence": FileText,
+  "/agents/resolution": BookOpen, "/agents/closure": CheckCheck, "/agents/knowledge": Library,"/settings/jira": Plug, "/settings/confluence": FileText,
   "/settings/reference": Database, "/settings/history": History, "/team": Users, "/my-tickets": ClipboardList,
 };
 

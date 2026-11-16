@@ -1,4 +1,4 @@
-const getApiBase = () => {
+export const getApiBase = () => {
   if (process.env.NEXT_PUBLIC_API_URL) {
     return process.env.NEXT_PUBLIC_API_URL;
   }
