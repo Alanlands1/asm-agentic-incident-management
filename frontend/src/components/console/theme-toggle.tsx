@@ -17,6 +17,8 @@ export function ThemeToggle() {
   function toggle() {
     const next = !dark;
     document.documentElement.classList.toggle("dark", next);
+    const meta = document.querySelector<HTMLMetaElement>('meta[name="color-scheme"]');
+    if (meta) meta.content = next ? "dark" : "light";
     try {
       localStorage.setItem("theme", next ? "dark" : "light");
     } catch {

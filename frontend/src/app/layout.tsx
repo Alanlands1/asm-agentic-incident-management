@@ -24,10 +24,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       suppressHydrationWarning
     >
       <head>
+        <meta name="color-scheme" content="light" />
         {/* Apply the saved theme before paint to avoid a light flash. */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `try{if(localStorage.getItem("theme")==="dark")document.documentElement.classList.add("dark")}catch(e){}`,
+            __html: `try{if(localStorage.getItem("theme")==="dark"){document.documentElement.classList.add("dark");document.querySelector('meta[name="color-scheme"]').content="dark"}}catch(e){}`,
           }}
         />
       </head>
