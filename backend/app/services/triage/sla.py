@@ -95,6 +95,12 @@ def _who(output: dict, storm: Storm | None) -> str:
     return {"wide": "Several users are affected.", "single": "One user has reported it."}.get(scope, "")
 
 
+def local(at: datetime) -> datetime:
+    """A stored time (naive UTC) with its zone, for texts people read; print it with %Z. Always UTC: the server's zone
+    changed between runs and left one issue with warnings in two zones; the console shows the viewer's own zone."""
+    return at.replace(tzinfo=timezone.utc)
+
+
 def first_message(ticket: Ticket, run: AgentRun, at: datetime, storm: Storm | None = None,
                   cfg: SlaConfig | None = None) -> FirstMessage:
     """The first message for a P1/P2, from the template. It names the application and the problem, never a person."""
@@ -103,7 +109,7 @@ def first_message(ticket: Ticket, run: AgentRun, at: datetime, storm: Storm | No
     text = cfg.template.format(
         application=out.get("application") or ticket.application or "Service",
         what=_what(out), who=_who(out, storm), ticket_id=ticket.id,
-        next_update=(at + timedelta(minutes=cfg.update_every_minutes)).strftime("%H:%M"),
+        next_update=local(at + timedelta(minutes=cfg.update_every_minutes)).strftime("%H:%M %Z"),
     )
     send_by = ticket.opened_at + timedelta(minutes=cfg.first_message_minutes)
     return FirstMessage(" ".join(text.split()), send_by, int((send_by - at).total_seconds() // 60))

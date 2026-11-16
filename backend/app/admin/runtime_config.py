@@ -21,7 +21,8 @@ logger = logging.getLogger("app.runtime_config")
 
 SETTING, DOCUMENT = "setting", "document"
 DOCUMENT_FILES = registry.documents  # admin name -> file; each owner registers its own with register_document()
-SECRET_SETTINGS = frozenset({"ADMIN_API_KEY", "ANTHROPIC_API_KEY"})  # never shown, only whether it is set
+# never shown, only whether it is set: keys, tokens, and connection details (the database URL carries a password)
+SECRET_SETTINGS = frozenset({"ADMIN_API_KEY", "ANTHROPIC_API_KEY", "ATLASSIAN_API_TOKEN", "ATLASSIAN_EMAIL", "DATABASE_URL"})
 _baseline = settings.model_copy()  # .env and defaults, before any admin override
 
 

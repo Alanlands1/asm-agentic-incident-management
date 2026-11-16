@@ -90,3 +90,41 @@ async def test_rule_change_applies_live(client):
 
     assert get_config().min_body_length == 10
     assert (await client.get("/api/v1/admin/documents/nope", headers=KEY)).status_code == 404
+
+
+async def test_admin_sets_and_resets_agent_model(client):
+    r = await client.put("/api/v1/admin/settings/TRIAGE_LLM_MODEL", headers=KEY, json={"value": "claude-haiku-5-5"})
+    assert r.status_code == 200 and r.json()["value"] == "claude-haiku-5-5"
+    bad = await client.put("/api/v1/admin/settings/TRIAGE_LLM_EFFORT", headers=KEY, json={"value": "extreme"})
+    assert bad.status_code == 422
+    reset = await client.delete("/api/v1/admin/settings/TRIAGE_LLM_MODEL", headers=KEY)
+    assert reset.json()["value"] is None
+
+
+async def test_get_yaml_keeps_repo_comments(client):
+    r = (await client.get("/api/v1/admin/documents/storms/yaml", headers=KEY)).json()
+    assert r["name"] == "storms" and r["overridden"] is False and "#" in r["text"]
+    assert (await client.get("/api/v1/admin/documents/nope/yaml", headers=KEY)).status_code == 404
+
+
+async def test_put_yaml_rejects_broken_document(client):
+    url = "/api/v1/admin/documents/storms/yaml"
+    unparsable = await client.put(url, headers=KEY, json={"text": "window_min: [unclosed"})
+    assert unparsable.status_code == 422 and "YAML" in unparsable.json()["detail"]
+    wrong_shape = await client.put(url, headers=KEY, json={"text": "- just\n- a list\n"})
+    assert wrong_shape.status_code == 422
+    assert (await client.get(url, headers=KEY)).json()["overridden"] is False
+
+
+async def test_put_yaml_round_trip(client):
+    url = "/api/v1/admin/documents/storms/yaml"
+    text = (await client.get(url, headers=KEY)).json()["text"]
+    saved = await client.put(url, headers=KEY, json={"text": text})
+    assert saved.status_code == 200 and saved.json()["overridden"] is True and "#" not in saved.json()["text"]
+    assert (await client.get("/api/v1/admin/changes", headers=KEY)).json()[0]["key"] == "storms"
+
+
+async def test_settings_list_never_shows_connection_secrets(client):
+    rows = {r["key"]: r for r in (await client.get("/api/v1/admin/settings", headers=KEY)).json()}
+    for key in ("DATABASE_URL", "ATLASSIAN_API_TOKEN", "ATLASSIAN_EMAIL", "ANTHROPIC_API_KEY"):
+        assert isinstance(rows[key]["value"], bool) and isinstance(rows[key]["baseline"], bool), key

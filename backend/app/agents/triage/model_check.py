@@ -2,7 +2,8 @@
 
 The model never sets the priority. It picks a rule from the rulebook and reports how many are affected and whether
 the business context applies; rules.decide() turns that into the priority, exactly as for the rules stage.
-A fact whose quote is not really in the ticket goes back to unknown (see verified()).
+It also reports the impact on three pillars (regulatory, financial, system), shown to the engineer beside the priority.
+A fact or impact level whose quote is not really in the ticket goes back to unknown or none (see verified()).
 The prompt text comes from data/registry/prompts.yaml, the rulebook inside it from triage_rules.yaml and jobs.yaml.
 """
 
@@ -22,6 +23,9 @@ from app.privacy.masking import Masker
 
 TRIAGE_PROMPT_NAME = "triage_priority"  # the entry in prompts.yaml
 MIN_QUOTE = 8  # characters; shorter quotes ("my", "all") prove nothing
+PILLARS = ("regulatory", "financial", "system")
+
+ImpactLevel = Literal["none", "low", "medium", "high"]
 
 
 class TriageAssessment(BaseModel):
@@ -31,6 +35,12 @@ class TriageAssessment(BaseModel):
     scope_quote: str | None = Field(description="Exact words from the ticket that show the scope; null when unknown")
     context_applies: bool = Field(description="Whether the business context in the rule's 'raised when' note is described")
     context_quote: str | None = Field(description="Exact words from the ticket that show that context; null if it does not apply")
+    regulatory_impact: ImpactLevel = Field(description="A legal, compliance, audit or statutory obligation at risk")
+    regulatory_quote: str | None = Field(description="Exact words from the ticket that show it; null when none")
+    financial_impact: ImpactLevel = Field(description="Money lost, delayed or wrong")
+    financial_quote: str | None = Field(description="Exact words from the ticket that show it; null when none")
+    system_impact: ImpactLevel = Field(description="How much of the service is not working")
+    system_quote: str | None = Field(description="Exact words from the ticket that show it; null when none")
     reason: str = Field(description="One or two sentences for the support team")
 
     @model_validator(mode="after")
@@ -52,13 +62,22 @@ def _quoted(quote: str | None, ticket_text: str) -> bool:
 
 
 def verified(answer: TriageAssessment, ticket_text: str) -> tuple[TriageAssessment, list[str]]:
-    """Facts without a real quote from the ticket go back to unknown. Returns the checked answer and what was dropped."""
+    """Facts without a real quote from the ticket go back to unknown, impact levels to none.
+    Returns the checked answer and what was dropped."""
     update, dropped = {}, []
     if answer.scope != "unknown" and not _quoted(answer.scope_quote, ticket_text):
         update["scope"], dropped = "unknown", [*dropped, "scope"]
     if answer.context_applies and not _quoted(answer.context_quote, ticket_text):
         update["context_applies"], dropped = False, [*dropped, "context"]
+    for pillar in PILLARS:
+        if getattr(answer, f"{pillar}_impact") != "none" and not _quoted(getattr(answer, f"{pillar}_quote"), ticket_text):
+            update[f"{pillar}_impact"], update[f"{pillar}_quote"], dropped = "none", None, [*dropped, f"{pillar}_impact"]
     return answer.model_copy(update=update), dropped
+
+
+def impact(answer: TriageAssessment) -> dict[str, dict[str, str | None]]:
+    """The three pillars as stored on the run and shown to the engineer."""
+    return {p: {"level": getattr(answer, f"{p}_impact"), "quote": getattr(answer, f"{p}_quote")} for p in PILLARS}
 
 
 def _readable(pattern: re.Pattern) -> str:
@@ -115,6 +134,7 @@ def _build_spec(version: int) -> CallSpec[TriageAssessment]:
         wrapper=prompt["wrapper"],
         retry_note=prompt["retry_note"],
         max_tokens=prompt["max_tokens"],
+        agent="triage",
     )
 
 
@@ -130,7 +150,7 @@ def assess_priority(ticket: Ticket, body: str, rules: RuleResult) -> tuple[Triag
     masker = Masker(known_names=[ticket.reporter_name, ticket.assignee], known_emails=[ticket.reporter_email])
     text = prompt["ticket_template"].format(
         application=s.application or none,
-        candidate=rules.fallback.rule if rules.fallback else none,
+        candidate=(rules.decision or rules.fallback).rule if rules.decision or rules.fallback else none,
         missing=", ".join(rules.missing) or none,
         windows=", ".join(s.windows) or none,
         failed_jobs=", ".join(s.failed_jobs) or none,

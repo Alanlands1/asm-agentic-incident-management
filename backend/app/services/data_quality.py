@@ -13,6 +13,7 @@ from app.agents.data_quality.rules import evaluate
 from app.agents.data_quality.verdict import Verdict
 from app.core.config import settings
 from app.llm import ModelError, ModelUnavailableError
+from app.llm.client import effort, model_id
 from app.models.ticket import AgentRun, PipelineStatus, Ticket
 
 logger = logging.getLogger("app.data_quality")
@@ -23,6 +24,7 @@ VERDICT_STATUS = {
     Verdict.NEEDS_INFO: PipelineStatus.AWAITING_INFO,
     Verdict.PASSED: PipelineStatus.DQ_PASSED,
 }  # uncertain keeps the ticket pending until the model step decides
+ASK_FOR = ["what is not working", "which application", "the error message or what you see"]  # when a rule says needs_info
 
 
 @dataclass
@@ -34,8 +36,10 @@ class RunResult:
 
 
 def reporter_text(ticket: Ticket) -> str:
-    """The original description followed by every reply from the reporter, so a re-check sees the full story."""
-    return "\n\n".join([ticket.description, *(c.body for c in ticket.comments if c.from_reporter)])
+    """The original description, every reply from the reporter and the support engineer's note, so a re-check sees the
+    full story."""
+    note = [f"Note from the support engineer:\n{ticket.guidance}"] if ticket.guidance else []
+    return "\n\n".join([ticket.description, *(c.body for c in ticket.comments if c.from_reporter), *note])
 
 
 def fingerprint(*parts: str | None) -> str:
@@ -61,7 +65,8 @@ class OutageBreaker:
 
 def _input_hash(ticket: Ticket, body: str) -> str:
     """What the check saw, including which stages ran: switching the model on or changing its prompt re-checks."""
-    stages = f"{settings.LLM_MODEL}|{dq_completeness_spec().prompt_version}" if settings.LLM_ENABLED else "rules"
+    model = f"{model_id('data_quality')}|{effort('data_quality')}|{dq_completeness_spec().prompt_version}"
+    stages = model if settings.LLM_ENABLED else "rules"
     return fingerprint(ticket.summary, body, ticket.attachments, ticket.application, stages)
 
 
@@ -79,7 +84,8 @@ def check_ticket(db: Session, ticket: Ticket) -> AgentRun:
         agent=AGENT,
         verdict=outcome.verdict,
         input_hash=input_hash,
-        output={"stage": "rules", "rule": outcome.rule, "reason": outcome.reason, "signals": asdict(outcome.signals)},
+        output={"stage": "rules", "rule": outcome.rule, "reason": outcome.reason, "signals": asdict(outcome.signals),
+                **({"missing": ASK_FOR} if outcome.verdict == Verdict.NEEDS_INFO else {})},
     )
     db.add(final)
 
@@ -88,6 +94,7 @@ def check_ticket(db: Session, ticket: Ticket) -> AgentRun:
             answer, audit = check_completeness(ticket, body, outcome.signals)
         except ModelError:
             final.input_hash = None
+            final.output = {**final.output, "ai": "failed"}  # counted on the dashboard
             raise
         final = AgentRun(
             ticket_id=ticket.id,
@@ -106,7 +113,7 @@ def run_data_quality(db: Session) -> RunResult:
     """Check every pending ticket. Tickets whose input has not changed since their last check are skipped."""
     tickets = db.scalars(
         select(Ticket)
-        .where(Ticket.pipeline_status == PipelineStatus.PENDING)
+        .where(Ticket.pipeline_status == PipelineStatus.PENDING, Ticket.closed_at.is_(None))  # closed in the source: left alone
         .options(selectinload(Ticket.agent_runs), selectinload(Ticket.comments))
     ).all()
 

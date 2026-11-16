@@ -7,6 +7,7 @@ import {
   DQRun,
   DQRunCreateInput,
   DQRunDetail,
+  DQRunMatchTicket,
 } from "@/types/dq";
 
 export const dqService = {
@@ -67,7 +68,12 @@ export const dqService = {
   },
 
   async getRunDetail(id: number): Promise<DQRunDetail> {
-    return apiClient<DQRunDetail>(`/dq/runs/${id}`);
+    // The run and its flagged tickets are separate endpoints.
+    const [run, matches] = await Promise.all([
+      apiClient<DQRun>(`/dq/runs/${id}`),
+      apiClient<{ items: DQRunMatchTicket[] }>(`/dq/runs/${id}/matches?limit=500`),
+    ]);
+    return { ...run, matches: matches.items };
   },
 
   async revertRun(id: number): Promise<DQRun> {

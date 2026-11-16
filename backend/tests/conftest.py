@@ -1,5 +1,8 @@
 """Shared test fixtures."""
 
+import os
+import time
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -13,11 +16,16 @@ from app.db.session import Base, get_db
 from app.main import app
 from app.models import ticket  # noqa: F401  (registers models on Base.metadata)
 
+os.environ["TZ"] = "UTC"  # texts for people carry the server's local time; the tests expect UTC
+time.tzset()
+
 
 @pytest.fixture(autouse=True)
 def no_real_model(monkeypatch):
-    """Tests never reach the real model, whatever backend/.env says; the `provider` fixture installs a scripted one."""
+    """Tests never reach the real model, whatever backend/.env says; the `provider` fixture installs a scripted one.
+    They never write to the real Jira either: a test that writes switches JIRA_WRITE_BACK on and fakes the site."""
     monkeypatch.setattr(settings, "LLM_ENABLED", False)
+    monkeypatch.setattr(settings, "JIRA_WRITE_BACK", False)
     monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", SecretStr(""))
 
 

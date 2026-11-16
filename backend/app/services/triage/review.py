@@ -1,6 +1,7 @@
 """Engineer review of Triage recommendations: the queue, the decision, and how often people change what the agent said.
 
-Advisory only: the recommendation in agent_runs is never changed, and the source ticket's priority is never written.
+Advisory only: the recommendation in agent_runs is never changed, and this module never writes to the source
+(the review endpoint sets a Jira issue's priority when JIRA_WRITE_BACK is on).
 The engineer's decision is stored next to it in agent_reviews and moves the ticket on to Resolution.
 """
 
@@ -29,13 +30,29 @@ def flags(output: dict) -> list[str]:
 
 
 def pending(db: Session, limit: int = 50) -> list[tuple[Ticket, AgentRun]]:
-    """Triaged tickets waiting for a person: flagged first, then the most urgent, then the oldest."""
+    """Triaged tickets waiting for a person: flagged first, then the most urgent, then the oldest.
+    A ticket closed in its source (Jira, ServiceNow) is not waiting any more."""
     tickets = db.scalars(
-        select(Ticket).where(Ticket.pipeline_status == PipelineStatus.TRIAGED).options(selectinload(Ticket.agent_runs))
+        select(Ticket).where(Ticket.pipeline_status == PipelineStatus.TRIAGED, Ticket.closed_at.is_(None))
+        .options(selectinload(Ticket.agent_runs))
     ).all()
     queue = [(t, last_run(t, AGENT)) for t in tickets]
     queue.sort(key=lambda q: (not q[1].output["needs_review"], q[1].output["priority"] or 9, q[0].opened_at or datetime.max))
     return queue[:limit]
+
+
+def final_priority(ticket: Ticket, action: str, priority: int | None = None, reason_code: str | None = None) -> int | None:
+    """The priority a decision would leave in force, or ReviewError if the decision does not fit."""
+    recommended = last_run(ticket, AGENT).output["priority"]
+    if action == "accepted":
+        return recommended
+    if action == "edited":
+        if priority is None or priority == recommended:
+            raise ReviewError(f"An edit needs a priority other than the recommended P{recommended}")
+        return priority
+    if reason_code is None:
+        raise ReviewError("A rejection needs a reason_code")
+    return priority or ticket.reported_priority
 
 
 def review(db: Session, ticket: Ticket, action: str, reviewer: str, priority: int | None = None,
@@ -47,17 +64,7 @@ def review(db: Session, ticket: Ticket, action: str, reviewer: str, priority: in
     rejected  the recommendation is unusable (reason_code required); the given priority, or else the reporter's, stands
     """
     run = last_run(ticket, AGENT)
-    recommended = run.output["priority"]
-    if action == "accepted":
-        final = recommended
-    elif action == "edited":
-        if priority is None or priority == recommended:
-            raise ReviewError(f"An edit needs a priority other than the recommended P{recommended}")
-        final = priority
-    else:
-        if reason_code is None:
-            raise ReviewError("A rejection needs a reason_code")
-        final = priority or ticket.reported_priority
+    final = final_priority(ticket, action, priority, reason_code)
 
     decision = Review(ticket_id=ticket.id, agent_run_id=run.id, agent=AGENT, action=action, final_priority=final,
                       reason_code=reason_code, note=note, reviewer=reviewer.strip())

@@ -40,10 +40,12 @@ def prompt_versions() -> str:
     return "|".join(prompts[name]["version"] for name in PROMPTS)
 
 
-async def _search(queries: list[str], embedder: Embedder | None, filters: Filters) -> list[RetrievedChunk]:
+async def _search(
+    queries: list[str], embedder: Embedder | None, filters: Filters, weights: dict[str, float]
+) -> list[RetrievedChunk]:
     vectors = [await asyncio.to_thread(embedder.embed_query, q) for q in queries] if embedder else [None] * len(queries)
     async with AsyncSessionLocal() as db:
-        return await search_all(db, queries, vectors, filters)
+        return await search_all(db, queries, vectors, filters, weights=weights)
 
 
 def _render(chunks: list[RetrievedChunk]) -> str:
@@ -53,9 +55,9 @@ def _render(chunks: list[RetrievedChunk]) -> str:
 
 
 async def _observe(
-    queries: list[str], embedder: Embedder | None, filters: Filters, trace: list[dict], turn: int
+    queries: list[str], embedder: Embedder | None, filters: Filters, weights: dict[str, float], trace: list[dict], turn: int
 ) -> tuple[str, set[str]]:
-    shown = (await _search(queries, embedder, filters))[:SHOWN]
+    shown = (await _search(queries, embedder, filters, weights))[:SHOWN]
     kb_ids = [c.kb_id for c in shown if c.kb_id]
     trace.append({"turn": turn, "queries": queries, "kb_ids": kb_ids})
     return _render(shown), set(kb_ids)
@@ -69,7 +71,7 @@ async def resolve(case: CaseInput, embedder: Embedder | None = None) -> Resoluti
     trace: list[dict] = []
     audits = list(expansion.audits)
 
-    observation, seen = await _observe(queries, embedder, filters, trace, turn=0)
+    observation, seen = await _observe(queries, embedder, filters, case.kb_weights, trace, turn=0)
     log = [f"Search: {queries}\nExcerpts:\n{observation}"]  # what the model reads after the ticket
     spec, masker = spec_for("resolution_react", ReActStep), masker_for(case)
     searches = 0
@@ -94,7 +96,7 @@ async def resolve(case: CaseInput, embedder: Embedder | None = None) -> Resoluti
             log.append("Search limit reached. Finish now with the excerpts you have.")
             continue
         searches += 1
-        observation, ids = await _observe([step.query], embedder, filters, trace, turn=turn)
+        observation, ids = await _observe([step.query], embedder, filters, case.kb_weights, trace, turn=turn)
         seen |= ids
         log.append(f"Search: {step.query}\nExcerpts:\n{observation}")
 

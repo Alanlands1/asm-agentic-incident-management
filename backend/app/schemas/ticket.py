@@ -3,7 +3,9 @@
 from datetime import datetime
 from typing import Any, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from app.schemas.triage import ReviewOut
 
 
 class IngestResponse(BaseModel):
@@ -28,6 +30,7 @@ class CommentCreate(BaseModel):
     """A reply on a ticket."""
     author_email: str = Field(..., min_length=3, examples=["priya.raman@contoso.com"])
     body: str = Field(..., min_length=1, examples=["It is PayrollPro, the payslip PDF fails with PDF-GEN-500 since Monday."])
+    post_to_jira: bool = Field(False, description="Also add the reply to the Jira issue as a comment (needs JIRA_WRITE_BACK)")
 
 
 class CommentOut(BaseModel):
@@ -38,6 +41,32 @@ class CommentOut(BaseModel):
     author_email: str
     from_reporter: bool
     body: str
+    created_at: datetime
+
+
+class FeedbackCreate(BaseModel):
+    """A person's rating of one agent's result."""
+    agent_run_id: int
+    stars: int = Field(..., ge=1, le=5)
+    reason: str = Field(..., min_length=1, examples=["The runbook is for the card gateway, this is the bank transfer file."])
+    reviewer: str = Field(..., min_length=3, examples=["priya.raman@contoso.com"])
+
+    @field_validator("reason", mode="before")
+    @classmethod
+    def _no_blank_reason(cls, value):
+        return value.strip() if isinstance(value, str) else value
+
+
+class FeedbackOut(BaseModel):
+    """A stored rating."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    agent_run_id: int
+    agent: str
+    stars: int
+    reason: str
+    reviewer: str
     created_at: datetime
 
 
@@ -74,8 +103,11 @@ class TicketDetail(TicketSummary):
     resolved_at: Optional[datetime]
     closed_at: Optional[datetime]
     raw: dict[str, Any]
+    guidance: Optional[str] = Field(None, description="A person's note to the agents, read with the description on every run")
     agent_runs: list[AgentRunOut]
     comments: list[CommentOut]
+    feedback: list[FeedbackOut] = Field(default_factory=list, description="Star ratings people gave the agents' results")
+    decided: Optional[ReviewOut] = Field(None, description="The last decision a person made on the priority, here or in Jira")
 
 
 class TicketList(BaseModel):

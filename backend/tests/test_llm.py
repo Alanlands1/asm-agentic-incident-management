@@ -164,7 +164,9 @@ async def test_model_outage_keeps_ticket_pending(client, provider):
     provider(anthropic.APIConnectionError(message="down", request=None))
     response = await client.post(f"/api/v1/data-quality/tickets/{ticket_id}/check")
     assert response.status_code == 503
-    assert (await client.get(f"/api/v1/tickets/{ticket_id}")).json()["pipeline_status"] == "pending"
+    ticket = (await client.get(f"/api/v1/tickets/{ticket_id}")).json()
+    assert ticket["pipeline_status"] == "pending"
+    assert ticket["agent_runs"][-1]["output"]["ai"] == "failed"  # the dashboard counts it
 
 
 def test_model_is_told_what_the_rules_found(provider):
@@ -183,3 +185,31 @@ def test_model_is_told_what_the_rules_found(provider):
     assert "Application: PayrollPro (identified from the text)" in content  # not "not given"
     assert "Specific code or ID in the text: no" in content
     assert "Meera" not in content and "meera.nair" not in content  # still masked
+
+
+def test_agent_model_falls_back_to_shared(monkeypatch):
+    monkeypatch.setattr(settings, "LLM_PROVIDER", "anthropic")
+    monkeypatch.setattr(settings, "LLM_MODEL", "claude-sonnet-5-5")
+    monkeypatch.setattr(settings, "TRIAGE_LLM_MODEL", None)
+    assert llm_client.model_id("triage") == "claude-sonnet-5-5"
+    monkeypatch.setattr(settings, "TRIAGE_LLM_MODEL", "claude-haiku-5-5")
+    assert llm_client.model_id("triage") == "claude-haiku-5-5"
+    assert llm_client.model_id("data_quality") == "claude-sonnet-5-5"
+    assert llm_client.model_id() == "claude-sonnet-5-5"
+
+
+def test_agent_effort_used_in_request(monkeypatch):
+    monkeypatch.setattr(settings, "LLM_EFFORT", "low")
+    monkeypatch.setattr(settings, "DQ_LLM_EFFORT", "high")
+    assert llm_client.effort("data_quality") == "high"
+    assert llm_client.effort("triage") == "low"
+    spec = CallSpec(
+        name="t", prompt_version="t@1", system="s", output=Answer, wrapper="{ticket}",
+        retry_note="{wrapped}{problem}", max_tokens=64, agent="data_quality",
+    )
+    seen = {}
+    parse = lambda **kw: seen.update(kw)  # noqa: E731
+    fake = SimpleNamespace(messages=SimpleNamespace(parse=parse), beta=SimpleNamespace(messages=SimpleNamespace(parse=parse)))
+    monkeypatch.setattr(llm_client, "_sdk", lambda: fake)
+    llm_client._request(spec, "x")
+    assert seen["output_config"]["effort"] == "high"

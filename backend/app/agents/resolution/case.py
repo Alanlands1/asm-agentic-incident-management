@@ -1,6 +1,6 @@
 """Resolution agent: what the agent reads about a ticket, and how a model call is made about it."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from pydantic import BaseModel
 
@@ -20,6 +20,7 @@ class CaseInput:
     reporter_name: str | None = None
     reporter_email: str | None = None
     assignee: str | None = None
+    kb_weights: dict[str, float] = field(default_factory=dict)  # KB id -> ranking factor from engineers' ratings
 
 
 def case_text(case: CaseInput) -> str:

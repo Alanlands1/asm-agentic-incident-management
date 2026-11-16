@@ -12,6 +12,10 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+
+const selectClass =
+  "h-8 w-full rounded-lg border border-input bg-background px-2.5 text-[13px] text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 
 interface RuleFormDialogProps {
   open: boolean;
@@ -22,15 +26,15 @@ interface RuleFormDialogProps {
 
 const OPERATORS: { label: string; value: DQOperator; needsValue: boolean }[] = [
   { label: "Equals", value: "equals", needsValue: true },
-  { label: "Not Equals", value: "not_equals", needsValue: true },
+  { label: "Not equals", value: "not_equals", needsValue: true },
   { label: "Contains", value: "contains", needsValue: true },
-  { label: "Not Contains", value: "not_contains", needsValue: true },
-  { label: "Starts With", value: "starts_with", needsValue: true },
-  { label: "Regex Match", value: "regex", needsValue: true },
-  { label: "Is Empty", value: "is_empty", needsValue: false },
-  { label: "Is Not Empty", value: "is_not_empty", needsValue: false },
-  { label: "Length Less Than (<)", value: "length_lt", needsValue: true },
-  { label: "Length Greater Than (>)", value: "length_gt", needsValue: true },
+  { label: "Not contains", value: "not_contains", needsValue: true },
+  { label: "Starts with", value: "starts_with", needsValue: true },
+  { label: "Regex match", value: "regex", needsValue: true },
+  { label: "Is empty", value: "is_empty", needsValue: false },
+  { label: "Is not empty", value: "is_not_empty", needsValue: false },
+  { label: "Length less than", value: "length_lt", needsValue: true },
+  { label: "Length greater than", value: "length_gt", needsValue: true },
 ];
 
 const FIELDS = [
@@ -121,46 +125,44 @@ export function RuleFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl bg-white border-[#e0e1dc] text-[#222222] p-6 shadow-lg">
-        <form onSubmit={handleSubmit} className="space-y-5">
-          <DialogHeader className="pb-2 border-b border-[#e0e1dc]">
-            <DialogTitle className="text-lg font-bold text-[#222222]">
-              {ruleToEdit ? "Edit Data Quality Rule" : "Create New Data Quality Rule"}
+      <DialogContent className="sm:max-w-2xl">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <DialogHeader>
+            <DialogTitle className="text-base font-semibold">
+              {ruleToEdit ? "Edit data quality rule" : "New data quality rule"}
             </DialogTitle>
-            <p className="text-xs text-[#5e605d]">
+            <p className="text-muted-foreground">
               Define deterministic quality checks, field matching operators, and evaluation scopes.
             </p>
           </DialogHeader>
 
           {formError && (
-            <div className="p-3 text-xs rounded-md bg-[#fdf2f4] text-[#a20a29] border border-[#f5c2cb] font-medium">
-              {formError}
-            </div>
+            <Alert variant="destructive">
+              <AlertDescription>{formError}</AlertDescription>
+            </Alert>
           )}
 
-          <div className="space-y-4 text-xs">
+          <div className="flex flex-col gap-4">
             {/* Rule Name */}
             <div>
-              <label className="block font-semibold text-[#222222] mb-1.5">Rule Name *</label>
+              <label className="mb-1.5 block text-xs font-medium">Rule name *</label>
               <Input
-                placeholder="e.g. Missing Short Description"
+                placeholder="e.g. Missing short description"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 required
-                className="h-10 text-xs border-[#e0e1dc] focus-visible:ring-1 focus-visible:ring-[#a20a29]"
               />
             </div>
 
             {/* Rule Description */}
             <div>
-              <label className="block font-semibold text-[#222222] mb-1.5">Rule Description (Optional)</label>
+              <label className="mb-1.5 block text-xs font-medium">Description (optional)</label>
               <Input
                 placeholder="e.g. Flags tickets where summary does not meet minimum quality criteria"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                className="h-10 text-xs border-[#e0e1dc] focus-visible:ring-1 focus-visible:ring-[#a20a29]"
               />
-              <span className="text-[11px] text-[#5e605d] block mt-1">
+              <span className="mt-1 block text-xs text-muted-foreground">
                 Detailed business context or defect rationale for operations.
               </span>
             </div>
@@ -168,11 +170,11 @@ export function RuleFormDialog({
             {/* Target Field & Operator */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block font-semibold text-[#222222] mb-1.5">Target Field *</label>
+                <label className="mb-1.5 block text-xs font-medium">Field *</label>
                 <select
                   value={field}
                   onChange={(e) => setField(e.target.value)}
-                  className="w-full h-10 rounded-md border border-[#e0e1dc] bg-white px-3 text-xs text-[#222222] shadow-2xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#a20a29]"
+                  className={selectClass}
                 >
                   {FIELDS.map((f) => (
                     <option key={f} value={f}>
@@ -180,17 +182,17 @@ export function RuleFormDialog({
                     </option>
                   ))}
                 </select>
-                <span className="text-[11px] text-[#5e605d] block mt-1">
+                <span className="mt-1 block text-xs text-muted-foreground">
                   Ticket column to validate.
                 </span>
               </div>
 
               <div>
-                <label className="block font-semibold text-[#222222] mb-1.5">Operator *</label>
+                <label className="mb-1.5 block text-xs font-medium">Operator *</label>
                 <select
                   value={operator}
                   onChange={(e) => setOperator(e.target.value as DQOperator)}
-                  className="w-full h-10 rounded-md border border-[#e0e1dc] bg-white px-3 text-xs text-[#222222] shadow-2xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#a20a29]"
+                  className={selectClass}
                 >
                   {OPERATORS.map((op) => (
                     <option key={op.value} value={op.value}>
@@ -198,7 +200,7 @@ export function RuleFormDialog({
                     </option>
                   ))}
                 </select>
-                <span className="text-[11px] text-[#5e605d] block mt-1">
+                <span className="mt-1 block text-xs text-muted-foreground">
                   Deterministic check logic.
                 </span>
               </div>
@@ -207,84 +209,80 @@ export function RuleFormDialog({
             {/* Value if operator needs value */}
             {needsValue && (
               <div>
-                <label className="block font-semibold text-[#222222] mb-1.5">Comparison Value *</label>
+                <label className="mb-1.5 block text-xs font-medium">Value *</label>
                 <Input
                   placeholder={
                     operator.startsWith("length_") ? "e.g. 10 (characters)" : "e.g. test or pattern"
                   }
                   value={value}
                   onChange={(e) => setValue(e.target.value)}
-                  className="h-10 text-xs border-[#e0e1dc] focus-visible:ring-1 focus-visible:ring-[#a20a29]"
                 />
               </div>
             )}
 
             {/* Lifecycle Scope */}
             <div>
-              <label className="block font-semibold text-[#222222] mb-1.5">Lifecycle Scope (Apply To)</label>
+              <label className="mb-1.5 block text-xs font-medium">Applies to</label>
               <select
                 value={applyTo}
                 onChange={(e) => setApplyTo(e.target.value as ApplyToScope)}
-                className="w-full h-10 rounded-md border border-[#e0e1dc] bg-white px-3 text-xs text-[#222222] shadow-2xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#a20a29]"
+                className={selectClass}
               >
-                <option value="both">Both (Existing Stored & Ingestion Stream)</option>
-                <option value="existing">Existing Tickets Only</option>
-                <option value="new">New Ingestion Tickets Only</option>
+                <option value="both">Stored and incoming tickets</option>
+                <option value="existing">Stored tickets only</option>
+                <option value="new">Incoming tickets only</option>
               </select>
             </div>
 
             {/* Apply To Source & Service */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block font-semibold text-[#222222] mb-1.5">Apply To Source</label>
+                <label className="mb-1.5 block text-xs font-medium">Source</label>
                 <select
                   value={source}
                   onChange={(e) => setSource(e.target.value)}
-                  className="w-full h-10 rounded-md border border-[#e0e1dc] bg-white px-3 text-xs text-[#222222] shadow-2xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#a20a29]"
+                  className={selectClass}
                 >
-                  <option value="">Global (All Sources)</option>
+                  <option value="">All sources</option>
                   {sourcesList.map((s) => (
                     <option key={s.code} value={s.code}>
                       {s.name}
                     </option>
                   ))}
                 </select>
-                <span className="text-[11px] text-[#5e605d] block mt-1">
-                  Leave as Global to run across all feeds, or select a source.
+                <span className="mt-1 block text-xs text-muted-foreground">
+                  Leave as All sources to run across every feed, or select a source.
                 </span>
               </div>
 
               <div>
-                <label className="block font-semibold text-[#222222] mb-1.5">Apply To Service (Optional)</label>
+                <label className="mb-1.5 block text-xs font-medium">Service (optional)</label>
                 <Input
                   placeholder="e.g. PayrollPro"
                   value={service}
                   onChange={(e) => setService(e.target.value)}
-                  className="h-10 text-xs border-[#e0e1dc] focus-visible:ring-1 focus-visible:ring-[#a20a29]"
                 />
-                <span className="text-[11px] text-[#5e605d] block mt-1">
+                <span className="mt-1 block text-xs text-muted-foreground">
                   Leave empty for all application services.
                 </span>
               </div>
             </div>
           </div>
 
-          <DialogFooter className="pt-3 border-t border-[#e0e1dc] gap-2">
+          <DialogFooter>
             <Button
               type="button"
-              variant="outline"
+              variant="secondary"
               onClick={() => onOpenChange(false)}
               disabled={submitting}
-              className="h-9 px-4 text-xs border-[#e0e1dc] hover:bg-[#f0f4f4]"
             >
               Cancel
             </Button>
             <Button
               type="submit"
               disabled={submitting}
-              className="h-9 px-5 text-xs font-semibold bg-[#a20a29] hover:bg-[#850821] text-white shadow-xs"
             >
-              {submitting ? "Saving..." : ruleToEdit ? "Update Rule" : "Create Rule"}
+              {submitting ? "Saving…" : ruleToEdit ? "Update rule" : "Create rule"}
             </Button>
           </DialogFooter>
         </form>

@@ -55,6 +55,7 @@ def _build_spec(version: int) -> CallSpec[DQCompleteness]:
         wrapper=prompt["wrapper"],
         retry_note=prompt["retry_note"],
         max_tokens=prompt["max_tokens"],
+        agent="data_quality",
     )
 
 

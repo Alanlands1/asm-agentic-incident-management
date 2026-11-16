@@ -234,7 +234,7 @@ def ingest_workbook(
                             fields[k] = str(ticket_masker.mask(fields[k]))
                     if "raw" in fields and isinstance(fields["raw"], dict):
                         for rk, rv in list(fields["raw"].items()):
-                            if isinstance(rv, str) and rv:
+                            if isinstance(row.get(rk), str) and rv:  # dates became text in _raw: not PII
                                 fields["raw"][rk] = str(ticket_masker.mask(rv))
 
                 ticket = db.get(Ticket, fields["id"])

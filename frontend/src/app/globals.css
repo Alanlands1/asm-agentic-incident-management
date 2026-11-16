@@ -8,6 +8,8 @@
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-serif: var(--font-serif), Georgia, serif;
+  --font-mono: var(--font-mono), ui-monospace, monospace;
   --font-heading: var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
@@ -34,6 +36,14 @@
   --color-secondary: var(--secondary);
   --color-primary-foreground: var(--primary-foreground);
   --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-body: var(--body);
+  --color-selected: var(--selected);
+  --color-critical: var(--critical);
+  --color-p2: var(--p2);
+  --color-p2-foreground: var(--p2-foreground);
+  --color-p3: var(--p3);
+  --color-border-strong: var(--border-strong);
   --color-popover-foreground: var(--popover-foreground);
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
@@ -48,73 +58,86 @@
 }
 
 :root {
-  /* Canada Life Corporate Theme */
-  --background: #fbfbfb;
-  --foreground: #222222;
+  --background: #f3f2f0;
+  --foreground: #191d38;              /* navy ink */
+  --body: #3a3e55;
   --card: #ffffff;
-  --card-foreground: #222222;
+  --card-foreground: #191d38;
   --popover: #ffffff;
-  --popover-foreground: #222222;
-  --primary: #a20a29;                 /* Canada Life Deep Crimson Red */
+  --popover-foreground: #191d38;
+  --primary: #a20a29;                 /* corporate crimson: brand and P1 */
+  --primary-hover: #850821;
   --primary-foreground: #ffffff;
-  --secondary: #f0f4f4;               /* Canada Life Cool Teal-tinted neutral */
-  --secondary-foreground: #004d4d;
-  --muted: #f4f4f2;                   /* Subtle warm light grey */
-  --muted-foreground: #5e605d;
-  --accent: #f0f4f4;
-  --accent-foreground: #005656;
-  --destructive: #a20a29;
-  --border: #e0e1dc;
-  --input: #d1d2cd;
+  --secondary: #ffffff;               /* card surface, ink text */
+  --secondary-foreground: #191d38;
+  --muted: #eeedf1;
+  --muted-foreground: #5d6077;
+  --accent: #f9eaed;                  /* soft red: hover and selected */
+  --accent-foreground: #191d38;
+  --selected: #f9eaed;
+  --critical: #a20a29;                /* crimson used as text */
+  --destructive: #850821;
+  --p2: #f5b400;                      /* amber, always with --p2-foreground */
+  --p2-foreground: #191d38;
+  --p3: #1f7a3d;                      /* green, with white text */
+  --border: rgba(25, 29, 56, 0.1);
+  --border-strong: rgba(25, 29, 56, 0.22);
+  --input: #8f92a6;
   --ring: #a20a29;
-  --chart-1: #a20a29;                 /* Canada Life Red */
-  --chart-2: #005656;                 /* Canada Life Deep Teal */
-  --chart-3: #b08824;                 /* Warm Amber */
-  --chart-4: #5f5aa2;                 /* Corporate Indigo */
-  --chart-5: #007cbf;                 /* Sky Blue */
-  --radius: 0.375rem;
-  --sidebar: #ffffff;
-  --sidebar-foreground: #222222;
-  --sidebar-primary: #a20a29;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #f0f4f4;
-  --sidebar-accent-foreground: #005656;
-  --sidebar-border: #e0e1dc;
-  --sidebar-ring: #a20a29;
+  --chart-1: #191d38;
+  --chart-2: #5d6077;
+  --chart-3: #8f92a6;
+  --chart-4: #c3c5d2;
+  --chart-5: #e1e2e9;
+  --radius: 0.5rem;
+  --sidebar: #a20a29;                 /* red menu, white text */
+  --sidebar-foreground: #ffffff;
+  --sidebar-primary: #ffffff;
+  --sidebar-primary-foreground: #a20a29;
+  --sidebar-accent: rgba(255, 255, 255, 0.12);
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: rgba(255, 255, 255, 0.2);
+  --sidebar-ring: #ffffff;
 }
 
 .dark {
-  --background: #141414;
-  --foreground: #f5f5f5;
-  --card: #1c1c1c;
-  --card-foreground: #f5f5f5;
-  --popover: #1c1c1c;
-  --popover-foreground: #f5f5f5;
-  --primary: #c9183b;
+  --background: #11142a;
+  --foreground: #f1f2fa;
+  --body: #d5d7e8;
+  --card: #1a1f3d;
+  --card-foreground: #f1f2fa;
+  --popover: #1a1f3d;
+  --popover-foreground: #f1f2fa;
+  --primary: #c9183f;
+  --primary-hover: #b8143a;
   --primary-foreground: #ffffff;
-  --secondary: #1a2727;
-  --secondary-foreground: #56c2c2;
-  --muted: #242424;
-  --muted-foreground: #9a9a95;
-  --accent: #1e2626;
-  --accent-foreground: #f5f5f5;
-  --destructive: #ef4444;
-  --border: #2e2e2e;
-  --input: #2e2e2e;
-  --ring: #c9183b;
-  --chart-1: #c9183b;
-  --chart-2: #2dd4bf;
-  --chart-3: #fbbf24;
-  --chart-4: #818cf8;
-  --chart-5: #38bdf8;
-  --sidebar: #141414;
-  --sidebar-foreground: #f5f5f5;
-  --sidebar-primary: #c9183b;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #1e2626;
-  --sidebar-accent-foreground: #f5f5f5;
-  --sidebar-border: #2e2e2e;
-  --sidebar-ring: #c9183b;
+  --secondary: #1a1f3d;
+  --secondary-foreground: #f1f2fa;
+  --muted: #232849;
+  --muted-foreground: #a4a8c4;
+  --accent: #3a1826;
+  --accent-foreground: #f1f2fa;
+  --selected: #3a1826;
+  --critical: #ff6b86;
+  --destructive: #ff6b86;
+  --border: rgba(255, 255, 255, 0.1);
+  --border-strong: rgba(255, 255, 255, 0.24);
+  --input: #8f92a6;
+  --ring: #ff6b86;
+  --chart-1: #f1f2fa;
+  --chart-2: #d5d7e8;
+  --chart-3: #a4a8c4;
+  --chart-4: #6a6e8a;
+  --chart-5: #353a5c;
+  --sidebar: #b8143a;
+  --sidebar-primary-foreground: #b8143a;
+}
+
+/* The SLA gauge fills from empty to its share of the half circle (length 264). */
+@keyframes gauge-fill {
+  from {
+    stroke-dashoffset: 264;
+  }
 }
 
 @layer base {
@@ -123,8 +146,21 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-size: 13px;
+    letter-spacing: -0.01em;
   }
   html {
     @apply font-sans;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

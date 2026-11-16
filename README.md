@@ -110,7 +110,7 @@ The expected outcome for every ticket: whether it should pass Data Quality, what
 | `POST /api/v1/data-quality/run` | Check every pending ticket. Safe to re-run: unchanged tickets are skipped |
 | `POST /api/v1/data-quality/tickets/{id}/check` | Check one pending ticket: rules, then the model if the rules cannot decide |
 | `POST /api/v1/triage/run` | Recommend a priority for every `dq_passed` ticket. Safe to re-run: unchanged tickets are skipped |
-| `POST /api/v1/triage/tickets/{id}/check` | Triage one `dq_passed` ticket: rules, then the model if the rules cannot decide |
+| `POST /api/v1/triage/tickets/{id}/check` | Triage one `dq_passed` ticket: rules, then the model for the impact and any fact the rules lack |
 | `GET /api/v1/triage/review-queue` | Triaged tickets waiting for an engineer, flagged ones first, with the recommendation and why |
 | `POST /api/v1/triage/tickets/{id}/review` | Accept, edit or reject the recommendation (`accepted` / `edited` / `rejected`, with a reason code) |
 | `GET /api/v1/triage/review-report` | How often engineers change the recommendation, by rule, stage and reason (`days`, default 7) |

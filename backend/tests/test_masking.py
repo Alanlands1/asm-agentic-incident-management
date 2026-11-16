@@ -68,3 +68,8 @@ def test_unmask_restores_values_and_rejects_invented_placeholders(masker):
     assert masker.unmask(f"Hi {masked.split()[0]}, which PayrollPro screen fails?") == "Hi Priya Raman, which PayrollPro screen fails?"
     with pytest.raises(UnknownPlaceholderError):
         masker.unmask("Please ask <PERSON_9>")
+
+
+def test_numbering_starts_after_the_placeholders_in_the_texts_it_sits_beside():
+    masker = Masker(beside=["<PERSON_1> cannot log in.", "Ask <PERSON_2>.", None])
+    assert str(masker.mask("Also ask Vinay Sharma.")) == "Also ask <PERSON_3>."

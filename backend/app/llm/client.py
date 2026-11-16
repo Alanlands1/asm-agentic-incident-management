@@ -52,6 +52,7 @@ class CallSpec[T: BaseModel]:
     wrapper: str  # puts the masked ticket in its own block: "...{ticket}..."
     retry_note: str  # sent after an invalid answer: "...{wrapped}...{problem}..."
     max_tokens: int  # includes thinking, which is always on for current models
+    agent: str = ""  # "data_quality" or "triage": picks that agent's model and effort; "" = the shared ones
     model: str | None = None  # None = LLM_MODEL; set for calls that need a different (cheaper) model
 
 
@@ -85,22 +86,34 @@ def _build_sdk(version: int) -> anthropic.Anthropic | anthropic.AnthropicBedrock
     return anthropic.Anthropic(**options)
 
 
-def model_id(model: str | None = None) -> str:
-    model = model or settings.LLM_MODEL
+AGENT_SETTING_PREFIX = {"data_quality": "DQ", "triage": "TRIAGE"}
+
+
+def _agent_setting(agent: str | None, name: str) -> str:
+    prefix = AGENT_SETTING_PREFIX.get(agent or "")
+    return (getattr(settings, f"{prefix}_LLM_{name}") if prefix else None) or getattr(settings, f"LLM_{name}")
+
+
+def model_id(agent: str | None = None, model: str | None = None) -> str:
+    model = model or _agent_setting(agent, "MODEL")
     if settings.LLM_PROVIDER == "bedrock" and not model.startswith(BEDROCK_MODEL_PREFIX):
         return f"{BEDROCK_MODEL_PREFIX}{model}"
     return model
 
 
+def effort(agent: str | None = None) -> str:
+    return _agent_setting(agent, "EFFORT")
+
+
 def _request(spec: CallSpec, content: str):
     params: dict[str, Any] = {
-        "model": model_id(spec.model),
+        "model": model_id(spec.agent, spec.model),
         "max_tokens": spec.max_tokens,
         # cached: the instructions (and any rulebook in them) are identical on every call; ignored below 512 tokens
         "system": [{"type": "text", "text": spec.system, "cache_control": {"type": "ephemeral"}}],
         "messages": [{"role": "user", "content": content}],
         "output_format": spec.output,
-        "output_config": {"effort": settings.LLM_EFFORT},
+        "output_config": {"effort": effort(spec.agent)},
     }
     if settings.LLM_PROVIDER == "anthropic" and settings.LLM_REFUSAL_FALLBACK:
         # On a refusal the API re-runs the request on a fallback model inside the same call (Claude API only)
@@ -177,6 +190,6 @@ def call_model[T: BaseModel](spec: CallSpec[T], user: MaskedText, masker: Masker
 def _log(spec: CallSpec, outcome: str, attempts: int, started: float, tokens_in: int, tokens_out: int) -> None:
     latency = round((time.perf_counter() - started) * 1000)
     logger.info(
-        f"model call {spec.name} {spec.prompt_version} model={model_id(spec.model)} outcome={outcome} attempts={attempts} "
-        f"tokens_in={tokens_in} tokens_out={tokens_out} latency_ms={latency}"
+        f"model call {spec.name} {spec.prompt_version} model={model_id(spec.agent, spec.model)} outcome={outcome} "
+        f"attempts={attempts} tokens_in={tokens_in} tokens_out={tokens_out} latency_ms={latency}"
     )

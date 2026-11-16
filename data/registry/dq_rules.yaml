@@ -20,6 +20,10 @@ test_ticket:
   - '^\W*test(ing)?( ticket)?\W*$'
   - 'please ignore'
 
+# Summary or description matching any of these -> not_an_incident (a request, nothing is broken)
+service_request:
+  - '^\W*(access|service|licen[cs]e|account) request\s*[:-]'
+
 # References to tickets in our sources; not counted as identifiers
 ticket_reference: '\b(INC\d{7}|AMS-\d{3,}|MBX-\d{5})\b'
 
