@@ -277,3 +277,15 @@ async def test_system_comments_are_formatted_by_tone(monkeypatch):
     assert link["text"] == "KB-1 — Runbook" and link["marks"][0]["attrs"]["href"] == "https://wiki.test/p/1"
     assert jira.adf_text(sent["body"]).startswith(jira.SAID)  # an answer is still found by its text
     assert jira.plain(text).endswith("2. Run ams agree\n- KB-1 — Runbook")  # the copy kept on the ticket
+
+
+def test_a_done_issue_brings_its_close_notes():
+    def note(text):
+        return {"body": {"type": "doc", "content": [{"type": "paragraph", "content": [{"type": "text", "text": text}]}]}}
+
+    issue = {"key": "AMS-1", "fields": {"summary": "s", "status": {"statusCategory": {"key": "done"}}, "comment": {"comments": [
+        note("Cause: the cache was stale. Fix: cleared it. Checked: the report refreshed."),
+        note("AMS agents · Suggested fix"), note("ams")]}}}
+    assert jira.map_ticket(issue, None)["resolution_notes"].startswith("Cause: the cache was stale.")  # not the system's
+    issue["fields"]["status"]["statusCategory"]["key"] = "indeterminate"
+    assert jira.map_ticket(issue, None)["resolution_notes"] is None  # an open issue has no close notes yet

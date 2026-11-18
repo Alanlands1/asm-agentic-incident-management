@@ -46,7 +46,7 @@ logger = logging.getLogger("app.jira")
 PRIORITY = {"Highest": "1 - Critical", "High": "2 - High", "Medium": "3 - Moderate", "Low": "4 - Low", "Lowest": "5 - Planning"}
 FIELDS = [
     "summary", "description", "priority", "status", "reporter", "assignee", "components", "issuetype", "environment",
-    "created", "resolutiondate", "project",
+    "created", "resolutiondate", "project", "comment",
 ]
 PRIORITY_NUMBER = {"Highest": 1, "High": 2, "Medium": 3, "Low": 4, "Lowest": 5}
 STATUS = {"new": "new", "indeterminate": "in_progress", "done": "closed"}  # Jira status category -> tickets.status
@@ -223,6 +223,15 @@ def map_issue(issue: dict[str, Any], team: str | None) -> dict[str, Any]:
     )
 
 
+def _close_notes(fields: dict[str, Any]) -> str | None:
+    """The newest comment a person wrote on the issue: on a done issue, how it was fixed (Jira has no close-notes field)."""
+    for comment in reversed((fields.get("comment") or {}).get("comments", [])):
+        text = adf_text(comment.get("body")).strip()
+        if text and not text.startswith(SYSTEM) and not _to_agents(text):
+            return text
+    return None
+
+
 def map_ticket(issue: dict[str, Any], team: str | None) -> dict[str, Any]:
     """Jira issue -> tickets columns (before masking), the agents' input."""
     f = issue["fields"]
@@ -252,6 +261,7 @@ def map_ticket(issue: dict[str, Any], team: str | None) -> dict[str, Any]:
         opened_at=_when(f.get("created")),
         resolved_at=resolved,
         closed_at=(resolved or datetime.now(UTC).replace(tzinfo=None)) if status == "closed" else None,  # Done with no date
+        resolution_notes=_close_notes(f) if status == "closed" else None,  # what Closure Quality checks
         # no names or text here: raw is stored unmasked
         raw={"key": issue["key"], "status": (f.get("status") or {}).get("name"), "priority": priority,
              "components": [c["name"] for c in components]},
@@ -292,7 +302,7 @@ async def _upsert(
         for r in console:
             _mask(r, "caller", None, ("short_description", "description"))
         for r in agents:
-            masker = _mask(r, "reporter_name", "reporter_email", ("summary", "description"))
+            masker = _mask(r, "reporter_name", "reporter_email", ("summary", "description", "resolution_notes"))
             if r["id"] in replies:
                 replies[r["id"]] = [str(masker.mask(body)) for body in replies[r["id"]]]
 
@@ -334,6 +344,8 @@ async def _upsert(
                 run.queued += 1
                 author = r["reporter_email"] or r["reporter_name"] or "reporter"  # Jira often hides the email
                 db.add_all(Comment(ticket_id=t.id, author_email=author, body=body, from_reporter=True) for body in new)
+            if r["status"] == "closed" and (t.status != "closed" or t.resolution_notes != r["resolution_notes"]):
+                run.queued += 1  # closed in Jira, or its close notes changed: Closure Quality and Knowledge Builder run
             for k, v in r.items():  # agent results are kept, and the pipeline status unless set just above
                 if k != "opened_at":  # never changes in Jira; a clock restarted here for a test survives the sync
                     setattr(t, k, v)
@@ -711,11 +723,15 @@ async def _runbooks(db: AsyncSession, kb_ids: set[str]) -> dict[str, str]:
     return {kb_id: f"[{title}]({url})" if url else title for kb_id, title, url in rows}
 
 
+ACTIONS = ("escalate", "notify", "contact", "raise", "assign", "route", "engage", "page ")  # how the agent's advice starts
+
+
 def _resolution_text(ticket: Ticket, runbooks: dict[str, str]) -> tuple[str, str]:
     """The Resolution agent's answer as the text and the tone of a Jira comment."""
     a = last_run(ticket, "resolution").output
     if a.get("verdict") != "resolved":
-        advice = (a.get("notes") or "").strip().rstrip(".").split(". ")[-1]  # the notes end with what to do
+        sentences = re.split(r"(?<=\.)\s+", (a.get("notes") or "").strip())
+        advice = next((s.rstrip(".") for s in sentences if s.lower().startswith(ACTIONS)), None)  # "Escalate to ..."
         lines = [f"{SAID}No known fix", "Why: no runbook covers this problem.",
                  f"Next: {advice[:1].lower()}{advice[1:]}." if advice else "Next: an engineer investigates."]
         return "\n".join(lines), "warning"
