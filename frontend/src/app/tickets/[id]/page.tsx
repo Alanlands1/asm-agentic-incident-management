@@ -264,13 +264,13 @@ function Run({ run, children }: { run: AgentRun; children?: React.ReactNode }) {
         <p className="flex flex-col gap-0.5 rounded-[14px] bg-primary px-3 py-2 text-xs text-primary-foreground">
           {higher.length > 0 && (
             <span>
-              <span className="font-semibold">Ranked higher from engineers' ratings: </span>
+              <span className="font-semibold">Ranked higher from engineers&rsquo; ratings: </span>
               <span className="font-mono">{higher.join(", ")}</span>
             </span>
           )}
           {lower.length > 0 && (
             <span>
-              <span className="font-semibold">Ranked lower from engineers' ratings: </span>
+              <span className="font-semibold">Ranked lower from engineers&rsquo; ratings: </span>
               <span className="font-mono">{lower.join(", ")}</span>
             </span>
           )}
@@ -302,7 +302,21 @@ function Run({ run, children }: { run: AgentRun; children?: React.ReactNode }) {
 }
 
 /** A person's note to the agents, kept on the ticket and read with the description on every run. */
-function Note({ ticketId, text, busy, rerun, onSaved }: { ticketId: string; text: string; busy: boolean; rerun?: () => void; onSaved: () => unknown }) {
+function Note({
+  ticketId,
+  text,
+  busy,
+  rerun,
+  inputChanged,
+  onSaved,
+}: {
+  ticketId: string;
+  text: string;
+  busy: boolean;
+  rerun?: () => void;
+  inputChanged: boolean;
+  onSaved: () => unknown;
+}) {
   const [value, setValue] = useState(text);
   const [saving, setSaving] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
@@ -329,7 +343,12 @@ function Note({ ticketId, text, busy, rerun, onSaved }: { ticketId: string; text
           {saving ? "Saving…" : "Save note"}
         </Button>
         {rerun && (
-          <Button size="sm" disabled={saving || busy} onClick={() => save(rerun)}>
+          <Button
+            size="sm"
+            disabled={saving || busy || (value.trim() === text && !inputChanged)}
+            title={value.trim() === text && !inputChanged ? "Nothing changed since the last run: change the note first" : undefined}
+            onClick={() => save(rerun)}
+          >
             <Play />
             Save and run again
           </Button>
@@ -424,12 +443,23 @@ function Ticket() {
       .finally(() => setRunning(null));
   };
   const canRun = !closed && CAN_RUN.includes(ticket?.pipeline_status ?? "");
-  const runButton = (agent: Agent, again: boolean) => (
-    <Button size="xs" variant="secondary" disabled={running !== null} onClick={() => runAgent(agent)}>
-      <Play />
-      {again ? "Run again" : "Run"}
-    </Button>
-  );
+  // Running again only helps when the agent would see something new; an unknown answer (older backend) allows it.
+  const inputChanged = (agent: Agent) => ticket?.changed?.[agent] ?? true;
+  const runButton = (agent: Agent, again: boolean) => {
+    const same = again && !inputChanged(agent);
+    return (
+      <Button
+        size="xs"
+        variant="secondary"
+        disabled={running !== null || same}
+        title={same ? "Nothing changed since the last run: edit the ticket, add a note or a reply first" : undefined}
+        onClick={() => runAgent(agent)}
+      >
+        <Play />
+        {again ? "Run again" : "Run"}
+      </Button>
+    );
+  };
 
   const triage = ticket?.agent_runs.findLast((r) => r.agent === "triage");
   const dq = ticket?.agent_runs.findLast((r) => r.agent === "data_quality");
@@ -446,8 +476,8 @@ function Ticket() {
     const given = (ticket?.feedback ?? []).filter((f) => f.agent_run_id === run?.id);
     return given.findLast((f) => f.reviewer === person) ?? given.at(-1);
   };
-  const rerun =
-    !closed && ticket?.pipeline_status === "reviewed" ? () => runAgent("resolution") : canRun ? () => runAgent("data_quality") : undefined;
+  const rerunAgent: Agent | null = !closed && ticket?.pipeline_status === "reviewed" ? "resolution" : canRun ? "data_quality" : null;
+  const rerun = rerunAgent ? () => runAgent(rerunAgent) : undefined;
   const back = (
     <Button variant="secondary" nativeButton={false} render={<Link href="/tickets" />}>
       All tickets
@@ -621,7 +651,7 @@ function Ticket() {
               </div>
               {!closed && (
                 // After the decision, not before it. Remounts when the stored note changes, so the box shows it as kept (personal details masked).
-                <Note key={ticket.guidance ?? ""} ticketId={ticket.id} text={ticket.guidance ?? ""} busy={running !== null} rerun={rerun} onSaved={load} />
+                <Note key={ticket.guidance ?? ""} ticketId={ticket.id} text={ticket.guidance ?? ""} busy={running !== null} rerun={rerun} inputChanged={rerunAgent !== null && inputChanged(rerunAgent)} onSaved={load} />
               )}
               {latest.length ? (
                 <ul role="list">

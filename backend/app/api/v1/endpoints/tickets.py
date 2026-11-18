@@ -20,7 +20,11 @@ from app.schemas.triage import ReviewOut
 from app.services import jira
 from app.services.atlassian import AtlassianError
 from app.services.comments import add_comment
-from app.services.data_quality import check_ticket
+from app.services.closure.run import _input_hash as closure_input_hash
+from app.services.data_quality import _input_hash as dq_input_hash
+from app.services.data_quality import check_ticket, last_run, reporter_text
+from app.services.resolution import input_changed as resolution_input_changed
+from app.services.triage.run import _input_hash as triage_input_hash
 from app.services.ingestion import ingest_workbook
 from app.services.triage import triage_ticket
 
@@ -81,7 +85,25 @@ async def get_ticket(ticket_id: str, db: AsyncSession = Depends(get_db)) -> Tick
     detail.decided = ReviewOut.model_validate(last) if last else None
     rated = await db.scalars(select(Feedback).where(Feedback.ticket_id == ticket_id).order_by(Feedback.id))
     detail.feedback = [FeedbackOut.model_validate(f) for f in rated]
+    detail.changed = await _changed(db, ticket)
     return detail
+
+
+async def _changed(db: AsyncSession, ticket: Ticket) -> dict[str, bool]:
+    """For each agent that ran on the ticket: does its input differ from its last run? Same hashes the runs skip on."""
+    body = reporter_text(ticket)
+    current = {
+        "data_quality": lambda: dq_input_hash(ticket, body),
+        "triage": lambda: triage_input_hash(ticket, body),
+        "closure_quality": lambda: closure_input_hash(ticket),
+    }
+    changed = {}
+    for agent, digest in current.items():
+        if (last := last_run(ticket, agent)) is not None:
+            changed[agent] = last.input_hash is None or last.input_hash != digest()
+    if last_run(ticket, "resolution") is not None:
+        changed["resolution"] = await resolution_input_changed(db, ticket)
+    return changed
 
 
 @router.put("/tickets/{ticket_id}/guidance", response_model=TicketSummary, summary="Tell the agents more about a ticket")
@@ -143,11 +165,11 @@ async def create_comment(ticket_id: str, payload: CommentCreate, db: AsyncSessio
     return await db.run_sync(lambda s: add_comment(s, ticket, payload.author_email, payload.body))
 
 
-async def _comment_in_jira(ticket: Ticket, text: str) -> None:
+async def _comment_in_jira(ticket: Ticket, text: str, tone: str | None = None) -> None:
     if ticket.source != "JIRA":
         raise HTTPException(status_code=409, detail=f"Ticket {ticket.id} did not come from Jira")
     try:
-        await jira.post_comment(ticket.id, text)
+        await jira.post_comment(ticket.id, text, tone=tone)
     except AtlassianError as exc:  # not stored: the comment is not on the issue
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
@@ -158,9 +180,9 @@ async def send_agent_summary(
 ):
     """Comment what the agents decided on the Jira issue and keep a copy under the ticket's replies."""
     ticket = await db.run_sync(_get_or_404, ticket_id)
-    text = await db.run_sync(lambda s: jira.agent_summary(ticket))
-    await _comment_in_jira(ticket, text)
-    return await db.run_sync(lambda s: add_comment(s, ticket, author_email, text))
+    text, tone = await db.run_sync(lambda s: (jira.agent_summary(ticket), jira.headline(ticket)[0]))
+    await _comment_in_jira(ticket, text, tone)
+    return await db.run_sync(lambda s: add_comment(s, ticket, author_email, jira.plain(text)))
 
 
 # Stages where a person may start the agents; reviewed, rejected and historical tickets are already decided.

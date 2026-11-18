@@ -50,6 +50,8 @@ export interface PipelineTicket {
   feedback?: AgentFeedback[];
   /** The last decision a person made on the priority, in the console or on the Jira issue. */
   decided: { final_priority: number | null; reviewer: string; note: string | null } | null;
+  /** Per agent that ran before: true when its input changed since its last run. Missing from an older backend. */
+  changed?: Partial<Record<string, boolean>>;
 }
 
 export interface ReviewQueueItem {

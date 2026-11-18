@@ -86,6 +86,17 @@ def _output(res: Resolution, embedder: Embedder | None) -> dict:
     }
 
 
+async def input_changed(db: AsyncSession, t: Ticket) -> bool:
+    """Whether a run now would see something other than the last one did (a manual run uses no embedder)."""
+    last = last_run(t, AGENT)
+    if last is None or last.input_hash is None:
+        return True
+    case = CaseInput(id=t.id, summary=t.summary, application=t.application, body=reporter_text(t),
+                     reporter_name=t.reporter_name, reporter_email=t.reporter_email, assignee=t.assignee,
+                     kb_weights=await _kb_weights(db, t))
+    return last.input_hash != _input_hash(case, None)
+
+
 async def run_resolution(embedder: Embedder | None = None, ticket_id: str | None = None) -> RunResult:
     """Resolve every REVIEWED ticket. Tickets whose input has not changed since their last run are skipped.
     No database session is open while the model works. A ticket whose model call fails is left for the next run.

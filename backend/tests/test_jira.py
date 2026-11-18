@@ -207,6 +207,7 @@ async def test_triaged_issue_leaves_the_backlog(client, fake_jira, monkeypatch):
 def test_a_comment_to_the_agents_is_not_a_reporter_reply():
     assert jira._to_agents("/ams help") and jira._to_agents("AMS dq") and jira._to_agents("/AMS agree")
     assert not jira._to_agents("AMS team, it fails at step 3")
+    assert jira._to_agents("ams agress") and jira.COMMAND.fullmatch("ams agress") is None  # a typo gets the commands
 
 
 async def test_system_comments_are_posted_in_a_panel(monkeypatch):
@@ -251,3 +252,26 @@ async def test_agents_run_off_the_event_loop_thread(monkeypatch):
     await jira.run_agents()
     assert [s[0] for s in seen] == ["dq", "triage"]
     assert all(name != threading.current_thread().name for _, name in seen)  # the API's loop stays free
+
+
+async def test_system_comments_are_formatted_by_tone(monkeypatch):
+    sent = {}
+
+    async def call(c, method, url, **kw):
+        sent.update(kw["json"])
+
+    monkeypatch.setattr(jira.settings, "JIRA_WRITE_BACK", True)
+    monkeypatch.setattr(jira.atlassian, "call", call)
+    text = ("AMS agents · Suggested fix\nLikely cause: a locked table\nSteps:\n1. Stop the job\n"
+            "2. Run `ams agree`\n- [KB-1 — Runbook](https://wiki.test/p/1)")
+    await jira.post_comment("AMS-1", text, c=object(), tone="success")
+    (panel,) = sent["body"]["content"]
+    title, cause, _, steps, links = panel["content"]
+    assert panel["attrs"]["panelType"] == "success" and title["type"] == "heading"
+    assert cause["content"][0] == {"type": "text", "text": "Likely cause:", "marks": [{"type": "strong"}]}
+    assert steps["type"] == "orderedList" and len(steps["content"]) == 2 and links["type"] == "bulletList"
+    assert {"type": "code"} in steps["content"][1]["content"][0]["content"][1]["marks"]
+    link = links["content"][0]["content"][0]["content"][0]
+    assert link["text"] == "KB-1 — Runbook" and link["marks"][0]["attrs"]["href"] == "https://wiki.test/p/1"
+    assert jira.adf_text(sent["body"]).startswith(jira.SAID)  # an answer is still found by its text
+    assert jira.plain(text).endswith("2. Run ams agree\n- KB-1 — Runbook")  # the copy kept on the ticket
