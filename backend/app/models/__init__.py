@@ -5,6 +5,7 @@ from app.models.dq import DQRule, DQRun, DQRunTicket
 from app.models.incident import FirstMessage
 from app.models.jira import JiraProject, JiraSync
 from app.models.kb import KBChunk
+from app.models.knowledge import KBDraft, ProblemCandidate, ResolvedCase
 from app.models.servicenow import ServiceNowTicket
 from app.models.ticket import AgentRun, Feedback, Review, Storm, Ticket
 
@@ -21,6 +22,9 @@ __all__ = [
     "JiraProject",
     "JiraSync",
     "KBChunk",
+    "ResolvedCase",
+    "KBDraft",
+    "ProblemCandidate",
     "ConfluenceSpace",
     "ConfluencePage",
     "ConfluenceSync",

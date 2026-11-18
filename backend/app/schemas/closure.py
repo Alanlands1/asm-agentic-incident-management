@@ -5,6 +5,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.knowledge import KnowledgeRunResponse
+
 
 class ClosureRunResponse(BaseModel):
     """Result of checking the close notes of resolved tickets."""
@@ -12,6 +14,7 @@ class ClosureRunResponse(BaseModel):
     skipped: int = Field(..., examples=[0], description="Notes unchanged since their last check")
     model_errors: int = Field(0, examples=[0], description="Tickets left unchecked because the model gave no usable answer")
     by_verdict: dict[str, int] = Field(..., examples=[{"good": 8, "needs_work": 3, "not_applicable": 1}])
+    knowledge: KnowledgeRunResponse | None = Field(None, description="Knowledge Builder, run next on the notes that passed")
 
 
 class ClosureCheckResponse(BaseModel):

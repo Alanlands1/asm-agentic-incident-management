@@ -119,6 +119,11 @@ class Masker:
         self._values: dict[str, str] = {}  # placeholder -> original value
         self.counts: Counter = Counter()  # findings per label; safe to log
 
+    @property
+    def masked_values(self) -> list[str]:
+        """The original values this masker replaced, to check a model's output for them. Never log them."""
+        return list(self._values.values())
+
     def _placeholder(self, label: str, value: str) -> str:
         v = " ".join(value.casefold().split())
         key = (label, self._name_parts.get(v, v) if label == "PERSON" else v)  # "Priya" and "Priya Raman" are one person

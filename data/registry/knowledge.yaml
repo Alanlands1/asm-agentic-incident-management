@@ -1,0 +1,26 @@
+# Knowledge Builder: match a resolved ticket to a knowledge-base article, or find that none covers it.
+# PROVISIONAL: tuned on a small sample; the support lead and an expert re-tune them on real tickets.
+# Editable here (baseline) or through the admin API (PUT /api/v1/admin/documents/knowledge).
+#
+# Order: a cited article that exists -> an error code or job name shared with one article -> word overlap.
+# Anything the rules are not sure of goes to the model, once. Only the model can say that NO article covers a case.
+
+match:
+  min_score: 0.30     # word-overlap similarity (0..1) between the case and an article that the rules accept
+  margin: 1.5         # ... and the best article must score at least this many times the second best
+  candidates: 5       # articles shown to the model
+
+# Ignored when comparing words. Words in no article are ignored anyway.
+stopwords: [the, and, for, with, that, this, from, was, were, has, have, had, not, but, are, can, its, our, all, any,
+            now, then, when, after, before, user, users, ticket, issue, problem, followed, asked, checked, confirmed,
+            test, tested, fixed, working, works, still, also, into, per, via]
+
+# Drafts for gaps. Only an application in the knowledge base gets a draft; a request or something outside the knowledge
+# base (a network or laptop problem) is recorded, not drafted. An expert approves every draft before it counts.
+drafts:
+  similar_text: 0.5   # a new gap joins an open draft for the same application when this share of words is shared
+
+# Repeat issues: the same article (or the same draft) closed this many times within the window -> suggest a problem record
+problems:
+  min_cases: 3
+  window_days: 30
