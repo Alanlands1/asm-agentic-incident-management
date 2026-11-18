@@ -18,7 +18,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { usePerson } from "@/lib/view-as";
 import { knowledgeService } from "@/services/knowledge-service";
 import { DRAFT_REJECT_REASONS, DraftFields, KBDraft, KBDraftReview } from "@/types/knowledge";
-import { Download } from "lucide-react";
+import { Download, ExternalLink, Upload } from "lucide-react";
 
 const GAP = /(\[expert to add\b[^\]]*\])/i; // what the backend refuses to approve
 const SELECT =
@@ -163,18 +163,21 @@ export function DraftCard({ draft, onDone }: { draft: KBDraft; onDone: () => voi
   const [error, setError] = useState<string | null>(null);
   const gaps = hasGap(fields(draft));
 
-  const send = async (body: Omit<KBDraftReview, "reviewer">) => {
+  const act = async (call: () => Promise<unknown>, failed: string) => {
     setBusy(true);
     setError(null);
     try {
-      await knowledgeService.review(draft.id, { ...body, reviewer: person });
+      await call();
       onDone();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn't save the decision");
+      setError(e instanceof Error ? e.message : failed);
     } finally {
       setBusy(false);
     }
   };
+  const send = (body: Omit<KBDraftReview, "reviewer">) =>
+    act(() => knowledgeService.review(draft.id, { ...body, reviewer: person }), "Couldn't save the decision");
+  const publish = () => act(() => knowledgeService.publish(draft.id), "Couldn't publish to Confluence");
 
   return (
     <li className="flex flex-col gap-2 border-b border-border px-4 py-3 text-[13px] last:border-b-0">
@@ -237,6 +240,18 @@ export function DraftCard({ draft, onDone }: { draft: KBDraft; onDone: () => voi
             <RejectDialog busy={busy} onReject={(reason_code, note) => send({ action: "rejected", reason_code, note: note || undefined })} />
           </>
         )}
+        {draft.status === "approved" &&
+          (draft.confluence_url ? (
+            <a href={draft.confluence_url} target="_blank" rel="noreferrer" className={buttonVariants({ size: "sm", variant: "secondary" })}>
+              <ExternalLink />
+              Open in Confluence
+            </a>
+          ) : (
+            <Button size="sm" onClick={publish} disabled={busy}>
+              <Upload />
+              {busy ? "Publishing…" : "Publish to Confluence"}
+            </Button>
+          ))}
         {draft.status !== "rejected" && (
           <a href={knowledgeService.exportUrl(draft.id)} download className={buttonVariants({ size: "sm", variant: "ghost" })}>
             <Download />

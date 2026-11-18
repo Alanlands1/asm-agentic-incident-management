@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
+from app.models.confluence import ConfluencePage
 from app.models.knowledge import KBDraft, ProblemCandidate, ResolvedCase
 from app.schemas.knowledge import (
     AppCoverageOut,
@@ -17,6 +18,8 @@ from app.schemas.knowledge import (
     ProblemDecision,
     ResolvedCaseOut,
 )
+from app.services import confluence
+from app.services.atlassian import AtlassianError
 from app.services.knowledge import coverage, drafts, problems, run_knowledge
 from app.services.knowledge.run import RunResult
 
@@ -74,14 +77,36 @@ async def list_drafts(
     status: str | None = Query("draft", pattern="^(draft|approved|rejected)$"), db: AsyncSession = Depends(get_db)
 ):
     """Drafted articles, newest first; by default the ones waiting for an expert."""
-    return await db.run_sync(lambda s: list(s.scalars(
+    return await db.run_sync(lambda s: _where_published(s, list(s.scalars(
         select(KBDraft).where(KBDraft.status == status).order_by(KBDraft.created_at.desc(), KBDraft.id.desc())
-    )))
+    ))))
 
 
 @router.get("/drafts/{draft_id}", response_model=KBDraftOut, summary="One drafted article")
 async def get_draft(draft_id: int, db: AsyncSession = Depends(get_db)) -> KBDraft:
-    return await db.run_sync(_draft_or_404, draft_id)
+    return await db.run_sync(lambda s: _where_published(s, [_draft_or_404(s, draft_id)])[0])
+
+
+def _where_published(db: Session, found: list[KBDraft]) -> list[KBDraft]:
+    """Set confluence_url on the approved articles whose id is on their application's copied page."""
+    pages = list(db.scalars(select(ConfluencePage)))
+    for draft in found:
+        page = confluence.application_page(pages, draft.application) if draft.kb_id else None
+        draft.confluence_url = page.url if page and draft.kb_id in page.body else None
+    return found
+
+
+@router.post("/drafts/{draft_id}/publish", response_model=KBDraftOut, summary="Publish an approved article to Confluence")
+async def publish_draft(draft_id: int, db: AsyncSession = Depends(get_db)) -> KBDraft:
+    """Add the approved article to its application's Confluence page and copy the spaces again, so the Resolution agent
+    can use it; then match the saved cases again, so coverage counts it. Publishing it twice changes nothing."""
+    draft = await db.run_sync(_draft_or_404, draft_id)
+    try:
+        await confluence.publish_article(db, draft)
+    except AtlassianError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    await db.run_sync(run_knowledge)
+    return await db.run_sync(lambda s: _where_published(s, [_draft_or_404(s, draft_id)])[0])
 
 
 def _draft_or_404(db: Session, draft_id: int) -> KBDraft:

@@ -13,8 +13,9 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from app.agents.closure_quality.config import PARTS, ClosureConfig
+from app.agents.knowledge_builder.articles import kb_dir
 from app.agents.resolution.chunking import chunk_knowledge_base
-from app.core.config import config_version, settings
+from app.core.config import config_version
 from app.core.registry import load_registry, register_document
 from app.llm import CallAudit, CallSpec, call_model
 from app.models.ticket import Ticket
@@ -83,8 +84,8 @@ def verified(facts: ClosureFacts, notes: str) -> tuple[dict[str, int], dict[str,
 
 @lru_cache(maxsize=1)
 def kb_ids() -> frozenset[str]:
-    """Ids of the knowledge-base articles that exist, read with Resolution's chunker."""
-    return frozenset(c.kb_id for chunks in chunk_knowledge_base(settings.KB_DIR).values() for c in chunks if c.kb_id)
+    """Ids of the knowledge-base articles that exist, read with Resolution's chunker. A Confluence sync clears the cache."""
+    return frozenset(c.kb_id for chunks in chunk_knowledge_base(kb_dir()).values() for c in chunks if c.kb_id)
 
 
 def cited_articles(notes: str) -> list[str]:

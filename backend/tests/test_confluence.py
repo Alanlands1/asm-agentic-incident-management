@@ -66,3 +66,52 @@ async def test_sync_creates_updates_and_removes(client, fake_confluence):
 async def test_sync_without_spaces_is_recorded_as_failed(client):
     r = (await client.post("/api/v1/confluence/sync")).json()
     assert r["error"].startswith("No spaces selected")
+
+
+async def test_an_approved_article_is_published_to_its_page_once(client, fake_confluence, monkeypatch):
+    import contextlib
+
+    from app.agents.knowledge_builder.articles import articles
+    from app.core.config import settings
+    from app.db.session import get_db
+    from app.main import app
+    from app.models.knowledge import KBDraft
+
+    page = {"value": "<h3>KB-PAY-001 &mdash; Payslip blank</h3><p>Restart it.</p><hr /><h2>Escalation contacts</h2><table/>",
+            "version": 1}
+    puts = []
+
+    async def call(c, method, url, **kw):
+        assert url == "/wiki/api/v2/pages/1"
+        if method == "PUT":
+            puts.append(kw["json"])
+            page.update(value=kw["json"]["body"]["value"], version=kw["json"]["version"]["number"])
+            fake_confluence["pages"][0].update(body=confluence.page_text(page["value"]), version=page["version"])
+        return {"title": "PayrollPro — Application Support Knowledge Base", "version": {"number": page["version"]},
+                "body": {"storage": {"value": page["value"]}}}
+
+    @contextlib.asynccontextmanager
+    async def no_client():
+        yield None
+
+    monkeypatch.setattr(confluence.atlassian, "call", call)
+    monkeypatch.setattr(confluence.atlassian, "client", no_client)
+    fake_confluence["pages"][0]["url"] = "https://wiki.test/pages/1"
+    await client.put("/api/v1/confluence/spaces", json=[{"key": "AMSKB", "id": "131075", "name": "AMS Knowledge Base"}])
+    await client.post("/api/v1/confluence/sync")
+    async for db in app.dependency_overrides[get_db]():
+        db.add(KBDraft(application="PayrollPro", kb_id="KB-PAY-006", title="Payslip <b>shows</b> no tax", symptoms=["No tax"],
+                       root_cause="The tax table was not loaded.", resolution_steps=["Load it", "Rerun the payslip"],
+                       escalation="AMS-Payroll", source_ticket_ids=[], status="approved"))
+        await db.commit()
+
+    assert (await client.post("/api/v1/knowledge/drafts/1/publish")).status_code == 409  # writing is off by default
+    monkeypatch.setattr(settings, "CONFLUENCE_WRITE_BACK", True)
+    published = (await client.post("/api/v1/knowledge/drafts/1/publish")).json()
+    assert published["confluence_url"] == "https://wiki.test/pages/1" and len(puts) == 1
+    body = page["value"]
+    assert body.index("<h3>KB-PAY-006 &mdash; Payslip &lt;b&gt;shows&lt;/b&gt; no tax</h3>") < body.index("Escalation contacts")
+    assert "<ol><li>Load it</li><li>Rerun the payslip</li></ol>" in body and puts[0]["version"]["number"] == 2
+    assert "KB-PAY-006" in articles()  # the agents read the new article from the copy
+    await client.post("/api/v1/knowledge/drafts/1/publish")
+    assert len(puts) == 1  # already on the page: not added twice

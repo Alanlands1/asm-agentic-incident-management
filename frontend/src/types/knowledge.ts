@@ -18,6 +18,7 @@ export interface KBDraft {
   note: string | null;
   decided_at: string | null;
   created_at: string;
+  confluence_url?: string | null; // the Confluence page it is published on, once it is
 }
 
 export type DraftFields = Pick<KBDraft, "title" | "symptoms" | "root_cause" | "resolution_steps" | "escalation">;
