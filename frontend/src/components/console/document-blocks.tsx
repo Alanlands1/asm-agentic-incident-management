@@ -382,7 +382,7 @@ function ChipList({ items, onChange }: { items: Json[]; onChange: (v: Json) => v
               aria-label="Edit entry"
               onBlur={(e) => commit(i, e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter") commit(i, e.currentTarget.value);
+                if (e.key === "Enter" && !e.nativeEvent.isComposing && e.keyCode !== 229) commit(i, e.currentTarget.value);
                 if (e.key === "Escape") setEditing(null);
               }}
               className="h-7 w-auto min-w-40 max-w-full font-mono text-xs"
@@ -406,6 +406,7 @@ function ChipList({ items, onChange }: { items: Json[]; onChange: (v: Json) => v
         onKeyDown={(e) => {
           if (e.key === "Enter") {
             e.preventDefault();
+            if (e.nativeEvent.isComposing || e.keyCode === 229) return;
             add();
           }
         }}

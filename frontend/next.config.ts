@@ -7,6 +7,9 @@ const nextConfig: NextConfig = {
   /* config options here */
   cacheComponents: true,
   partialPrefetching: true,
+  experimental: {
+    agentUpgrade: "security",
+  },
   allowedDevOrigins: ["localhost:3000", "127.0.0.1:3000", "10.0.0.140", "10.0.0.140:3000"],
   async rewrites() {
     return [

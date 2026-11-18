@@ -58,6 +58,7 @@
 }
 
 :root {
+  color-scheme: light;
   --background: #f3f2f0;
   --foreground: #191d38;              /* navy ink */
   --body: #3a3e55;
@@ -101,6 +102,7 @@
 }
 
 .dark {
+  color-scheme: dark;
   --background: #11142a;
   --foreground: #f1f2fa;
   --body: #d5d7e8;
