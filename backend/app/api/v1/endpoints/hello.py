@@ -1,6 +1,7 @@
 """Hello greeting endpoints."""
 
 from fastapi import APIRouter
+
 from app.schemas.common import MessageResponse
 
 router = APIRouter(tags=["greeting"])

@@ -1,0 +1,13 @@
+# Use this workspace to collaborate
+workspace:
+  id: 88b5d849-0ca8-42e6-8940-50dfd517dc62
+
+cloudResources:
+  collections:
+    ../postman/collections/AMS Agentic Incident Management: 99dc4492-d98a-4c73-a569-dcf866ca07c8
+
+# All resources in the `postman/` folder are automatically registered in Local View.
+# Point to additional files outside the `postman/` folder to register them individually. Example:
+#localResources:
+#  collections:
+#    - ../tests/E2E Test Collection/

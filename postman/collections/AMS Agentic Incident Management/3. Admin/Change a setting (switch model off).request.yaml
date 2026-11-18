@@ -1,0 +1,13 @@
+$kind: http-request
+url: "{{baseUrl}}/admin/settings/LLM_ENABLED"
+method: PUT
+headers:
+  Content-Type: application/json
+  X-Admin-User: "{{adminUser}}"
+body:
+  type: text
+  content: |-
+    {
+      "value": false
+    }
+order: 2000

@@ -1,0 +1,44 @@
+# Batch jobs and how critical they are, from data/knowledge_base. Read by the Triage agent.
+# names:        how tickets refer to the job (case-insensitive)
+# criticality:  critical | normal | rerunnable_next_day
+# critical_in:  a window from triage_rules.yaml; a critical job that fails inside it is a must-follow P1.
+#               Omitted = critical at any time.
+# breaks:       what stops when it fails; shown to the engineer and the model
+
+# A job name within 60 characters of one of these counts as a failure ("PAY_PDF_GEN finished" does not)
+failed: ['failed', 'fails', 'failing', 'ended not ok', 'aborted', 'did not run', 'not run', 'crashed']
+
+jobs:
+  PAY_CALC_MONTHLY:
+    app: PayrollPro
+    names: [PAY_CALC_MONTHLY, monthly payroll batch, payroll batch, payroll calculation, payroll run]
+    criticality: critical
+    critical_in: payroll_window                     # deadline: before the salary date
+    breaks: payroll period lock, payslips, salary transfer
+  PAY_BANK_FILE:
+    app: PayrollPro
+    names: [PAY_BANK_FILE]
+    criticality: critical
+    critical_in: payroll_window
+    breaks: salary transfer to the bank
+  PAY_PDF_GEN:
+    app: PayrollPro
+    names: [PAY_PDF_GEN]
+    criticality: rerunnable_next_day
+    breaks: payslip PDFs
+  TT_SYNC:
+    app: PayrollPro
+    names: [TT_SYNC]
+    criticality: normal
+    breaks: overtime from TimeTrack
+  INV_MONTHLY_RUN:
+    app: BillingEngine
+    names: [INV_MONTHLY_RUN, monthly invoice run, invoice run]
+    criticality: critical
+    critical_in: month_end_close
+    breaks: invoices for the period, revenue recognition
+  daily_sales_load:
+    app: InsightBI
+    names: [daily_sales_load]
+    criticality: normal
+    breaks: daily sales report

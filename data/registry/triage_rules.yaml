@@ -1,0 +1,334 @@
+# Triage rulebook: the recommended priority (1 = critical .. 5 = planning) for a ticket that passed Data Quality.
+# Built from data/knowledge_base (each application's known issues and escalation notes). Provisional; re-tune on real tickets.
+# Editable here (baseline) or through the admin API (PUT /api/v1/admin/documents/triage_rules).
+# Patterns are Python regular expressions, always case-insensitive. The model stage receives this whole rulebook.
+#
+# How a priority is decided:
+#   1. application rules - the ticket's application only; the most severe match wins; `raise` can only raise it
+#   2. generic           - when no application rule matches: impact (scope) x urgency, then the tier offset
+#   3. ceiling           - the application's most severe allowed priority
+#   4. must_follow       - last, so no ceiling can cap them; the most severe that fires wins
+# The rules settle a ticket only when every fact its rule `needs` is known; otherwise the model is asked once.
+# Lean high: when a fact is still unknown (model off or unsure), it counts as the worse case only if that could
+# make the ticket P1/P2; otherwise as the milder case. The reporter's own urgency words (`tone`) are removed first.
+
+# Reporter urgency words carry no information about impact; removed before any matching
+tone:
+  - '\b(very |extremely )?urgent(ly)?\b'
+  - '\b(asap|immediately|top priority|high priority|critical issue)\b'
+  - '\b(no rush|whenever you (get|have) time|not urgent|low priority)\b'
+  - '\bplease (treat|handle) (it |this )?as\b'
+
+# How many are affected
+scope:
+  wide:
+    - '\b(all|many|multiple|several|most) (of (the|our) )?(users|customers|employees|colleagues|staff|stores|devices|scanners|orders|invoices)\b'
+    - '\b(everyone|everybody|company[- ]wide|whole (team|department|site|warehouse|packing area)|entire (site|team|warehouse))\b'
+    - '\bdropped to zero\b'
+    - '\bno (new )?(cases|leads|orders|invoices)\b'
+  single:
+    - '\b(only (me|my)|just me|single user|one user)\b'
+    - '\bmy (login|account|laptop|scanner|station|overtime|payslip|salary)\b'
+    - '\ba customer\b'
+
+# Applied last. Each fires on its own `match` patterns, or when its `rule` is the rule chosen for the ticket,
+# and only if its conditions hold (scope: wide | window: <name>). `critical_job` fires when a job that is critical
+# (see jobs.yaml) failed inside its critical window. `storm` fires for a ticket that belongs to a storm.
+must_follow:
+  - name: security_incident
+    about: Possible security incident or data breach
+    priority: 1
+    match:
+      - '\b(data breach|security incident|ransomware|phishing|malware|unauthori[sz]ed access|account (compromised|hacked))\b'
+  - name: storm
+    about: Many people report the same issue at once (a storm; see storms.yaml); the main ticket is triaged, the rest follow it
+    priority: 1
+    storm: true
+  - name: critical_job_failed
+    about: A critical batch job failed before its deadline
+    priority: 1
+    critical_job: true
+  - name: checkout_down
+    about: Customers cannot complete checkout
+    priority: 1
+    rule: checkout_failing
+  - name: salary_late_in_payroll_window
+    about: Salary transfer failed in the payroll window
+    priority: 1
+    rule: salary_transfer_failed
+    window: payroll_window
+  - name: sso_down_for_many
+    about: SSO login failing for many users; blocks every application
+    priority: 1
+    rule: sso_login_failing
+    scope: wide
+  - name: cosmetic_portal_issue
+    about: Profile photo or other cosmetic portal issue; P5 whatever the reporter chose (KB-EMP-005)
+    priority: 5
+    rule: profile_photo
+
+# When no application rule matches: priority by scope (impact x urgency). An unknown scope leans high, see above.
+generic:
+  - name: outage
+    about: Service or function unavailable
+    match: ['\b(is down|went down|not loading|unavailable|cannot access|can.?t access|not accessible|outage)\b']
+    priority: { single: 3, wide: 1 }
+  - name: degraded
+    about: Slow, timing out or intermittent
+    match: ['\b(slow|time[sd]? ?out|timing out|intermittent|lag(ging)?)\b']
+    priority: { single: 4, wide: 3 }
+  - name: functional_error                                 # no patterns: only the model chooses it
+    about: A function gives wrong results, or data is missing or wrong
+    priority: { single: 3, wide: 2 }
+  - name: cosmetic
+    about: Visual or text issue, nothing blocked
+    match: ['\b(typo|spelling|colou?r|alignment|font|logo|cosmetic)\b']
+    priority: { single: 5, wide: 5 }
+  - name: request
+    about: Feature request, enhancement or how-to question
+    match: ['\b(feature request|enhancement|new feature|how (do|can) i|is it possible to)\b']
+    priority: { single: 5, wide: 5 }
+
+# Generic priorities are tuned for a Tier 1 application; lower tiers move this many levels down
+tier_offset: { 1: 0, 2: 1, 3: 1 }
+default_tier: 2                                             # model stage, when the application is unknown
+
+# Recommendations further than this from the reporter's priority are flagged for a person to confirm
+review_shift: 2
+
+# Calendar windows used by `raise`. Day ranges are calendar days (simplification of business days).
+windows:
+  payroll_window: { from_day: 20 }                           # 20th to month end
+  month_end_close: { last_days: 3, first_days: 3 }
+  quarter_end: { months: [3, 6, 9, 12], last_days: 7 }      # last 5 business days, approximated
+
+# Each rule: match (any pattern), base priority, optional `raise`: a list of alternatives; the first whose conditions
+# ALL hold sets the priority to `to`. Conditions: scope: wide | window: <name> | context: [patterns, any one]
+# `needs: [scope]`: the rule cannot settle the ticket until it is known how many are affected.
+applications:
+  PayrollPro:
+    tier: 1
+    rules:
+      - name: payroll_batch_failed
+        kb: KB-PAY-002
+        about: Monthly payroll batch failed or period cannot be locked
+        match: ['\bPAY_CALC_MONTHLY\b', '\bpayroll (batch|run|calculation) (failed|fails|ended not ok)\b', '\bcannot lock (the )?payroll\b']
+        priority: 2                                          # P1 in the payroll window: must_follow critical_job_failed
+      - name: salary_transfer_failed
+        kb: KB-PAY-004
+        about: Salary transfer file not delivered to the bank, salary not credited
+        match: ['\bPAY_BANK_FILE\b', '\bsalary (transfer )?file\b', '\bsalary (not|wasn.?t) (credited|received|paid)\b', '\bpublickey denied\b']
+        priority: 2                                          # P1 in the payroll window: must_follow
+        raise: [{ to: 1, context: ['\b(payday|salary date|credited (by|today|tomorrow))\b'] }]
+      - name: payslip_not_generated
+        kb: KB-PAY-001
+        about: Payslip blank or not generated
+        match: ['\bpayslip\b.{0,60}\b(blank|not available|not generated|empty|0 ?KB)\b', '\bPDF-GEN-500\b', '\bPAY_PDF_GEN\b']
+        priority: 3                                          # KB gives no raise; PAY_PDF_GEN can be rerun next day
+      - name: overtime_wrong
+        kb: KB-PAY-005
+        about: Overtime or allowance missing or wrong
+        match: ['\bovertime\b', '\ballowance\b', '\bTT_SYNC\b']
+        priority: 3                                          # KB: P2 if a whole department, in the payroll window
+        raise: [{ to: 2, window: payroll_window, context: ['\b(whole|entire|all of the|all of our) (department|team)\b',
+                                                             '\b(all|every) (employees?|staff) in\b'] }]
+      - name: tax_declaration_save
+        kb: KB-PAY-003
+        about: Tax declaration cannot be saved
+        match: ['\btax declaration\b', '\bTAXDEC-VAL-\d+\b']
+        priority: 4
+        raise: [{ to: 3, context: ['\bdeadline (is )?today\b'] }]
+
+  OrderHub:
+    tier: 1
+    rules:
+      - name: checkout_failing
+        kb: KB-ORD-003
+        about: Customers cannot complete checkout
+        match: ['\bcheckout (is )?(down|fail(s|ing|ed)?|not working|broken)\b', '\bcannot complete checkout\b', '\bunable to place orders?\b', '\border-api 5xx\b']
+        priority: 1
+      - name: orders_pending_payment
+        kb: KB-ORD-001
+        about: Customer charged but order stuck in pending payment
+        match: ['\bPENDING_PAYMENT\b', '\bpending payment\b', '\bWEBHOOK_TIMEOUT\b']
+        priority: 2
+        raise: [{ to: 1, context: ['\ball (new )?orders\b'] }]
+      - name: orders_not_exported
+        kb: KB-ORD-005
+        about: Paid orders not reaching the warehouse
+        match: ['\bORDX-409\b', '\bnot (reaching|exported to|sent to) the warehouse\b', '\b(order|orders) not shipped\b']
+        priority: 2
+      - name: confirmation_email_missing
+        kb: KB-ORD-002
+        about: Order confirmation emails not received
+        match: ['\b(order )?confirmation (e-?mail|mail)s?\b']
+        priority: 3
+        raise: [{ to: 2, context: ['\blag\b.{0,20}\b([2-9]|\d{2,}) hours?\b', '\bmore than 2 hours\b'] }]
+      - name: duplicate_order
+        kb: KB-ORD-004
+        about: Duplicate orders or double charge
+        match: ['\bduplicate orders?\b', '\b(charged|charge) twice\b', '\bdouble charge\b']
+        priority: 3
+
+  BillingEngine:
+    tier: 1
+    rules:
+      - name: invoice_run_failed
+        kb: KB-BIL-001
+        about: Monthly invoice run failed, invoices not generated
+        match: ['\bINV_MONTHLY_RUN\b', '\binvoice run (failed|fails|did not)\b', '\binvoices? (were |was )?not generated\b', '\bTaxServiceTimeout\b']
+        priority: 2                                          # P1 in month-end close: must_follow critical_job_failed
+        raise: [{ to: 1, context: ['\bmonth[- ]end (close|closing)\b'] }]
+      - name: wrong_tax
+        kb: KB-BIL-002
+        about: Invoice shows the wrong tax amount
+        match: ['\b(wrong|incorrect|0%) (gst|vat|tax)\b', '\b(gst|vat|tax) (is )?(wrong|incorrect)\b', '\bshows 0% (gst|vat)\b']
+        priority: 3
+        needs: [scope]
+        raise: [{ to: 2, scope: wide }]
+      - name: payment_not_applied
+        kb: KB-BIL-005
+        about: Customer payment not applied to the invoice
+        match: ['\bpayment not applied\b', '\bunapplied cash\b', '\bpaid but (the )?invoice (still )?(shows )?open\b']
+        priority: 3
+        raise: [{ to: 2, context: ['\b(key account|dunning)\b'] }]
+      - name: invoice_email_bounced
+        kb: KB-BIL-003
+        about: Invoice email bounced or not received by the customer
+        match: ['\binvoice (email )?(bounced|never arrived|not received)\b', '\b(never|not|did not) receiv(e|ed) (the )?invoice\b', '\b550 5\.1\.1\b']
+        priority: 4
+      - name: credit_note_blocked
+        kb: KB-BIL-004
+        about: Credit note needs approval above threshold (working as designed)
+        match: ['\bBIL-CN-403\b', '\bcredit note\b']
+        priority: 4
+
+  StockSense:
+    tier: 1
+    rules:
+      - name: stock_mismatch
+        kb: KB-STK-002
+        about: Stock differs between StockSense and OrderHub, overselling
+        match: ['\bstock mismatch\b', '\boverselling\b', '\bshows (item )?in stock but\b']
+        priority: 2
+      - name: scanner_sync
+        kb: KB-STK-001
+        about: Handheld scanner cannot sync
+        match: ['\bSYNC-ERR-\d+\b', '\bscanner\b.{0,40}\b(not syncing|cannot sync|sync)\b']
+        priority: 3
+        needs: [scope]
+        raise: [{ to: 1, scope: wide }]
+      - name: labels_not_printing
+        kb: KB-STK-003
+        about: Shipping labels not printing
+        match: ['\blabels? (are )?not printing\b', '\bnot printing any (shipping )?labels\b', '\blabel printer\b']
+        priority: 3
+        needs: [scope]
+        raise: [{ to: 2, scope: wide }]
+      - name: goods_receipt_locked
+        kb: KB-STK-004
+        about: Goods receipt cannot be posted, purchase order locked
+        match: ['\bgoods receipt\b', '\bPO-\d+\b.{0,60}\blocked\b', '\blocked by another user\b']
+        priority: 3
+        raise: [{ to: 2, context: ['\btruck (is )?waiting\b', '\bat the dock\b'] }]
+      - name: inventory_export_timeout
+        kb: KB-STK-005
+        about: Inventory report export times out
+        match: ['\binventory (movement )?report\b.{0,40}\btime', '\bexport\b.{0,40}\btime(s|d)? ?out\b']
+        priority: 4
+
+  EmployeePortal:
+    tier: 2
+    rules:
+      - name: sso_login_failing
+        kb: KB-EMP-001
+        about: SSO login loop; blocks every other application
+        match: ['\bSSO\b', '\bsingle sign[- ]on\b', '\bSAML response\b', '\bAADSTS\d+\b', '\blogin loop\b',
+                '\b(login|sign[- ]in) page\b.{0,30}\bloop', '\bloop(s|ing)? back to (the )?(login|sign[- ]in)\b']
+        priority: 4                                          # P1 for many users: must_follow sso_down_for_many
+        needs: [scope]
+      - name: mfa_not_received
+        kb: KB-EMP-002
+        about: MFA code or OTP not received
+        match: ['\b(mfa|otp|one[- ]time password)\b']
+        priority: 3
+        needs: [scope]
+        raise: [{ to: 2, scope: wide }]
+      - name: portal_slow
+        kb: KB-EMP-004
+        about: Portal slow or search times out
+        match: ['\b(portal|pages?)\b.{0,40}\b(slow|take[s]? .{0,20}seconds)\b', '\bsearch\b.{0,40}\btimed out\b']
+        priority: 3
+        raise: [{ to: 2, context: ['\bcompletely unavailable\b', '\bportal (is )?down\b'] }]
+      - name: leave_request_stuck
+        kb: KB-EMP-003
+        about: Leave request stuck in pending approval
+        match: ['\bleave request\b']
+        priority: 4
+      - name: profile_photo
+        kb: KB-EMP-005
+        about: Profile photo upload fails (cosmetic)
+        match: ['\bprofile (photo|picture)\b']
+        priority: 5
+
+  SalesConnect CRM:
+    tier: 2
+    rules:
+      - name: leads_not_syncing
+        kb: KB-CRM-002
+        about: Website leads not syncing into the CRM
+        match: ['\bleads?\b.{0,60}\b(not (syncing|visible|appearing)|have appeared)\b', '\bINVALID_SESSION_ID\b', '\blead sync\b']
+        priority: 2
+      - name: email_to_case_failing
+        kb: KB-CRM-005
+        about: Support emails not creating cases
+        match: ['\b(emails? )?not creating cases\b', '\bno new cases\b', '\bemail-to-case\b']
+        priority: 2
+      - name: insufficient_privileges
+        kb: KB-CRM-004
+        about: Insufficient privileges editing an opportunity
+        match: ['\binsufficient privileges\b']
+        priority: 3
+        raise: [{ to: 2, window: quarter_end }]
+      - name: account_locked
+        kb: KB-CRM-001
+        about: User account locked or cannot log in (single user)
+        match: ['\baccount (has been |is )?locked\b', '\blogin is locked\b', '\bcannot log ?in\b', '\bunable to log ?in\b']
+        priority: 4
+        raise: [{ to: 3, context: ['\bcustomer (call|meeting)\b', '\bdeadline\b'] }]
+      - name: stale_dashboard
+        kb: KB-CRM-003
+        about: Dashboards or reports show stale data
+        match: ['\b(dashboard|report)s?\b.{0,40}\b(stale|old data|not refreshed|last refreshed)\b']
+        priority: 4
+
+  InsightBI:
+    tier: 3
+    ceiling: 2                                                 # reporting only; P2 at most
+    rules:
+      - name: credentials_expired
+        kb: KB-BI-001
+        about: Dashboards fail with data source credentials expired
+        match: ['\bcredentials expired\b', '\bcouldn.?t load data\b']
+        priority: 3
+      - name: report_not_refreshed
+        kb: KB-BI-002
+        about: Daily report not refreshed
+        match: ['\b(report|dashboard)\b.{0,40}\b(not (been )?(updated|refreshed)|old data|yesterday.s date)\b', '\bdaily_sales_load\b']
+        priority: 3
+        raise: [{ to: 2, context: ['\b(board|statutory) (report|meeting)\b'] }]
+      - name: numbers_differ
+        kb: KB-BI-004
+        about: Report numbers differ from the source system
+        match: ['\b(numbers|revenue|figures)\b.{0,60}\b(do(es)? not match|differ|wrong)\b', '\bnumbers wrong\b']
+        priority: 4
+      - name: no_report_access
+        kb: KB-BI-003
+        about: User cannot see a report
+        match: ['\bdon.?t have access\b', '\bno access to (the |this )?report\b']
+        priority: 4
+      - name: subscription_not_delivered
+        kb: KB-BI-005
+        about: Scheduled report email not delivered
+        match: ['\bscheduled report\b', '\bsubscription\b']
+        priority: 4

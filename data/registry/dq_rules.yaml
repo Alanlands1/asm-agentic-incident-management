@@ -1,0 +1,39 @@
+# Data Quality rules stage. Provisional values tuned on the synthetic tickets; re-tune on real ones.
+# Patterns are Python regular expressions, case-insensitive unless noted.
+
+# Description shorter than this (after greeting and signature are removed) -> needs_info
+min_body_length: 50
+
+# Description that is only one of these (case and punctuation ignored, so n/a = N.A. = na) -> needs_info
+placeholder: [n/a, none, nil, "null", tbd, tba, unknown, "?", help, urgent, asap, issue, error, problem, not working,
+              please check, please fix, see attached, see attachment, see screenshot, see subject, as above, same as above]
+
+# Phrases that add no detail; removed before the description length is measured
+filler:
+  - '\bplease (fix|check|help|look( into)?|resolve)( (it|this|the issue))?\b'
+  - '\b(asap|urgent(ly)?|immediately|on priority)\b'
+  - '\bsee (the )?(attached|attachment|screenshot)( (screenshot|file|image))?\b'
+  - '\b(thanks|thank you) in advance\b'
+
+# Summary or description matching any of these -> not_an_incident
+test_ticket:
+  - '^\W*test(ing)?( ticket)?\W*$'
+  - 'please ignore'
+
+# Summary or description matching any of these -> not_an_incident (a request, nothing is broken)
+service_request:
+  - '^\W*(access|service|licen[cs]e|account) request\s*[:-]'
+
+# References to tickets in our sources; not counted as identifiers
+ticket_reference: '\b(INC\d{7}|AMS-\d{3,}|MBX-\d{5})\b'
+
+# Phrases pointing at an earlier ticket
+previous_ticket:
+  - 'same (issue|problem) (as|again)'
+  - '(previous|earlier|last|old) ticket'
+
+# Error codes, record and device IDs, job names, employee IDs (case-sensitive)
+identifier:
+  - '\b[A-Z]{2,}[A-Z0-9]*(-[A-Z0-9]+)*-\d+[A-Z0-9]*\b'
+  - '\b[A-Z][A-Z0-9]*(_[A-Z0-9]+)+\b'
+  - '\bE\d{5}\b'

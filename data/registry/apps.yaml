@@ -1,0 +1,25 @@
+# Application registry, derived from data/knowledge_base; the support lead owns additions.
+# names:    how people write the application's name. Masked as <APP_n> before any model call.
+# keywords: words that point to the application. Used only to detect it; never masked.
+# Matching is case-insensitive, whole words, optional plural.
+PayrollPro:
+  names: [payrollpro, payroll pro]
+  keywords: [payroll, payslip, salary, overtime]
+OrderHub:
+  names: [orderhub, order hub]
+  keywords: [order, checkout, promo code]
+SalesConnect CRM:
+  names: [salesconnect crm, salesconnect, sales connect]
+  keywords: [crm, lead, opportunity]
+EmployeePortal:
+  names: [employeeportal, employee portal]
+  keywords: [portal, sso, mfa, leave request]
+StockSense:
+  names: [stocksense, stock sense]
+  keywords: [scanner, label printer, label, goods receipt, goods, stock]
+BillingEngine:
+  names: [billingengine, billing engine]
+  keywords: [billing, invoice, credit note, gst]
+InsightBI:
+  names: [insightbi, insight bi]
+  keywords: [dashboard, report]

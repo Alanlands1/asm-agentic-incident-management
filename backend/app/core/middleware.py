@@ -1,8 +1,10 @@
 """HTTP and execution timing middleware."""
 
+import logging
 import time
 import uuid
-import logging
+
+from opentelemetry import trace
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
@@ -15,6 +17,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next) -> Response:
         request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
+        trace.get_current_span().set_attribute("http.request_id", request_id)
         start_time = time.perf_counter()
 
         response: Response = await call_next(request)

@@ -1,0 +1,14 @@
+$kind: http-request
+description: A reply from the reporter sends an awaiting_info ticket back to pending, ready for another check.
+url: "{{baseUrl}}/tickets/{{ticketId}}/comments"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: |-
+    {
+      "author_email": "sunita.more@contoso.com",
+      "body": "It is PayrollPro: my payslip PDF fails with PDF-GEN-500 since Monday morning. Only me so far."
+    }
+order: 5000

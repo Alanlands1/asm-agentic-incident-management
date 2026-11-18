@@ -1,0 +1,33 @@
+# PII masking: personal information only. Each finding becomes a numbered placeholder, e.g. <PERSON_1>.
+# Application names, error codes, record IDs, sites, hosts and dates are never masked.
+
+spacy_model: en_core_web_sm
+score_threshold: 0.35          # Presidio scores phone numbers around 0.4
+
+# Presidio built-in entities -> placeholder label
+entities:
+  PERSON: PERSON
+  EMAIL_ADDRESS: EMAIL
+  PHONE_NUMBER: PHONE
+  CREDIT_CARD: CARD
+  IBAN_CODE: IBAN
+
+# Custom patterns: placeholder label -> regular expressions (case-sensitive)
+patterns:
+  EMPLOYEE_ID: ['\bE\d{5}\b', '\bEMP[\s-]?\d{4,6}\b']
+  PAN: ['\b[A-Z]{5}\d{4}[A-Z]\b']
+  AADHAAR: ['\b\d{4}\s\d{4}\s\d{4}\b']
+  BANK_ACCOUNT: ['\b(?:a/c|account)(?: no\.?| number)?\s*:?\s*\d{9,18}\b']
+
+# Never masked, even when NER takes them for a name: error codes, record IDs, job names, internal systems.
+# Application names from apps.yaml are protected too.
+protect:
+  - '\b[A-Z]{2,}[A-Z0-9]*(-[A-Z0-9]+)*-\d+[A-Z0-9]*\b'
+  - '\b[A-Z][A-Z0-9]*(_[A-Z0-9]+)+\b'
+  - '\bTimeTrack\b'
+
+# Words spaCy mistakes for people in tickets; never masked when found by NER alone. apps.yaml keywords are kept too.
+keep: [kb, po, ui, admin ui, email, request, workflow, remittance, pending, chrome, bin, max, sales]
+
+# Callers that are shared or system accounts, not people
+system_accounts: [Service Desk, Integration User]

@@ -1,0 +1,5 @@
+$kind: http-request
+description: Rules first; the model only when the rules cannot decide. 404 unknown ticket, 409 not pending, 502/503 model problem (ticket stays pending).
+url: "{{baseUrl}}/data-quality/tickets/{{ticketId}}/check"
+method: POST
+order: 1000

@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Closure Quality and Knowledge Builder · Plan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+/* Same look as agent-flows.html: paper, crimson and gold, glass cards, tinted icon tiles. A scrolling page. */
+:root{
+  --paper:#f7f3ee; --paper-3:#e9e4dc;
+  --ink:#16130e; --ink-soft:#3b3830; --stone:#5c594f;
+  --crimson:#ba0c2f; --crimson-bright:#d31145; --gold-ink:#94620a;
+  --green:#1a5f45; --green-soft:rgba(232,245,238,.92); --red-soft:rgba(253,236,239,.9); --gold-soft:rgba(251,246,234,.92);
+  --font-sans:-apple-system,BlinkMacSystemFont,"Inter","Segoe UI","Helvetica Neue",Arial,sans-serif;
+  --font-mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{background:var(--paper-3);scroll-behavior:smooth}
+body{font-family:var(--font-sans);color:var(--ink);background:var(--paper);-webkit-font-smoothing:antialiased;font-size:17px;line-height:1.5;min-height:100vh;position:relative;overflow-x:hidden}
+a{color:inherit}
+code{font-family:var(--font-mono);font-size:.88em;background:rgba(22,19,14,.06);padding:1px 6px;border-radius:6px}
+
+.aurora{position:fixed;inset:0;overflow:hidden;pointer-events:none;z-index:0}
+.aurora b{position:absolute;display:block;border-radius:50%;filter:blur(80px);opacity:.5}
+.aurora .b1{width:720px;height:720px;left:-200px;top:-260px;background:#f2b6c0}
+.aurora .b2{width:620px;height:620px;right:-140px;top:-200px;background:#bcd6ec}
+.aurora .b3{width:700px;height:700px;right:5%;bottom:-380px;background:#edd39a}
+.aurora .b4{width:560px;height:560px;left:15%;bottom:-320px;background:#c4e6d5}
+.page{position:relative;z-index:1;max-width:1180px;margin:0 auto;padding:36px 24px 96px}
+@media (max-width:640px){.page{padding:20px 16px 72px}}
+
+.glass{position:relative;background:rgba(255,255,255,.55);-webkit-backdrop-filter:blur(22px) saturate(185%);backdrop-filter:blur(22px) saturate(185%);
+  box-shadow:inset 0 1px 1px rgba(255,255,255,.95),inset 0 -1px 1px rgba(255,255,255,.3),inset 0 0 24px rgba(255,255,255,.3),0 1px 2px rgba(60,30,20,.06),0 26px 60px -22px rgba(90,40,30,.3)}
+.glass::before{content:"";position:absolute;inset:0;border-radius:inherit;padding:1.5px;pointer-events:none;
+  background:linear-gradient(135deg,rgba(255,255,255,.98) 0%,rgba(255,255,255,.3) 30%,rgba(255,255,255,.06) 55%,rgba(255,255,255,.65) 100%);
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude}
+.glass::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;background:linear-gradient(180deg,rgba(255,255,255,.42) 0%,rgba(255,255,255,0) 48%)}
+.glass>*{position:relative;z-index:1}
+
+.app{position:relative;display:grid;place-items:center;border-radius:28%;flex:0 0 auto;width:52px;height:52px;background:linear-gradient(155deg,var(--c1) 0%,var(--c2) 100%);
+  box-shadow:inset 0 1px 1px rgba(255,255,255,.55),inset 0 -3px 8px rgba(0,0,0,.16),0 2px 4px rgba(0,0,0,.08),0 14px 26px -10px var(--sh)}
+.app::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;background:linear-gradient(180deg,rgba(255,255,255,.36) 0%,rgba(255,255,255,.1) 48%,rgba(255,255,255,0) 52%)}
+.app>svg{position:relative;z-index:1;width:50%;height:50%;color:#fff;filter:drop-shadow(0 1px 1.5px rgba(0,0,0,.22))}
+.app.blue{--c1:#6590b5;--c2:#2d5378;--sh:rgba(45,83,120,.55)}
+.app.gold{--c1:#d6a650;--c2:#98690f;--sh:rgba(152,105,15,.5)}
+.app.red{--c1:#d9354f;--c2:#8e0a23;--sh:rgba(142,10,35,.5)}
+.app.green{--c1:#43a07b;--c2:#1a5f45;--sh:rgba(26,95,69,.5)}
+.app.ink{--c1:#57524b;--c2:#1f1c18;--sh:rgba(31,28,24,.5)}
+.app.violet{--c1:#8574cc;--c2:#473690;--sh:rgba(71,54,144,.5)}
+.app.grey{--c1:#a9a49b;--c2:#6f6a61;--sh:rgba(80,74,66,.45)}
+.app.sm{width:36px;height:36px;border-radius:11px}
+.app.lg{width:68px;height:68px}
+
+.hdr{display:inline-flex;align-items:center;gap:12px;height:54px;padding:0 22px 0 9px;border-radius:99px}
+.hdr .mk{width:36px;height:36px;border-radius:50%;background:var(--crimson);display:grid;place-items:center}
+.hdr .mk svg{width:20px;height:20px}
+.hdr b{font-size:18px;font-weight:700;letter-spacing:-.02em}
+.hdr i{width:1px;height:20px;background:rgba(22,19,14,.18)}
+.hdr span{font-family:var(--font-mono);font-size:12px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--stone)}
+
+.kick{display:flex;align-items:center;gap:14px;font-family:var(--font-mono);font-size:13px;font-weight:700;letter-spacing:.22em;text-transform:uppercase;color:var(--crimson)}
+.kick i{display:block;width:40px;height:2px;background:var(--crimson)}
+.mono{font-family:var(--font-mono);font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--stone)}
+.tag{display:inline-block;padding:5px 11px;border-radius:99px;background:rgba(255,255,255,.75);box-shadow:inset 0 0 0 1px rgba(22,19,14,.16);font-family:var(--font-mono);font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-soft);white-space:nowrap}
+.tag.red{background:var(--red-soft);color:#8e0a23;box-shadow:inset 0 0 0 1px rgba(186,12,47,.3)}
+.tag.green{background:var(--green-soft);color:var(--green);box-shadow:inset 0 0 0 1px rgba(26,95,69,.24)}
+.tag.gold{background:var(--gold-soft);color:var(--gold-ink);box-shadow:inset 0 0 0 1px rgba(148,98,10,.3)}
+
+h1,h2,h3{font-weight:700;letter-spacing:-.03em;line-height:1.05;text-wrap:balance}
+h1{font-size:clamp(36px,5.6vw,60px)}
+h2{font-size:clamp(28px,4vw,40px)}
+h3{font-size:20px;letter-spacing:-.015em}
+.grad{background:linear-gradient(90deg,var(--crimson),var(--crimson-bright) 55%,#c7a566);-webkit-background-clip:text;background-clip:text;color:transparent}
+.sub{margin-top:18px;font-size:clamp(18px,2.2vw,23px);font-weight:500;line-height:1.45;letter-spacing:-.01em;color:var(--ink-soft);max-width:36em}
+.sub em{font-style:normal;font-weight:700;color:var(--crimson)}
+.lead{font-size:18px;color:var(--ink-soft);max-width:40em}
+
+.hero{padding:64px 0 40px}
+section.block{margin-top:80px}
+section.block>.kick{margin-bottom:14px}
+section.block>h2{margin-bottom:12px}
+section.block>.lead{margin-bottom:26px}
+@media (max-width:640px){section.block{margin-top:56px}.hero{padding:40px 0 20px}}
+
+.grid{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(min(100%,250px),1fr))}
+.grid.two{grid-template-columns:repeat(auto-fit,minmax(min(100%,430px),1fr))}
+.grid.three{grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr))}
+.card{padding:20px 22px;border-radius:26px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.card .top{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.card p,.card li{font-size:15.5px;line-height:1.45;color:var(--ink-soft)}
+.card ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:5px}
+
+.nums{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(min(100%,190px),1fr))}
+.num{padding:18px 20px;border-radius:24px}
+.num b{display:block;font-size:40px;font-weight:700;letter-spacing:-.035em;line-height:1;color:var(--crimson)}
+.num b.ok{color:var(--green)}
+.num span{display:block;margin-top:8px;font-size:14.5px;font-weight:600;color:var(--ink-soft);line-height:1.3}
+
+.flow{padding:24px 26px 26px;border-radius:30px;display:flex;flex-direction:column}
+.flow .head{display:flex;align-items:center;gap:14px;margin-bottom:18px;flex-wrap:wrap}
+.flow .head .app{width:56px;height:56px}
+.flow .head b{display:block;font-size:24px;font-weight:700;letter-spacing:-.025em}
+.flow .head .tag{margin-left:auto}
+.step{display:flex;gap:14px;align-items:flex-start}
+.step .dot{flex:0 0 auto;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-family:var(--font-mono);font-size:12.5px;font-weight:700;color:#fff;background:var(--ink);box-shadow:0 0 0 2.5px #fff;position:relative}
+.step .dot.ai{background:var(--crimson)}
+.step .dot.you{background:var(--green)}
+.step .dot.out{background:var(--gold-ink)}
+.step .dot svg{width:16px;height:16px}
+.step .txt{padding-top:4px;padding-bottom:18px;min-width:0}
+.step .txt b{display:block;font-size:17px;font-weight:700;letter-spacing:-.015em}
+.step .txt p{margin-top:3px;font-size:15px;line-height:1.45;color:var(--ink-soft)}
+.step:not(:last-child) .dot::after{content:"";position:absolute;left:50%;top:100%;width:2px;height:22px;transform:translateX(-50%);background:rgba(95,92,82,.3)}
+.step.out .txt b{color:var(--gold-ink)}
+.step.you .txt{background:var(--green-soft);border-radius:16px;padding:10px 14px 12px;margin-bottom:18px;box-shadow:inset 0 0 0 1px rgba(26,95,69,.2)}
+.step.you .txt b{color:var(--green)}
+.step.ai .txt b{color:var(--crimson)}
+.legend{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:22px;font-size:14px;color:var(--stone)}
+.legend span{display:inline-flex;align-items:center;gap:8px}
+.legend i{display:inline-block;width:14px;height:14px;border-radius:50%}
+
+.chain{padding:18px 22px;border-radius:24px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.chain .link{display:inline-flex;align-items:center;gap:8px;padding:6px 12px 6px 6px;border-radius:99px;font-size:15px;font-weight:600;background:rgba(255,255,255,.8);box-shadow:inset 0 0 0 1px rgba(22,19,14,.1);white-space:nowrap}
+.chain .link .app{width:30px;height:30px;border-radius:9px}
+.chain .link.you{outline:2px dashed var(--crimson);outline-offset:2px}
+.chain em{font-style:normal;color:rgba(95,92,82,.5);font-size:18px}
+
+.tbl{padding:8px 10px;border-radius:24px;overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:15px}
+th,td{text-align:left;padding:11px 14px;vertical-align:top;border-bottom:1px solid rgba(22,19,14,.09)}
+tr:last-child td{border-bottom:0}
+th{font-family:var(--font-mono);font-size:11.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--stone)}
+td b{color:var(--ink)}
+td.rec{color:var(--green);font-weight:600}
+
+.phase{padding:20px 22px;border-radius:26px;display:flex;gap:16px;align-items:flex-start}
+.phase .n{flex:0 0 auto;width:44px;height:44px;border-radius:50%;display:grid;place-items:center;font-family:var(--font-mono);font-weight:700;color:#fff;background:var(--ink)}
+.phase.you .n{background:var(--crimson)}
+.phase b{font-size:19px;letter-spacing:-.015em}
+.phase p{font-size:15.5px;color:var(--ink-soft);margin-top:3px}
+.phase .done{margin-top:6px;font-size:14.5px;color:var(--green);font-weight:600}
+.stack{display:flex;flex-direction:column;gap:14px}
+
+footer{margin-top:80px;padding-top:20px;border-top:1px solid rgba(22,19,14,.12);display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-family:var(--font-mono);font-size:12px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:var(--stone)}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></symbol>
+    <symbol id="i-list-checks" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/></symbol>
+    <symbol id="i-bot" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></symbol>
+    <symbol id="i-user-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><polyline points="16 11 18 13 22 9"/></symbol>
+    <symbol id="i-ticket" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M13 5v2"/><path d="M13 17v2"/><path d="M13 11v2"/></symbol>
+    <symbol id="i-file-text" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></symbol>
+    <symbol id="i-layers" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></symbol>
+    <symbol id="i-book-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></symbol>
+    <symbol id="i-wrench" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></symbol>
+    <symbol id="i-kanban" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M8 7v7"/><path d="M12 7v4"/><path d="M16 7v9"/></symbol>
+    <symbol id="i-shield-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></symbol>
+    <symbol id="i-database" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></symbol>
+    <symbol id="i-triangle-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
+  </defs>
+</svg>
+<div class="aurora"><b class="b1"></b><b class="b2"></b><b class="b3"></b><b class="b4"></b></div>
+<main class="page">
+
+<div class="glass hdr">
+  <span class="mk"><svg viewBox="0 0 24 24" fill="none" stroke="#faf8f4" stroke-width="2.2" stroke-linecap="round"><path d="M4 16c3-1 5-7 8-7s5 6 8 7"/><circle cx="12" cy="8" r="1.6" fill="#faf8f4" stroke="none"/></svg></span>
+  <b>AMS Control Center</b><i></i><span>Plan · A4 and A5</span>
+</div>
+
+<header class="hero">
+  <p class="kick"><i></i>For approval</p>
+  <h1 style="margin-top:14px">Closure Quality and<br><span class="grad">Knowledge Builder</span></h1>
+  <p class="sub">Notes worth reading, then <em>knowledge that grows from them.</em> Same pattern as Data Quality and Triage: rules first, one AI question at most, a person decides.</p>
+</header>
+
+<section class="block">
+  <p class="kick"><i></i>Where we start</p>
+  <h2>The sample data cannot test either agent</h2>
+  <p class="lead">What the 34 closed tickets and the 35 knowledge-base articles actually contain. This is why the plan starts with test sets.</p>
+  <div class="nums">
+    <div class="glass num"><b>34</b><span>closed tickets with notes (ServiceNow 19, JIRA 15)</span></div>
+    <div class="glass num"><b>33</b><span>of them cite a KB article ("Followed KB-PAY-001…")</span></div>
+    <div class="glass num"><b>0</b><span>vague or empty notes. The shortest is a test ticket</span></div>
+    <div class="glass num"><b>0</b><span>closed tickets with no matching article. The 10 "no article" tickets are all still open</span></div>
+    <div class="glass num"><b>2</b><span>the most closures for any one article. None reaches "3 in 30 days"</span></div>
+    <div class="glass num"><b class="ok">35</b><span>KB articles, 7 apps, every one in the same four parts</span></div>
+  </div>
+  <div class="grid three" style="margin-top:18px">
+    <article class="glass card"><div class="top"><span class="app red sm"><svg><use href="#i-triangle-alert"/></svg></span><h3>So for Closure Quality</h3></div><p>There are no bad notes to catch. We write about 30 labelled ones (good, vague, empty) and the support lead confirms them.</p></article>
+    <article class="glass card"><div class="top"><span class="app red sm"><svg><use href="#i-triangle-alert"/></svg></span><h3>So for Knowledge Builder</h3></div><p>There are no gaps and no repeats to find. We write resolved cases for the no-article issues (promo code, new joiner, barcode…) and a few repeats.</p></article>
+    <article class="glass card"><div class="top"><span class="app green sm"><svg><use href="#i-shield-check"/></svg></span><h3>What does help</h3></div><p>Notes that cite a KB id are a strong, cheap matching signal. The article format is fixed, so a draft has a clear template.</p></article>
+  </div>
+</section>
+
+<section class="block">
+  <p class="kick"><i></i>Where they sit</p>
+  <h2>The loop: today's closure is tomorrow's answer</h2>
+  <p class="lead">Resolution (a colleague is building it) reads what these two agents produce. The dashed step is the engineer's own work.</p>
+  <div class="glass chain">
+    <span class="link"><span class="app green"><svg><use href="#i-kanban"/></svg></span>Triage</span><em>→</em>
+    <span class="link"><span class="app blue"><svg><use href="#i-book-open"/></svg></span>Resolution</span><em>→</em>
+    <span class="link you"><span class="app grey"><svg><use href="#i-wrench"/></svg></span>Engineer fixes it</span><em>→</em>
+    <span class="link"><span class="app violet"><svg><use href="#i-file-text"/></svg></span>Closure Quality</span><em>→</em>
+    <span class="link"><span class="app ink"><svg><use href="#i-layers"/></svg></span>Knowledge Builder</span><em>↺</em>
+    <span class="link"><span class="app blue"><svg><use href="#i-book-open"/></svg></span>back to Resolution</span>
+  </div>
+  <div class="grid three" style="margin-top:18px">
+    <article class="glass card"><div class="top"><span class="app ink sm"><svg><use href="#i-shield-check"/></svg></span><h3>What we reuse</h3></div><ul><li>Name masking in, and a personal-data check on what the AI writes</li><li>The one model client (Sonnet, prompt caching, retries, kill switch)</li><li>Rules and prompts in editable files, changeable through the admin API</li></ul></article>
+    <article class="glass card"><div class="top"><span class="app ink sm"><svg><use href="#i-database"/></svg></span><h3>What we reuse (2)</h3></div><ul><li>The audit trail (<code>agent_runs</code>) and the accept / edit / reject review</li><li>A scoring report per agent, run against labelled tickets</li><li>The "AI reports quoted facts, code decides" pattern that worked for Triage</li></ul></article>
+    <article class="glass card"><div class="top"><span class="app gold sm"><svg><use href="#i-link"/></svg></span><h3>What we agree with Resolution's owner</h3></div><p>One place that stores resolved cases, one KB reader, and what "published" means. See the decisions below.</p></article>
+  </div>
+</section>
+
+<section class="block">
+  <p class="kick"><i></i>A4 · Closure Quality</p>
+  <h2>Are the close notes worth reading?</h2>
+  <div class="legend">
+    <span><i style="background:var(--ink)"></i>rules</span><span><i style="background:var(--crimson)"></i>AI</span><span><i style="background:var(--green)"></i>a person</span><span><i style="background:var(--gold-ink)"></i>result</span>
+  </div>
+  <div class="grid two">
+    <article class="glass flow">
+      <div class="head"><span class="app violet"><svg><use href="#i-file-text"/></svg></span><div><b>Closure Quality</b><span class="mono">scores the notes, never blocks</span></div><span class="tag red">New</span></div>
+      <div class="step"><span class="dot"><svg><use href="#i-clock"/></svg></span><div class="txt"><b>A ticket is resolved or closed</b><p>One that went through our pipeline. History can be scored too, behind a switch.</p></div></div>
+      <div class="step"><span class="dot">1</span><div class="txt"><b>Quick checks (rules)</b><p>Empty. Too short (provisional: under 40 characters). Only filler like "done", "fixed", "working now". Copy of the description. A test ticket is skipped, not scored. Rules can stop a note, never pass one.</p></div></div>
+      <div class="step ai"><span class="dot ai"><svg><use href="#i-bot"/></svg></span><div class="txt"><b>One AI question, on the masked note</b><p>Report three things, each with an exact quote: what caused it, what was done, how it was checked. Level 0 none, 1 vague, 2 specific. A level without a real quote drops to 0. The AI never says pass or fail.</p></div></div>
+      <div class="step"><span class="dot">2</span><div class="txt"><b>The code adds it up</b><p>Score out of 6. Provisional pass: steps at least 1 and total at least 4. Thresholds live in a file.</p></div></div>
+      <div class="step"><span class="dot">3</span><div class="txt"><b>Low score: 1 to 3 short questions</b><p>"What caused it?" A better draft is built only from what is already on the ticket. Gaps stay as "[engineer to add: cause]". Nothing is guessed.</p></div></div>
+      <div class="step you"><span class="dot you"><svg><use href="#i-user-check"/></svg></span><div class="txt"><b>Engineer accepts, edits or rejects</b><p>Version 1 nudges only. Blocking the close is the client's choice, behind a setting that is off.</p></div></div>
+      <div class="step out"><span class="dot out"><svg><use href="#i-ticket"/></svg></span><div class="txt"><b>Score, what is missing, final notes</b><p>Notes that pass go on to Knowledge Builder. Nothing is written back to ServiceNow or JIRA yet.</p></div></div>
+    </article>
+    <div class="stack">
+      <article class="glass card"><div class="top"><span class="app gold sm"><svg><use href="#i-list-checks"/></svg></span><h3>New files</h3></div><ul>
+        <li><code>data/registry/closure_rules.yaml</code>: filler words, minimum length, pass rule</li>
+        <li>A <code>closure_score</code> prompt in <code>prompts.yaml</code></li>
+        <li><code>backend/app/agents/closure_quality/</code>: config, rules, model check (same layout as Data Quality and Triage)</li>
+        <li><code>services/closure/</code> (a package, per review feedback), endpoints under <code>/closure</code>, tests</li>
+        <li><code>evaluation/closure_report.py</code> and <code>closure_cases.xlsx</code></li>
+      </ul></article>
+      <article class="glass card"><div class="top"><span class="app gold sm"><svg><use href="#i-link"/></svg></span><h3>Endpoints</h3></div><ul>
+        <li><code>POST /closure/run</code> and <code>/closure/tickets/{id}/check</code></li>
+        <li><code>GET /closure/queue</code>: notes that need work, lowest score first</li>
+        <li><code>POST /closure/tickets/{id}/review</code>: accept, edit (with the new notes), reject</li>
+        <li><code>GET /closure/report</code>: how often engineers change the notes or the score</li>
+      </ul></article>
+      <article class="glass card"><div class="top"><span class="app red sm"><svg><use href="#i-triangle-alert"/></svg></span><h3>A limit to know</h3></div><p>Our data has no ServiceNow work notes, only the resolution notes and the replies. So drafts can only reorganise what is there; the real fix is to ask the engineer.</p></article>
+    </div>
+  </div>
+</section>
+
+<section class="block">
+  <p class="kick"><i></i>A5 · Knowledge Builder</p>
+  <h2>Turn good fixes into knowledge</h2>
+  <div class="grid two">
+    <article class="glass flow">
+      <div class="head"><span class="app ink"><svg><use href="#i-layers"/></svg></span><div><b>Knowledge Builder</b><span class="mono">drafts, never publishes</span></div><span class="tag red">New</span></div>
+      <div class="step"><span class="dot"><svg><use href="#i-clock"/></svg></span><div class="txt"><b>Close notes passed, or the nightly run</b></div></div>
+      <div class="step"><span class="dot">1</span><div class="txt"><b>Save the case so Resolution can find it</b><p>Masked: symptom, cause, steps, check, app, matched article, score. The cause and steps come from the Closure Quality answer, so no extra AI call.</p></div></div>
+      <div class="step"><span class="dot">2</span><div class="txt"><b>Is there already an article? (rules)</b><p>First: the note cites a KB id that exists (33 of 34 do). Then: error codes and job names against each article's symptoms. Then: keyword overlap within the same app.</p></div></div>
+      <div class="step ai"><span class="dot ai"><svg><use href="#i-bot"/></svg></span><div class="txt"><b>Not clear? One AI question</b><p>"Which of these articles (id, title, symptoms) describes this case, or none?" with a quote. The code checks that the id exists.</p></div></div>
+      <div class="step ai"><span class="dot ai"><svg><use href="#i-bot"/></svg></span><div class="txt"><b>No article? Draft one</b><p>In the KB format: symptoms, root cause, resolution steps, escalation. From the masked case only. Unknown parts stay "[expert to add]".</p></div></div>
+      <div class="step"><span class="dot">3</span><div class="txt"><b>Checks on the draft (code)</b><p>All four parts present. Every error code, ID and command appears in the source notes. No personal data in the text. Source tickets cited. A draft that fails is rejected, not shown.</p></div></div>
+      <div class="step"><span class="dot">4</span><div class="txt"><b>Seen 3 times in 30 days?</b><p>Same app and issue: suggest a problem record with the linked tickets. Uses the same grouping as storms, over closed tickets.</p></div></div>
+      <div class="step you"><span class="dot you"><svg><use href="#i-user-check"/></svg></span><div class="txt"><b>An expert approves, edits or rejects</b><p>Approving gives the next id (for example KB-PAY-006) and exports the article as markdown.</p></div></div>
+      <div class="step out"><span class="dot out"><svg><use href="#i-ticket"/></svg></span><div class="txt"><b>Coverage that grows, per app</b><p>Articles, closed tickets matched, open gaps, drafts waiting.</p></div></div>
+    </article>
+    <div class="stack">
+      <article class="glass card"><div class="top"><span class="app gold sm"><svg><use href="#i-database"/></svg></span><h3>New tables</h3></div><ul>
+        <li><code>resolved_cases</code>: the masked case. The thing Resolution reads</li>
+        <li><code>kb_drafts</code>: status draft, approved, rejected; the source tickets; the reviewer</li>
+        <li><code>problem_candidates</code>: app, issue, linked tickets, status open, accepted or dismissed</li>
+        <li>A <code>final_text</code> column on the review table, so an engineer's edited notes are kept</li>
+      </ul></article>
+      <article class="glass card"><div class="top"><span class="app gold sm"><svg><use href="#i-link"/></svg></span><h3>Endpoints</h3></div><ul>
+        <li><code>POST /knowledge/run</code></li>
+        <li><code>GET /knowledge/coverage</code>: per app, matched and unmatched</li>
+        <li><code>GET /knowledge/drafts</code>, <code>POST …/{id}/review</code>, <code>GET …/{id}/export</code> (markdown)</li>
+        <li><code>GET /knowledge/problems</code>, <code>POST …/{id}/decision</code></li>
+      </ul></article>
+      <article class="glass card"><div class="top"><span class="app red sm"><svg><use href="#i-triangle-alert"/></svg></span><h3>Why "export", not "publish"</h3></div><p>There is no Confluence here, and <code>data/</code> is mounted read-only. So version 1 stores the draft and its status in the database and exports markdown to a separate folder. A Confluence call replaces the export later.</p></article>
+    </div>
+  </div>
+</section>
+
+<section class="block">
+  <p class="kick"><i></i>How we will know it works</p>
+  <h2>Labelled test sets first, then a score per agent</h2>
+  <p class="lead">Same habit as before: a report you can re-run, with the misses listed. The labels are ours until the support lead confirms them.</p>
+  <div class="glass tbl">
+    <table>
+      <thead><tr><th>Agent</th><th>Test set</th><th>What we measure</th><th>Target</th></tr></thead>
+      <tbody>
+        <tr><td><b>Closure Quality</b></td><td>About 30 written notes (10 good, 10 vague, 10 empty or filler) plus the 33 real notes</td><td>Good notes wrongly flagged. Bad notes caught</td><td>At most 1 good flagged. At least 9 of 10 bad caught. At least 7 of 10 vague</td></tr>
+        <tr><td><b>Knowledge Builder: match</b></td><td>The 33 closed tickets with a known article, run again with the "Followed KB-…" citation removed</td><td>Right article found</td><td>33 of 33 with the citation. At least 30 of 33 without it</td></tr>
+        <tr><td><b>Knowledge Builder: gaps</b></td><td>About 10 resolved cases for issues with no article</td><td>Flagged as a gap, not forced onto the wrong article</td><td>10 of 10</td></tr>
+        <tr><td><b>Knowledge Builder: drafts</b></td><td>The drafts from those gap cases</td><td>Parts present, invented codes, personal data. Then an expert reads them</td><td>0 invented, 0 personal data. At least 7 of 10 usable with light edits</td></tr>
+        <tr><td><b>Recurrence</b></td><td>Made-up closures: 3 in 30 days, 2 in 30 days, 3 over 40 days</td><td>Problem candidate raised or not</td><td>Only the first raises one</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="lead" style="margin-top:16px">Cost: Closure Quality is at most one call per resolved ticket, Knowledge Builder one match call only when the rules are unsure, and one longer call per gap. Both to be measured on Sonnet, expected to stay well under 2¢ per ticket.</p>
+</section>
+
+<section class="block">
+  <p class="kick"><i></i>In what order</p>
+  <h2>Four phases, one pull request each</h2>
+  <div class="stack">
+    <article class="glass phase you"><span class="n">0</span><div><b>Decide and prepare</b><p>The decisions below. Write <code>closure_cases.xlsx</code> and <code>knowledge_cases.xlsx</code> and send the labels to the support lead. Can happen while the Triage pull request is reviewed.</p><p class="done">Done when: decisions agreed, test sets written.</p></div></article>
+    <article class="glass phase"><span class="n">1</span><div><b>Closure Quality</b><p>Rules, the AI question with quote checks, the score, the questions and draft, endpoints, review, report.</p><p class="done">Done when: the targets above hold on the test set, and the endpoints are covered by tests.</p></div></article>
+    <article class="glass phase"><span class="n">2</span><div><b>Knowledge Builder, part 1: save and match</b><p>The KB reader, <code>resolved_cases</code>, the rules and the one AI question for matching, the coverage report.</p><p class="done">Done when: matching and gap detection hold on their test sets.</p></div></article>
+    <article class="glass phase"><span class="n">3</span><div><b>Knowledge Builder, part 2: draft and review</b><p>Drafts with their checks, expert review, markdown export, recurrence candidates.</p><p class="done">Done when: no draft has an invented code or personal data, and an expert finds most usable.</p></div></article>
+    <article class="glass phase"><span class="n">4</span><div><b>After these</b><p>Screens for the queues (the frontend owner), publishing to Confluence, writing notes back to ServiceNow and JIRA, optionally blocking a close.</p></div></article>
+  </div>
+</section>
+
+<section class="block">
+  <p class="kick"><i></i>Your call</p>
+  <h2>Decisions I need before Phase 1</h2>
+  <div class="glass tbl">
+    <table>
+      <thead><tr><th>#</th><th>Decision</th><th>Why it matters</th><th>My recommendation</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td><b>Connect ServiceNow to the pipeline</b></td><td>19 of the 34 closed tickets with notes are ServiceNow, and they sit in a separate table our agents do not read</td><td class="rec">Copy them into <code>tickets</code> at ingestion (also needed for Triage). Until then we build on JIRA and the case files</td></tr>
+        <tr><td>2</td><td><b>Agree the hand-off with Resolution's owner</b></td><td>Resolution must read what we save, and both of us need to read the KB articles</td><td class="rec">One shared KB reader module, and <code>resolved_cases</code> as the contract. Agree the fields before Phase 2</td></tr>
+        <tr><td>3</td><td><b>What "publish" means in version 1</b></td><td>No Confluence here, and <code>data/</code> is read-only</td><td class="rec">Status in the database plus a markdown export to a separate folder</td></tr>
+        <tr><td>4</td><td><b>Nudge or block at close</b></td><td>The plan says blocking is the client's choice</td><td class="rec">Nudge only. A setting, off by default</td></tr>
+        <tr><td>5</td><td><b>Thresholds</b></td><td>40 characters, pass at steps ≥ 1 and total ≥ 4 of 6, 3 closures in 30 days, draft after 1 unmatched case are all my guesses</td><td class="rec">Keep them provisional and in files. The support lead confirms</td></tr>
+        <tr><td>6</td><td><b>When to branch</b></td><td>We need the review model and call patterns from the open Triage pull request</td><td class="rec">Do Phase 0 now. Branch <code>feature/closure-quality</code> from <code>dev</code> once that pull request is merged</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="block">
+  <p class="kick"><i></i>Risks</p>
+  <h2>What could go wrong</h2>
+  <div class="grid three">
+    <article class="glass card"><div class="top"><span class="app red sm"><svg><use href="#i-triangle-alert"/></svg></span><h3>Real notes are messier</h3></div><p>Our test notes are written by us. Scores will look better than reality until the support lead labels real ones.</p></article>
+    <article class="glass card"><div class="top"><span class="app red sm"><svg><use href="#i-triangle-alert"/></svg></span><h3>A draft that sounds right but is wrong</h3></div><p>An expert must approve every draft. Code rejects any draft with a code, ID or command that is not in the source notes.</p></article>
+    <article class="glass card"><div class="top"><span class="app red sm"><svg><use href="#i-triangle-alert"/></svg></span><h3>Names in notes</h3></div><p>Masked on the way in and checked on the way out. A draft with any personal data is rejected.</p></article>
+    <article class="glass card"><div class="top"><span class="app red sm"><svg><use href="#i-triangle-alert"/></svg></span><h3>Closed tickets are skipped today</h3></div><p>Ingestion marks a ticket already closed on arrival as history and never processes it. We need a small change to pick up tickets resolved later, and a switch to score history.</p></article>
+    <article class="glass card"><div class="top"><span class="app red sm"><svg><use href="#i-triangle-alert"/></svg></span><h3>Two readers of the KB</h3></div><p>If Resolution and Knowledge Builder each parse the articles, they will drift. Decision 2 prevents it.</p></article>
+    <article class="glass card"><div class="top"><span class="app red sm"><svg><use href="#i-triangle-alert"/></svg></span><h3>Reviewers are not verified</h3></div><p>Reviewer names are typed in until there are logins, like the Triage review.</p></article>
+  </div>
+</section>
+
+<footer>
+  <span>Plan · Closure Quality (A4) and Knowledge Builder (A5) · November 2026</span>
+  <span>Status · Closure Quality built (branch feature/closure-quality) · Knowledge Builder not started</span>
+</footer>
+</main>
+</body>
+</html>

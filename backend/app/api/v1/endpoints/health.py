@@ -1,6 +1,7 @@
 """Health check and observability endpoints."""
 
 from fastapi import APIRouter
+
 from app.core.config import settings
 from app.schemas.common import HealthResponse
 

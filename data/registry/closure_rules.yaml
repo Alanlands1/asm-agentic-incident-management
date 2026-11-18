@@ -1,0 +1,34 @@
+# Closure Quality: are the close notes of a resolved ticket worth reading? PROVISIONAL: the support lead confirms these.
+# Editable here (baseline) or through the admin API (PUT /api/v1/admin/documents/closure_rules).
+# Rules can stop a note, never pass one: anything they do not stop is scored by the model, and the code decides.
+
+# Notes shorter than this (after trimming) -> needs_work
+min_length: 40
+
+# Notes that are only one of these (case and punctuation ignored, so N/A = n.a. = na) -> needs_work
+filler: [done, fixed, resolved, closed, completed, sorted, ok, "ok now", "working now", "works now", "now working",
+         "issue resolved", "problem resolved", "issue fixed", "closed as discussed", "as discussed", "see ticket",
+         "see above", "n/a", none, nil, "null", tbd, "no action", "no action required"]
+
+# Summary or notes matching any of these -> not_applicable (not scored)
+test_ticket:
+  - '\btest ticket\b'
+  - '^\W*test(ing)?\W*$'
+  - 'please ignore'
+
+# Notes whose words are at least this share already in the summary and description are a copy of the problem -> needs_work
+similar_to_description: 0.8
+
+# The score: cause, action and check are each worth 0 (none), 1 (vague) or 2 (specific), so 0..6.
+# A note passes when the action is at least min_action and the total at least min_total.
+pass: { min_action: 1, min_total: 4 }
+
+# A note that cites a knowledge-base article that exists ("Followed KB-BI-003") and says specifically what was done gets
+# credit for the cause: the article documents it. A vague action gets no credit. Set to false to score the cause on its own.
+kb_citation_is_cause: true
+
+# Asked of the engineer for every part that is not specific. Written once here; no model, no names.
+questions:
+  cause: What caused it? Say what failed or why.
+  action: What did you do to fix it? Name what was changed, run or restored.
+  check: How did you confirm it is fixed, or will stay fixed? A test, a sample, a result.

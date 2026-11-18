@@ -1,0 +1,23 @@
+# Storms: many people reporting the same issue at once. PROVISIONAL: thresholds come from a short session per
+# application with an engineer who supports it, walking through real past incidents.
+# Editable here (baseline) or through the admin API (PUT /api/v1/admin/documents/storms).
+#
+# Open tickets belong together when they are for the same application, opened within window_min of each other, and
+# share a known issue (an application rule or a failed batch job) or have very similar text. Tickets that match
+# a cross_app pattern also group across applications. A group becomes a storm at people_needed different reporters.
+
+default: { window_min: 30, people_needed: 5 }
+
+# Per application override, e.g.
+# applications:
+#   OrderHub: { window_min: 20, people_needed: 3 }
+applications: {}
+
+quiet_min: 30            # a storm closes after this long without a new ticket
+similar_text: 0.6        # share of words two tickets must have in common to count as the same issue
+
+cross_app:
+  login:                 # login problems on any application are compared with each other and with single sign-on
+    - '\b(can.?t|cannot|unable to|not able to) (log ?in|sign ?in)\b'
+    - '\b(login|sign[- ]in) (failed|loop|page)\b'
+    - '\bSSO\b'

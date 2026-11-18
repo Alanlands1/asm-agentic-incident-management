@@ -21,10 +21,9 @@ RUN groupadd -r appuser && useradd -r -g appuser appuser
 COPY --from=builder /install /usr/local
 COPY app /app/app
 
-# SQLite lives on a writable volume; source data (tickets, KB) is mounted read-only at /data
-RUN mkdir -p /app/var && chown appuser:appuser /app/var
-ENV DATABASE_URL=sqlite:////app/var/ams.db \
-    TICKETS_FILE=/data/tickets/ams_tickets.xlsx
+# DATABASE_URL comes from backend/.env; source data (tickets, KB, registry) is mounted read-only at /data
+ENV TICKETS_FILE=/data/tickets/ams_tickets.xlsx \
+    REGISTRY_DIR=/data/registry
 
 USER appuser
 

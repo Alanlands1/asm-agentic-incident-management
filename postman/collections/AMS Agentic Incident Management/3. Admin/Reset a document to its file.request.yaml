@@ -1,0 +1,6 @@
+$kind: http-request
+url: "{{baseUrl}}/admin/documents/data_quality_prompts"
+method: DELETE
+headers:
+  X-Admin-User: "{{adminUser}}"
+order: 6000

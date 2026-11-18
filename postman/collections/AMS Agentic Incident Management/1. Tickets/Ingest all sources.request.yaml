@@ -1,0 +1,5 @@
+$kind: http-request
+description: "Safe to re-run: upserts and keeps agent results."
+url: "{{baseUrl}}/ingest"
+method: POST
+order: 2000

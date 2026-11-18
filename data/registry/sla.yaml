@@ -1,0 +1,18 @@
+# SLA risk and the first message for open P1/P2 tickets. PROVISIONAL: the support lead confirms the targets.
+# P2 = 8 h is from the Triage plan; P1 = 4 h is an assumption. Hours are wall-clock (P1/P2 support is 24x7 in the KB).
+# Editable here (baseline) or through the admin API (PUT /api/v1/admin/documents/sla).
+
+priorities:
+  1: { target_hours: 4 }
+  2: { target_hours: 8 }
+
+watch_at: 0.5            # share of the target used -> "watch"
+breach_likely_at: 0.8    # -> "breach_likely"; at 1.0 or more -> "breached"
+
+first_message_minutes: 15     # a person should send the first message within this long of the ticket opening
+update_every_minutes: 30      # the "next update" time in the message
+
+# Written from the rulebook, never by a model, and never with a name: {application}, {what} (the rule's description),
+# {who} (how many are affected), {ticket_id}, {next_update} (HH:MM)
+first_message: |-
+  {application}: {what}. {who} Teams are investigating. Ref {ticket_id}. Next update {next_update}.

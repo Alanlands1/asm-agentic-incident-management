@@ -3,12 +3,18 @@ services:
     build: ./backend
     ports:
       - "8000:8000"
+    env_file: ./backend/.env     # DATABASE_URL (Supabase) lives here, never in git
     environment:
       ENVIRONMENT: development
       DEBUG: "true"
+      PHOENIX_COLLECTOR_ENDPOINT: http://phoenix:6006/v1/traces   # traces are sent only when PHOENIX_ENABLED=true in .env
+    depends_on:
+      - phoenix
     volumes:
       - ./data:/data:ro          # stand-in for ServiceNow / JIRA / Mailbox / Confluence
-      - backend-db:/app/var      # SQLite database
 
-volumes:
-  backend-db:
+  phoenix:
+    image: arizephoenix/phoenix:latest   # trace UI on 6006 (also OTLP/HTTP); 4317 is OTLP/gRPC
+    ports:
+      - "6006:6006"
+      - "4317:4317"

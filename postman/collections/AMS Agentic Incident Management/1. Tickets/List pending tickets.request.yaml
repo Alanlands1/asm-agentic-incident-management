@@ -1,0 +1,19 @@
+$kind: http-request
+url: "{{baseUrl}}/tickets?pipeline_status=pending&limit=50&offset=0"
+method: GET
+queryParams:
+  - key: pipeline_status
+    value: pending
+    description: historical | pending | awaiting_info | dq_passed | rejected | error
+  - key: source
+    value: ""
+    disabled: true
+    description: ServiceNow | JIRA | Mailbox
+  - key: application
+    value: ""
+    disabled: true
+  - key: limit
+    value: "50"
+  - key: offset
+    value: "0"
+order: 3000

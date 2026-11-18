@@ -1,0 +1,3 @@
+# Optional: local embeddings for the Resolution agent (python -m app.agents.resolution.ingest --embed).
+# google/embeddinggemma-300m is gated on Hugging Face: accept its license and log in (huggingface-cli login) first.
+sentence-transformers>=5.0.0

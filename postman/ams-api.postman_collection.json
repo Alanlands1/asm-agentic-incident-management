@@ -1,0 +1,141 @@
+{
+  "info": {
+    "name": "AMS Agentic Incident Management",
+    "description": "Local API. Start the backend first (uvicorn app.main:app --port 8000). Set adminKey in the collection variables to the ADMIN_API_KEY in backend/.env before using the Admin folder. Data Quality checks call the model when LLM_ENABLED=true: each one costs real tokens.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8000/api/v1" },
+    { "key": "ticketId", "value": "MBX-00004" },
+    { "key": "adminKey", "value": "" },
+    { "key": "adminUser", "value": "your-name" }
+  ],
+  "item": [
+    {
+      "name": "1. Tickets",
+      "item": [
+        {
+          "name": "Health",
+          "request": { "method": "GET", "url": "{{baseUrl}}/health" }
+        },
+        {
+          "name": "Ingest all sources",
+          "request": { "method": "POST", "url": "{{baseUrl}}/ingest", "description": "Safe to re-run: upserts and keeps agent results." }
+        },
+        {
+          "name": "List pending tickets",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/tickets?pipeline_status=pending&limit=50&offset=0",
+              "host": ["{{baseUrl}}"],
+              "path": ["tickets"],
+              "query": [
+                { "key": "pipeline_status", "value": "pending", "description": "historical | pending | awaiting_info | dq_passed | rejected | error" },
+                { "key": "source", "value": "", "disabled": true, "description": "ServiceNow | JIRA | Mailbox" },
+                { "key": "application", "value": "", "disabled": true },
+                { "key": "limit", "value": "50" },
+                { "key": "offset", "value": "0" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get one ticket (with agent runs)",
+          "request": { "method": "GET", "url": "{{baseUrl}}/tickets/{{ticketId}}" }
+        },
+        {
+          "name": "Reporter replies",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/tickets/{{ticketId}}/comments",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"author_email\": \"sunita.more@contoso.com\",\n  \"body\": \"It is PayrollPro: my payslip PDF fails with PDF-GEN-500 since Monday morning. Only me so far.\"\n}"
+            },
+            "description": "A reply from the reporter sends an awaiting_info ticket back to pending, ready for another check."
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Data Quality",
+      "item": [
+        {
+          "name": "Check one ticket",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/data-quality/tickets/{{ticketId}}/check",
+            "description": "Rules first; the model only when the rules cannot decide. 404 unknown ticket, 409 not pending, 502/503 model problem (ticket stays pending)."
+          }
+        },
+        {
+          "name": "Run all pending tickets",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/data-quality/run",
+            "description": "One model call per ticket the rules leave undecided. Unchanged tickets are skipped on re-runs."
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Admin",
+      "auth": {
+        "type": "apikey",
+        "apikey": [
+          { "key": "key", "value": "X-Admin-Key", "type": "string" },
+          { "key": "value", "value": "{{adminKey}}", "type": "string" },
+          { "key": "in", "value": "header", "type": "string" }
+        ]
+      },
+      "item": [
+        {
+          "name": "List settings",
+          "request": { "method": "GET", "url": "{{baseUrl}}/admin/settings" }
+        },
+        {
+          "name": "Change a setting (switch model off)",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/admin/settings/LLM_ENABLED",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Admin-User", "value": "{{adminUser}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"value\": false\n}" }
+          }
+        },
+        {
+          "name": "Reset a setting to .env",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/admin/settings/LLM_ENABLED",
+            "header": [{ "key": "X-Admin-User", "value": "{{adminUser}}" }]
+          }
+        },
+        {
+          "name": "List documents",
+          "request": { "method": "GET", "url": "{{baseUrl}}/admin/documents" }
+        },
+        {
+          "name": "Get the Data Quality prompt",
+          "request": { "method": "GET", "url": "{{baseUrl}}/admin/documents/data_quality_prompts", "description": "Other names: data_quality_rules, pii, apps. To change one, GET it, edit, and PUT {\"document\": <the whole document>}." }
+        },
+        {
+          "name": "Reset a document to its file",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/admin/documents/data_quality_prompts",
+            "header": [{ "key": "X-Admin-User", "value": "{{adminUser}}" }]
+          }
+        },
+        {
+          "name": "Change history",
+          "request": { "method": "GET", "url": "{{baseUrl}}/admin/changes?limit=50" }
+        }
+      ]
+    }
+  ]
+}

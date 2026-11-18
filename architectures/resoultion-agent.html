@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IT Ticket Resolution Agent Architecture</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    colors: {
+                        primary: { 50: '#eff6ff', 100: '#dbeafe', 500: '#3b82f6', 600: '#2563eb', 900: '#1e3a8a' },
+                        accent: { 500: '#10b981', 600: '#059669' }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; color: #0f172a; }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        
+        .nav-link.active {
+            background-color: #eff6ff;
+            color: #2563eb;
+            border-right: 3px solid #2563eb;
+            font-weight: 600;
+        }
+        
+        .accordion-content {
+            transition: max-height 0.3s ease-in-out, opacity 0.3s ease-in-out;
+            max-height: 0;
+            opacity: 0;
+            overflow: hidden;
+        }
+        .accordion-content.open {
+            max-height: 500px;
+            opacity: 1;
+        }
+        
+        .tab-content { display: none; }
+        .tab-content.active { display: block; animation: fadeIn 0.4s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body class="flex flex-col md:flex-row min-h-screen">
+
+    <!-- Sidebar Navigation -->
+    <aside class="w-full md:w-72 bg-white border-r border-slate-200 fixed md:h-screen z-20 top-0 left-0 overflow-y-auto hidden md:block shadow-sm">
+        <div class="p-6">
+            <div class="flex items-center gap-3 mb-8">
+                <div class="w-10 h-10 rounded-lg bg-primary-600 flex items-center justify-center text-white font-bold text-xl shadow-lg">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+                </div>
+                <div>
+                    <h1 class="font-bold text-slate-800 leading-tight">Agentic RAG</h1>
+                    <p class="text-xs text-slate-500">Architecture Doc</p>
+                </div>
+            </div>
+            
+            <nav class="space-y-1">
+                <a href="#summary" class="nav-link block px-4 py-2.5 rounded-l-lg text-sm text-slate-600 hover:bg-slate-50 transition-colors active">Executive Summary</a>
+                <a href="#phase1" class="nav-link block px-4 py-2.5 rounded-l-lg text-sm text-slate-600 hover:bg-slate-50 transition-colors">1. Data Ingestion</a>
+                <a href="#phase2" class="nav-link block px-4 py-2.5 rounded-l-lg text-sm text-slate-600 hover:bg-slate-50 transition-colors">2. Query Transformation</a>
+                <a href="#phase3" class="nav-link block px-4 py-2.5 rounded-l-lg text-sm text-slate-600 hover:bg-slate-50 transition-colors">3. Retrieval Pipeline</a>
+                <a href="#phase4" class="nav-link block px-4 py-2.5 rounded-l-lg text-sm text-slate-600 hover:bg-slate-50 transition-colors">4. ReAct Orchestrator</a>
+                <a href="#phase5" class="nav-link block px-4 py-2.5 rounded-l-lg text-sm text-slate-600 hover:bg-slate-50 transition-colors">5. Final Output</a>
+            </nav>
+        </div>
+    </aside>
+
+    <!-- Mobile Header -->
+    <div class="md:hidden bg-white border-b border-slate-200 p-4 sticky top-0 z-20 flex justify-between items-center shadow-sm">
+        <h1 class="font-bold text-slate-800">Agentic RAG Architecture</h1>
+    </div>
+
+    <!-- Main Content -->
+    <main class="flex-1 md:ml-72 p-6 md:p-12 lg:px-24 xl:px-32 max-w-6xl">
+        
+        <!-- Executive Summary -->
+        <section id="summary" class="scroll-mt-24 mb-20 section-block">
+            <h2 class="text-3xl font-bold text-slate-900 mb-6 tracking-tight">Executive Summary</h2>
+            <div class="bg-white p-8 rounded-2xl shadow-sm border border-slate-100 leading-relaxed text-slate-600">
+                <p class="mb-4 text-lg">
+                    This document outlines the architecture for an automated <strong>IT Ticket Resolution Agent</strong>. The system utilizes a Multi-Source Retrieval-Augmented Generation (RAG) framework combined with a ReAct (Reasoning + Acting) agentic workflow.
+                </p>
+                <p class="text-lg">
+                    It synthesizes official ground-truth documentation with historical real-world workarounds to provide highly accurate, step-by-step ticket resolutions.
+                </p>
+            </div>
+        </section>
+
+        <!-- Phase 1: Data Ingestion -->
+        <section id="phase1" class="scroll-mt-24 mb-20 section-block">
+            <h2 class="text-3xl font-bold text-slate-900 mb-2 tracking-tight">Phase 1: Data Ingestion & Context</h2>
+            <p class="text-slate-500 mb-8">The system relies on two distinct data sources, requiring different processing pipelines before indexing.</p>
+            
+            <!-- Interactive Tabs -->
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden mb-8">
+                <div class="flex border-b border-slate-100">
+                    <button onclick="switchTab('tab-conf')" id="btn-conf" class="flex-1 py-4 px-6 text-center font-semibold text-primary-600 border-b-2 border-primary-600 bg-primary-50 transition-colors focus:outline-none">Confluence (Ground Truth)</button>
+                    <button onclick="switchTab('tab-tickets')" id="btn-tickets" class="flex-1 py-4 px-6 text-center font-medium text-slate-500 border-b-2 border-transparent hover:text-slate-700 hover:bg-slate-50 transition-colors focus:outline-none">Historical Tickets (Context)</button>
+                </div>
+                
+                <div class="p-8">
+                    <!-- Confluence Tab -->
+                    <div id="tab-conf" class="tab-content active">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div class="p-5 rounded-xl bg-slate-50 border border-slate-100">
+                                <h4 class="font-bold text-slate-800 mb-2 flex items-center gap-2">
+                                    <svg class="w-5 h-5 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                    Contextual Retrieval
+                                </h4>
+                                <p class="text-sm text-slate-600">Standard chunking destroys document context. Before embedding, a lightweight LLM reads the entire page and generates a global summary prepended to every chunk.</p>
+                            </div>
+                            <div class="p-5 rounded-xl bg-slate-50 border border-slate-100">
+                                <h4 class="font-bold text-slate-800 mb-2 flex items-center gap-2">
+                                    <svg class="w-5 h-5 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path></svg>
+                                    Structural Chunking
+                                </h4>
+                                <p class="text-sm text-slate-600">Pages are split by structural headers (H1, H2, H3) rather than arbitrary character limits to keep complete thoughts intact.</p>
+                            </div>
+                            <div class="p-5 rounded-xl bg-slate-50 border border-slate-100 md:col-span-2 flex items-center justify-between">
+                                <div>
+                                    <h4 class="font-bold text-slate-800 mb-1">Metadata Injection & Authority</h4>
+                                    <p class="text-sm text-slate-600">Page breadcrumbs, author, and tags are attached. Marked as <span class="px-2 py-1 bg-primary-100 text-primary-700 rounded text-xs font-bold ml-1">Primary Authority</span>.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Tickets Tab -->
+                    <div id="tab-tickets" class="tab-content">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div class="p-5 rounded-xl bg-slate-50 border border-slate-100">
+                                <h4 class="font-bold text-slate-800 mb-2 flex items-center gap-2">
+                                    <svg class="w-5 h-5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg>
+                                    Entity Extraction
+                                </h4>
+                                <p class="text-sm text-slate-600">Tickets are strictly parsed into predefined fields: Issue Description, Error Logs, and Final Resolution. Arbitrary chunking is disabled.</p>
+                            </div>
+                            <div class="p-5 rounded-xl bg-slate-50 border border-slate-100">
+                                <h4 class="font-bold text-slate-800 mb-2 flex items-center gap-2">
+                                    <svg class="w-5 h-5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path></svg>
+                                    Filtering & Authority
+                                </h4>
+                                <p class="text-sm text-slate-600">Only "Closed/Resolved" tickets are ingested to ensure accuracy. Marked as <span class="px-2 py-1 bg-amber-100 text-amber-700 rounded text-xs font-bold ml-1">Secondary Authority</span>.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-gradient-to-r from-slate-800 to-slate-900 rounded-2xl p-8 text-white shadow-lg relative overflow-hidden">
+                <div class="absolute top-0 right-0 p-8 opacity-10">
+                    <svg class="w-32 h-32" fill="currentColor" viewBox="0 0 24 24"><path d="M4 4h16v16H4V4zm2 2v12h12V6H6zm2 2h8v2H8V8zm0 4h8v2H8v-2z"></path></svg>
+                </div>
+                <h3 class="text-xl font-bold mb-4 relative z-10">Dual-Indexing Strategy</h3>
+                <p class="text-slate-300 mb-6 relative z-10 max-w-2xl">Every document passes through a dual-indexing pipeline to support hybrid search mechanisms.</p>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 relative z-10">
+                    <div class="bg-white/10 border border-white/20 p-4 rounded-lg backdrop-blur-sm">
+                        <div class="font-semibold text-primary-300 mb-1">Dense Representation</div>
+                        <div class="text-sm text-slate-300">Text embedded into vectors to capture semantic, conceptual meaning.</div>
+                    </div>
+                    <div class="bg-white/10 border border-white/20 p-4 rounded-lg backdrop-blur-sm">
+                        <div class="font-semibold text-accent-400 mb-1">Sparse Representation</div>
+                        <div class="text-sm text-slate-300">Tokenized into sparse matrices (BM25) to guarantee exact-match lookups.</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Phase 2: Query Transformation -->
+        <section id="phase2" class="scroll-mt-24 mb-20 section-block">
+            <h2 class="text-3xl font-bold text-slate-900 mb-2 tracking-tight">Phase 2: Query Transformation</h2>
+            <p class="text-slate-500 mb-8 max-w-3xl">Users typically write tickets describing <i>symptoms</i>, while documentation contains <i>solutions</i>. The orchestrator translates raw tickets into optimized search parameters.</p>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- Multi-Query Card -->
+                <div class="group bg-white p-8 rounded-2xl shadow-sm border border-slate-200 hover:border-purple-300 hover:shadow-md transition-all">
+                    <div class="w-12 h-12 bg-purple-100 text-purple-600 rounded-lg flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                    </div>
+                    <h3 class="text-xl font-bold text-slate-800 mb-3">Multi-Query Breakdown</h3>
+                    <p class="text-slate-600 leading-relaxed">The raw ticket is passed to an LLM which decomposes it into 3 to 5 highly targeted search queries (e.g., separating the specific error code from the overarching system failure). These run in parallel to ensure robust coverage.</p>
+                </div>
+
+                <!-- HyDE Card -->
+                <div class="group bg-white p-8 rounded-2xl shadow-sm border border-slate-200 hover:border-pink-300 hover:shadow-md transition-all">
+                    <div class="w-12 h-12 bg-pink-100 text-pink-600 rounded-lg flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path></svg>
+                    </div>
+                    <h3 class="text-xl font-bold text-slate-800 mb-3">HyDE Generation</h3>
+                    <p class="text-slate-600 leading-relaxed">Hypothetical Document Embeddings. The LLM writes a "fake resolution note" for the user's issue. The retrieval engine searches using this hypothetical answer—drastically improving semantic match rates.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Phase 3: Retrieval Pipeline -->
+        <section id="phase3" class="scroll-mt-24 mb-20 section-block">
+            <h2 class="text-3xl font-bold text-slate-900 mb-2 tracking-tight">Phase 3: Retrieval Pipeline</h2>
+            <p class="text-slate-500 mb-8">The pipeline executes a sophisticated three-stage search to retrieve the most accurate chunks.</p>
+            
+            <div class="space-y-4">
+                <!-- Accordion 1 -->
+                <div class="border border-slate-200 rounded-xl bg-white overflow-hidden">
+                    <button onclick="toggleAccordion('acc1')" class="w-full px-6 py-4 flex justify-between items-center bg-slate-50 hover:bg-slate-100 transition-colors focus:outline-none">
+                        <span class="font-bold text-slate-800 flex items-center gap-3">
+                            <span class="flex items-center justify-center w-6 h-6 rounded-full bg-primary-100 text-primary-700 text-xs">1</span> 
+                            Pre-Filtering
+                        </span>
+                        <svg id="icon-acc1" class="w-5 h-5 text-slate-400 transition-transform duration-300 transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                    </button>
+                    <div id="acc1" class="accordion-content">
+                        <div class="px-6 pb-5 pt-2 text-slate-600 border-t border-slate-100">
+                            Metadata rules are applied to restrict searches (e.g., limiting the search to the specific application's Confluence space based on the ticket's tags). This acts as a hard boundary to reduce noise.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Accordion 2 -->
+                <div class="border border-slate-200 rounded-xl bg-white overflow-hidden">
+                    <button onclick="toggleAccordion('acc2')" class="w-full px-6 py-4 flex justify-between items-center bg-slate-50 hover:bg-slate-100 transition-colors focus:outline-none">
+                        <span class="font-bold text-slate-800 flex items-center gap-3">
+                            <span class="flex items-center justify-center w-6 h-6 rounded-full bg-primary-100 text-primary-700 text-xs">2</span> 
+                            Parallel Hybrid Search
+                        </span>
+                        <svg id="icon-acc2" class="w-5 h-5 text-slate-400 transition-transform duration-300 transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                    </button>
+                    <div id="acc2" class="accordion-content">
+                        <div class="px-6 pb-5 pt-2 text-slate-600 border-t border-slate-100">
+                            Semantic (Vector) and Exact-Keyword (BM25) searches are executed simultaneously across both data sources (Confluence and Historical Tickets).
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Accordion 3 -->
+                <div class="border border-slate-200 rounded-xl bg-white overflow-hidden">
+                    <button onclick="toggleAccordion('acc3')" class="w-full px-6 py-4 flex justify-between items-center bg-slate-50 hover:bg-slate-100 transition-colors focus:outline-none">
+                        <span class="font-bold text-slate-800 flex items-center gap-3">
+                            <span class="flex items-center justify-center w-6 h-6 rounded-full bg-primary-100 text-primary-700 text-xs">3</span> 
+                            Reciprocal Rank Fusion (RRF)
+                        </span>
+                        <svg id="icon-acc3" class="w-5 h-5 text-slate-400 transition-transform duration-300 transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                    </button>
+                    <div id="acc3" class="accordion-content">
+                        <div class="px-6 pb-5 pt-2 text-slate-600 border-t border-slate-100">
+                            RRF mathematically combines the distinct scoring mechanisms of Vector and BM25 searches based on their rank order, ensuring documents that perform well in <em>both</em> searches rise to the top.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Accordion 4 -->
+                <div class="border border-slate-200 rounded-xl bg-white overflow-hidden">
+                    <button onclick="toggleAccordion('acc4')" class="w-full px-6 py-4 flex justify-between items-center bg-slate-50 hover:bg-slate-100 transition-colors focus:outline-none">
+                        <span class="font-bold text-slate-800 flex items-center gap-3">
+                            <span class="flex items-center justify-center w-6 h-6 rounded-full bg-primary-100 text-primary-700 text-xs">4</span> 
+                            Cross-Encoder Reranking
+                        </span>
+                        <svg id="icon-acc4" class="w-5 h-5 text-slate-400 transition-transform duration-300 transform rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                    </button>
+                    <div id="acc4" class="accordion-content open">
+                        <div class="px-6 pb-5 pt-2 text-slate-600 border-t border-slate-100 bg-blue-50/30">
+                            The top 20 fused documents are passed through a neural Cross-Encoder along with the original query. The Cross-Encoder calculates exact contextual relevance and truncates the list, passing only the absolute top 3-5 chunks to the final Agent.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Phase 4: ReAct Agent -->
+        <section id="phase4" class="scroll-mt-24 mb-20 section-block">
+            <h2 class="text-3xl font-bold text-slate-900 mb-2 tracking-tight">Phase 4: ReAct Orchestrator</h2>
+            <p class="text-slate-500 mb-8 max-w-2xl">The system uses a ReAct (Reasoning + Acting) pattern, granting the LLM autonomy to investigate rather than simply dumping documents into a prompt.</p>
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                <!-- ReAct Loop Diagram -->
+                <div class="lg:col-span-5 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-center relative">
+                    <div class="flex flex-col items-center space-y-4">
+                        <div class="w-full py-3 px-4 bg-indigo-50 border border-indigo-100 text-indigo-700 rounded-lg text-center font-semibold">1. Thought</div>
+                        <svg class="w-6 h-6 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path></svg>
+                        <div class="w-full py-3 px-4 bg-emerald-50 border border-emerald-100 text-emerald-700 rounded-lg text-center font-semibold">2. Action</div>
+                        <svg class="w-6 h-6 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path></svg>
+                        <div class="w-full py-3 px-4 bg-amber-50 border border-amber-100 text-amber-700 rounded-lg text-center font-semibold">3. Observation</div>
+                    </div>
+                    <!-- Loop Arrow -->
+                    <div class="absolute right-4 top-1/2 -translate-y-1/2 h-3/4 w-12 border-t-2 border-r-2 border-b-2 border-dashed border-slate-300 rounded-r-xl">
+                        <div class="absolute -top-1.5 -left-2 text-slate-300 text-xs">◀</div>
+                    </div>
+                </div>
+
+                <!-- Rules -->
+                <div class="lg:col-span-7 space-y-4">
+                    <h3 class="text-lg font-bold text-slate-800 mb-4 border-b border-slate-200 pb-2">Strict Conflict Resolution Rules</h3>
+                    
+                    <div class="flex items-start gap-4 bg-white p-4 rounded-xl shadow-sm border border-slate-100">
+                        <div class="flex-shrink-0 w-8 h-8 rounded-full bg-slate-800 text-white flex items-center justify-center font-bold text-sm">R1</div>
+                        <div>
+                            <h4 class="font-bold text-slate-800">The Official Standard</h4>
+                            <p class="text-sm text-slate-600 mt-1">Confluence is the official standard. If Confluence provides a solution, it must be the primary recommendation.</p>
+                        </div>
+                    </div>
+
+                    <div class="flex items-start gap-4 bg-white p-4 rounded-xl shadow-sm border border-slate-100">
+                        <div class="flex-shrink-0 w-8 h-8 rounded-full bg-slate-800 text-white flex items-center justify-center font-bold text-sm">R2</div>
+                        <div>
+                            <h4 class="font-bold text-slate-800">Conflict Handling</h4>
+                            <p class="text-sm text-slate-600 mt-1">If Confluence and a Ticket conflict, explicitly state the discrepancy, recommend the Confluence solution as standard, but provide the Ticket as an alternative workaround.</p>
+                        </div>
+                    </div>
+
+                    <div class="flex items-start gap-4 bg-white p-4 rounded-xl shadow-sm border border-slate-100">
+                        <div class="flex-shrink-0 w-8 h-8 rounded-full bg-slate-800 text-white flex items-center justify-center font-bold text-sm">R3</div>
+                        <div>
+                            <h4 class="font-bold text-slate-800">Missing Documentation</h4>
+                            <p class="text-sm text-slate-600 mt-1">If Confluence lacks the answer, provide the Historical Ticket's resolution, explicitly citing it as a "past engineering workaround" along with the specific Ticket ID.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Phase 5: Final Output -->
+        <section id="phase5" class="scroll-mt-24 mb-32 section-block">
+            <h2 class="text-3xl font-bold text-slate-900 mb-6 tracking-tight">Phase 5: Final Output Generation</h2>
+            
+            <div class="bg-gradient-to-br from-green-50 to-emerald-50 border border-green-100 p-8 rounded-2xl shadow-sm relative overflow-hidden">
+                <div class="absolute -right-10 -bottom-10 opacity-10">
+                    <svg class="w-64 h-64 text-green-600" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg>
+                </div>
+                
+                <p class="text-slate-700 font-medium mb-6 relative z-10 text-lg">The agent produces a structured, user-facing response containing:</p>
+                
+                <ul class="space-y-4 relative z-10">
+                    <li class="flex items-center gap-4 bg-white p-4 rounded-lg border border-green-100 shadow-sm">
+                        <div class="text-green-500">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        </div>
+                        <div>
+                            <strong class="text-slate-800">Root Cause Analysis:</strong>
+                            <span class="text-slate-600 ml-1">A brief explanation based on logs mapped to the retrieved context.</span>
+                        </div>
+                    </li>
+                    <li class="flex items-center gap-4 bg-white p-4 rounded-lg border border-green-100 shadow-sm">
+                        <div class="text-green-500">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        </div>
+                        <div>
+                            <strong class="text-slate-800">Resolution Steps:</strong>
+                            <span class="text-slate-600 ml-1">Clear, step-by-step actionable instructions.</span>
+                        </div>
+                    </li>
+                    <li class="flex items-center gap-4 bg-white p-4 rounded-lg border border-green-100 shadow-sm">
+                        <div class="text-green-500">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        </div>
+                        <div>
+                            <strong class="text-slate-800">References:</strong>
+                            <span class="text-slate-600 ml-1">Direct links to the Confluence SOPs and Historical Ticket IDs utilized.</span>
+                        </div>
+                    </li>
+                </ul>
+            </div>
+        </section>
+        
+    </main>
+
+    <script>
+        // Tab Switching Logic (Phase 1)
+        function switchTab(tabId) {
+            // Hide all contents
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            // Reset buttons
+            document.getElementById('btn-conf').className = "flex-1 py-4 px-6 text-center font-medium text-slate-500 border-b-2 border-transparent hover:text-slate-700 hover:bg-slate-50 transition-colors focus:outline-none";
+            document.getElementById('btn-tickets').className = "flex-1 py-4 px-6 text-center font-medium text-slate-500 border-b-2 border-transparent hover:text-slate-700 hover:bg-slate-50 transition-colors focus:outline-none";
+            
+            // Show selected
+            document.getElementById(tabId).classList.add('active');
+            
+            // Highlight active button
+            if(tabId === 'tab-conf') {
+                document.getElementById('btn-conf').className = "flex-1 py-4 px-6 text-center font-semibold text-primary-600 border-b-2 border-primary-600 bg-primary-50 transition-colors focus:outline-none";
+            } else {
+                document.getElementById('btn-tickets').className = "flex-1 py-4 px-6 text-center font-semibold text-primary-600 border-b-2 border-primary-600 bg-primary-50 transition-colors focus:outline-none";
+            }
+        }
+
+        // Accordion Toggle (Phase 3)
+        function toggleAccordion(id) {
+            const content = document.getElementById(id);
+            const icon = document.getElementById('icon-' + id);
+            
+            if(content.classList.contains('open')) {
+                content.classList.remove('open');
+                icon.classList.remove('rotate-180');
+            } else {
+                // Optional: Close others
+                // document.querySelectorAll('.accordion-content').forEach(el => el.classList.remove('open'));
+                // document.querySelectorAll('[id^="icon-acc"]').forEach(el => el.classList.remove('rotate-180'));
+                
+                content.classList.add('open');
+                icon.classList.add('rotate-180');
+            }
+        }
+
+        // Scrollspy for Sidebar
+        document.addEventListener('DOMContentLoaded', function() {
+            const sections = document.querySelectorAll('.section-block');
+            const navLinks = document.querySelectorAll('.nav-link');
+
+            const observerOptions = {
+                root: null,
+                rootMargin: '-20% 0px -60% 0px',
+                threshold: 0
+            };
+
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        const id = entry.target.getAttribute('id');
+                        navLinks.forEach(link => {
+                            link.classList.remove('active', 'bg-primary-50', 'text-primary-600', 'border-primary-600', 'font-semibold');
+                            link.classList.add('text-slate-600');
+                            link.style.borderRight = "none";
+                            link.style.backgroundColor = "transparent";
+                            
+                            if (link.getAttribute('href') === `#${id}`) {
+                                link.classList.add('active');
+                                link.style.backgroundColor = "#eff6ff";
+                                link.style.color = "#2563eb";
+                                link.style.borderRight = "3px solid #2563eb";
+                                link.style.fontWeight = "600";
+                            }
+                        });
+                    }
+                });
+            }, observerOptions);
+
+            sections.forEach(section => {
+                observer.observe(section);
+            });
+        });
+    </script>
+</body>
+</html>
