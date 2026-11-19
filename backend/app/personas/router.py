@@ -69,7 +69,8 @@ async def board(
 
 class ActivityItem(BaseModel):
     at: datetime
-    kind: str  # data_quality, triage, triage_rerun, summary_sent, sla_warning, first_message, review, sync_failed
+    # data_quality, triage, triage_rerun, summary_sent, command_answered, sla_warning, first_message, review, sync_failed
+    kind: str
     ticket_ids: list[str]
     actor: str | None = None  # who did it; None when the system did
     action: str | None = None  # review: accepted, edited or rejected

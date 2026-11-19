@@ -17,6 +17,7 @@ type ResetResult = {
   jira_issues: number;
   jira_comments_deleted: number;
   jira_moved_back: number;
+  jira_priorities_restored: number;
   jira_errors: string[];
 };
 
@@ -58,7 +59,7 @@ export function ResetDemoButton() {
             <DialogTitle>{done ? "Reset done" : "Reset every open ticket?"}</DialogTitle>
             <DialogDescription>
               {done
-                ? `${done.tickets} open tickets start again with fresh SLA clocks. In Jira: ${done.jira_issues} issues cleaned, ${done.jira_comments_deleted} agent comments deleted, ${done.jira_moved_back} moved back. The agents are running again now.`
+                ? `${done.tickets} open tickets start again with fresh SLA clocks. In Jira: ${done.jira_issues} issues cleaned, ${done.jira_comments_deleted} agent comments deleted, ${done.jira_moved_back} moved back, ${done.jira_priorities_restored} priorities restored. The agents are running again now.`
                 : "Every SLA clock restarts from now, and the agents' results, reviews and ratings on open tickets are cleared. On the open Jira issues the agents' comments and ams-* labels are deleted and each issue goes back to the status it was created in. This can't be undone in Jira. Closed tickets and people's own comments are kept."}
             </DialogDescription>
           </DialogHeader>

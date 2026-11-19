@@ -71,7 +71,7 @@ const MISSING_WORDS: Record<string, string> = {
 const GROUPS: { key: string; label: string; has: (t: Ticket) => boolean; look: string }[] = [
   { key: "p1", label: "P1", has: (t) => t.priority === 1, look: "border-primary bg-primary text-primary-foreground hover:bg-primary-hover" },
   { key: "p2", label: "P2", has: (t) => t.priority === 2, look: "border-p2 bg-p2 text-p2-foreground hover:bg-p2/85" },
-  { key: "p3", label: "P3 to P4", has: (t) => (t.priority ?? 0) >= 3, look: "border-p3 bg-p3 text-white hover:bg-p3/85" },
+  { key: "p3", label: "P3 to P5", has: (t) => (t.priority ?? 0) >= 3, look: "border-p3 bg-p3 text-white hover:bg-p3/85" },
   { key: "none", label: "Not triaged yet", has: (t) => t.priority === null, look: "" },
 ];
 const and = new Intl.ListFormat("en-GB", { type: "conjunction" });
@@ -231,7 +231,10 @@ function sentence(a: Activity): string | null {
             ? `Triage ran again on ${on} and kept P${a.priority}.`
             : `Triage ran again on ${on} and changed P${a.previous_priority} to P${a.priority}.`;
     case "summary_sent":
-      return a.actor ? `${a.actor} sent the agents' summary for ${on} to Jira.` : `The agents' summary for ${on} was sent to Jira.`;
+      // the agents' own comments are stored under AGENTS_BOT; a person who posts the summary is named
+      return a.actor && a.actor !== "AMS agents" ? `${a.actor} sent the agents' summary for ${on} to Jira.` : `The agents commented on ${on} in Jira.`;
+    case "command_answered":
+      return `Answered an "ams" command in Jira on ${on}.`;
     case "sla_warning":
       return `SLA warning posted in Jira on ${on}.`;
     case "first_message":

@@ -1,6 +1,7 @@
 """Run the Closure Quality agent over resolved tickets and record how good each set of close notes is."""
 
 import logging
+import re
 from collections import Counter
 from dataclasses import asdict, dataclass, field
 
@@ -34,19 +35,40 @@ def replies_text(ticket: Ticket) -> str:
     return "\n\n".join(c.body for c in ticket.comments)
 
 
+# "followed the suggested fix", "applied the agent's steps", "as recommended": the engineer adopts the Resolution answer
+ADOPTS = re.compile(r"\b(follow(ed|ing)?|appl(ied|y)|did|used|per|as)\b.{0,40}?"
+                    r"\b(suggest(ed|ion)?|agent'?s?|recommend(ed|ation)?|proposed)\b", re.IGNORECASE)
+
+
+def notes_for(ticket: Ticket) -> tuple[str, bool]:
+    """The close notes to judge, and whether they adopt the Resolution agent's fix. Notes that say the engineer followed
+    the suggested fix take its cause and steps as their own; how the fix was confirmed must still be in their words."""
+    notes = (ticket.resolution_notes or "").strip()
+    fix = last_run(ticket, "resolution")
+    if not notes or fix is None or fix.verdict != "resolved" or not ADOPTS.search(notes):
+        return notes, False
+    o = fix.output
+    lines = ["", "Suggested fix the engineer followed:",
+             *([f"Cause: {o['root_cause']}"] if o.get("root_cause") else []),
+             *(f"Step {n}: {step}" for n, step in enumerate(o.get("steps", []), 1)),
+             *([f"Runbook: {', '.join(o['references'])}"] if o.get("references") else [])]
+    return "\n".join([notes, *lines]), True
+
+
 def _input_hash(ticket: Ticket) -> str:
     """What the check saw: a change to the notes, the rules, or the model and its prompt checks the ticket again."""
     stages = f"{settings.LLM_MODEL}|{closure_spec().prompt_version}" if settings.LLM_ENABLED else "rules"
-    return fingerprint(ticket.resolution_notes, ticket.summary, ticket.description, replies_text(ticket),
+    return fingerprint(notes_for(ticket)[0], ticket.summary, ticket.description, replies_text(ticket),
                        get_config().version, stages)
 
 
 def judge(ticket: Ticket, use_model: bool = True) -> tuple[Verdict, dict, ModelError | None]:
     """Rules first; the model only for notes the rules cannot stop, and only when LLM_ENABLED.
     Returns the verdict, what to record, and the model error if there was one. The ticket is not changed."""
-    config, notes = get_config(), (ticket.resolution_notes or "").strip()
+    config, (notes, adopted) = get_config(), notes_for(ticket)
     outcome = evaluate(notes, ticket.summary, ticket.description)
     output = {"stage": "rules", "rules_version": config.version, "rule": outcome.rule, "reason": outcome.reason,
+              "adopted_fix": adopted,
               "ai": "not_needed", "score": None, "levels": None, "quotes": None, "dropped_quotes": [], "kb_cited": [],
               "questions": [], "draft_notes": None, "draft_invented": []}
     if outcome.verdict == Verdict.NEEDS_WORK:  # the rules are sure: every part is missing
@@ -64,10 +86,19 @@ def judge(ticket: Ticket, use_model: bool = True) -> tuple[Verdict, dict, ModelE
         return Verdict.UNCERTAIN, output, exc
 
     levels, quotes, dropped = verified(facts, notes)
+    if adopted:  # the followed fix brings a specific cause and steps; only the engineer's own words can show the check
+        fix = last_run(ticket, "resolution").output
+        if fix.get("root_cause"):
+            levels["cause"], quotes["cause"] = 2, fix["root_cause"]
+        if fix.get("steps"):
+            levels["action"], quotes["action"] = 2, fix["steps"][0]
+        own_levels, own_quotes, _ = verified(facts, (ticket.resolution_notes or "").strip())
+        levels["check"], quotes["check"] = own_levels["check"], own_quotes["check"]
     cited = cited_articles(notes) if config.kb_citation_is_cause else []
     if cited and levels["action"] == 2 and levels["cause"] < 2:  # the article documents the cause
         levels["cause"], quotes["cause"] = 2, cited[0]
     total, passed = score(levels, config)
+    passed = passed and not (adopted and levels["check"] == 0)  # "I followed it" alone does not prove the fix worked
     source = f"{ticket.summary}\n{ticket.description}\n{replies_text(ticket)}\n{notes}"
     draft = None if passed else facts.draft_notes
     made_up = invented(draft, source) if draft else []

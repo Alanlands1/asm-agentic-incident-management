@@ -18,7 +18,7 @@ from app.models.knowledge import ProblemCandidate, ResolvedCase
 from app.models.ticket import AgentRun, Review, Ticket
 from app.privacy.masking import Masker
 from app.services.closure.run import AGENT as CLOSURE_AGENT
-from app.services.closure.run import RESOLVED
+from app.services.closure.run import RESOLVED, notes_for
 from app.services.data_quality import OutageBreaker, fingerprint, last_run
 from app.services.knowledge.drafts import draft_for_gap
 from app.services.knowledge.problems import detect_problems
@@ -88,7 +88,7 @@ def _passed(db: Session, tickets: list[Ticket]) -> dict[str, tuple[str, AgentRun
         if run is None:
             continue
         if run.verdict == ClosureVerdict.GOOD:
-            passed[t.id] = ((t.resolution_notes or "").strip(), run)
+            passed[t.id] = (notes_for(t)[0], run)  # with the suggested fix when the engineer followed it
         elif run.id in decisions:
             passed[t.id] = (decisions[run.id].final_text.strip(), run)
     return passed
@@ -98,7 +98,7 @@ def _save(db: Session, ticket: Ticket, notes: str, check: AgentRun, status: str,
           method: str | None) -> ResolvedCase:
     """Store the case with names masked. The quotes are the engineer's own words, so they are kept only for unedited notes."""
     masker = Masker(known_names=[ticket.reporter_name, ticket.assignee], known_emails=[ticket.reporter_email])
-    quotes = check.output.get("quotes") if notes == (ticket.resolution_notes or "").strip() else None
+    quotes = check.output.get("quotes") if notes == notes_for(ticket)[0] else None
     case = db.get(ResolvedCase, ticket.id) or ResolvedCase(ticket_id=ticket.id)
     case.application, case.score, case.closed_at = ticket.application, check.output.get("score"), ticket.closed_at
     case.summary, case.description = str(masker.mask(ticket.summary)), str(masker.mask(ticket.description))

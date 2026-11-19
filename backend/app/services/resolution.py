@@ -1,5 +1,6 @@
 """Run the Resolution agent over tickets that are ready for it (REVIEWED) and record each answer as an agent_runs row."""
 
+import asyncio
 import logging
 from collections import Counter
 from dataclasses import asdict, dataclass, field
@@ -97,7 +98,16 @@ async def input_changed(db: AsyncSession, t: Ticket) -> bool:
     return last.input_hash != _input_hash(case, None)
 
 
+_one_at_a_time = asyncio.Lock()  # the Run button and the scheduled sync must not resolve (and comment on) a ticket twice
+
+
 async def run_resolution(embedder: Embedder | None = None, ticket_id: str | None = None) -> RunResult:
+    """One run at a time: a run that waits sees the first one's result and skips what it already answered."""
+    async with _one_at_a_time:
+        return await _run_resolution(embedder, ticket_id)
+
+
+async def _run_resolution(embedder: Embedder | None = None, ticket_id: str | None = None) -> RunResult:
     """Resolve every REVIEWED ticket. Tickets whose input has not changed since their last run are skipped.
     No database session is open while the model works. A ticket whose model call fails is left for the next run.
     With ticket_id only that ticket is resolved, and again even if nothing changed: a person asked."""

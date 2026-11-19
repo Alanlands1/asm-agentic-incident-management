@@ -16,6 +16,7 @@ class ResetOut(BaseModel):
     jira_issues: int
     jira_comments_deleted: int
     jira_moved_back: int
+    jira_priorities_restored: int
     jira_errors: list[str]
 
 

@@ -105,7 +105,11 @@ export default function ConfluenceSettingsPage() {
     <AppShell>
       <PageHeader
         title="Confluence"
-        context="Copy knowledge base pages from Confluence for the agents to read. Nothing is written back to Confluence."
+        context={`Copy knowledge base pages from Confluence for the agents to read. ${
+          conn?.write_back
+            ? "An approved Knowledge Builder article can be published to its application's page."
+            : "Nothing is written back to Confluence (CONFLUENCE_WRITE_BACK is off)."
+        }`}
         actions={
           <Button variant="secondary" onClick={testConnection} disabled={testing}>
             {testing ? "Testing…" : "Test connection"}

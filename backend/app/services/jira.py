@@ -461,8 +461,11 @@ def _agents_in_thread() -> None:
             async with sessions() as db:
                 await announce(db, started)
                 await move_triaged(db)
+            closing = datetime.now(UTC)
             async with sessions() as db:
                 await db.run_sync(run_closure)
+            async with sessions() as db:
+                await announce_closure(db, closing)
             async with sessions() as db:  # after Closure Quality: it learns only from notes that passed
                 await db.run_sync(run_knowledge)
         finally:
@@ -554,7 +557,8 @@ def help_text() -> str:
             f"Answers come within about {settings.JIRA_SYNC_MINUTES} min.")
 
 
-LABELS = ["ams-needs-info", "ams-not-incident", "ams-uncertain", *(f"ams-p{n}" for n in range(1, 6))]  # one at a time
+# one at a time
+LABELS = ["ams-needs-info", "ams-not-incident", "ams-dq-passed", "ams-uncertain", *(f"ams-p{n}" for n in range(1, 6))]
 AGENTS = {"data_quality": "Data Quality", "triage": "Triage"}
 NEXT = {  # the line under the heading, for a ticket where nothing else needs saying
     PipelineStatus.PENDING: "Waiting for the Data Quality agent.",
@@ -587,6 +591,8 @@ def headline(ticket: Ticket) -> tuple[str, str]:
         return "note", "Not an incident"
     if status == PipelineStatus.ERROR:
         return "error", "An agent failed"
+    if status == PipelineStatus.DQ_PASSED:
+        return "info", "Details complete"
     if status == PipelineStatus.REVIEWED:
         db = object_session(ticket)
         final = db and db.scalar(select(Review.final_priority).where(Review.ticket_id == ticket.id, Review.agent == "triage")
@@ -614,8 +620,10 @@ def agent_summary(ticket: Ticket, only: str | None = None, title: str | None = N
                   "The agents check again on their own."]
     elif status == PipelineStatus.REJECTED:
         lines += [f"Why: {_why(dq)}", "If something is broken, describe it here and the agents check again."]
+    elif status == PipelineStatus.DQ_PASSED:  # Triage has not run yet, so Jira still hears that the details are fine
+        lines += [f"Data Quality: complete. {_why(dq)}", NEXT[status]]
     elif status == PipelineStatus.TRIAGED:
-        lines.append(f"Why: {_why(triage)}")
+        lines += [f"Data Quality: complete. {_why(dq)}", f"Why: {_why(triage)}"]
         if triage.output.get("priority"):
             if ticket.reported_priority and ticket.reported_priority != triage.output["priority"]:
                 lines.append(f"Reported as: P{ticket.reported_priority}")
@@ -674,6 +682,8 @@ def _announcement(ticket: Ticket) -> tuple[str, str]:
         return agent_summary(ticket), "ams-needs-info"
     if ticket.pipeline_status == PipelineStatus.REJECTED:
         return agent_summary(ticket), "ams-not-incident"
+    if ticket.pipeline_status == PipelineStatus.DQ_PASSED:
+        return agent_summary(ticket), "ams-dq-passed"
     run = last_run(ticket, "triage")
     return agent_summary(ticket), f"ams-{run.verdict.lower()}" if run.output["priority"] else "ams-uncertain"
 
@@ -687,7 +697,7 @@ async def announce(db: AsyncSession, since: datetime) -> int:
     """
     if not settings.JIRA_WRITE_BACK:
         return 0
-    say = (PipelineStatus.AWAITING_INFO, PipelineStatus.TRIAGED, PipelineStatus.REJECTED)
+    say = (PipelineStatus.AWAITING_INFO, PipelineStatus.DQ_PASSED, PipelineStatus.TRIAGED, PipelineStatus.REJECTED)
     tickets = (await db.scalars(
         select(Ticket).where(Ticket.source == "JIRA", Ticket.closed_at.is_(None), Ticket.pipeline_status.in_(say),
                              Ticket.id.in_(select(AgentRun.ticket_id).where(AgentRun.created_at >= since)))
@@ -766,6 +776,45 @@ async def announce_resolution(db: AsyncSession, since: datetime) -> int:
                 await post_comment(ticket.id, text, c, tone=tone)
             except AtlassianError as exc:
                 logger.warning("Resolution for %s not written to Jira: %s", ticket.id, exc)
+                continue
+            await db.run_sync(add_comment, ticket, AGENTS_BOT, plain(text))
+            told += 1
+    return told
+
+
+def _closure_text(ticket: Ticket) -> str:
+    """Closure Quality's ask on a done issue whose notes need work: what is missing, and notes to start from."""
+    o = last_run(ticket, "closure_quality").output
+    lines = [f"{SAID}Close notes need work", *(f"- {q}" for q in o.get("questions") or [])]
+    if o.get("draft_notes"):
+        lines += ["Suggested close notes, from what is already on this issue (fill in anything in brackets):",
+                  o["draft_notes"]]
+    lines.append("Next: reply here with the completed close notes; the agents check them again.")
+    return "\n".join(lines)
+
+
+async def announce_closure(db: AsyncSession, since: datetime) -> int:
+    """Comment on each done Jira issue whose close notes Closure Quality found lacking since `since`. Returns how many."""
+    if not settings.JIRA_WRITE_BACK:
+        return 0
+    tickets = [t for t in (await db.scalars(
+        select(Ticket).where(Ticket.source == "JIRA", Ticket.status == "closed",  # history closed before the agents: left alone
+                             Ticket.pipeline_status != PipelineStatus.HISTORICAL,
+                             Ticket.id.in_(select(AgentRun.ticket_id).where(AgentRun.agent == "closure_quality",
+                                                                             AgentRun.created_at >= since)))
+        .options(selectinload(Ticket.agent_runs))
+    )).all() if last_run(t, "closure_quality").verdict == "needs_work"]
+    await db.commit()  # no transaction open while Jira answers
+    told = 0
+    if not tickets:
+        return told
+    async with atlassian.client() as c:
+        for ticket in tickets:
+            text = _closure_text(ticket)
+            try:
+                await post_comment(ticket.id, text, c, tone="warning")
+            except AtlassianError as exc:
+                logger.warning("Closure Quality for %s not written to Jira: %s", ticket.id, exc)
                 continue
             await db.run_sync(add_comment, ticket, AGENTS_BOT, plain(text))
             told += 1

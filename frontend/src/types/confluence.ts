@@ -4,6 +4,7 @@ export interface ConfluenceConnection {
   account_name?: string | null;
   error?: string | null;
   sync_minutes: number;
+  write_back?: boolean; // CONFLUENCE_WRITE_BACK: approved articles may be published
 }
 
 export interface ConfluenceSpace {

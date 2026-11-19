@@ -250,7 +250,9 @@ applications:
       - name: mfa_not_received
         kb: KB-EMP-002
         about: MFA code or OTP not received
-        match: ['\b(mfa|otp|one[- ]time password)\b']
+        # needs the code to be missing: a ticket that only mentions MFA (a phishing report) is not this
+        match: ['\b(mfa|otp|one[- ]time password|verification code)\b.{0,60}\b(not (received|arriving|coming|delivered)|never (arrives?|came)|did ?n.?t (get|receive|arrive)|does ?n.?t (get|receive|arrive)|no (sms|text|code))\b',
+                '\b(not (receiving|getting)|never (got|received)|did ?n.?t (get|receive)|does ?n.?t (get|receive)|no)\b.{0,40}\b(mfa|otp|one[- ]time password|verification code|sms code)\b']
         priority: 3
         needs: [scope]
         raise: [{ to: 2, scope: wide }]

@@ -121,7 +121,7 @@ def activity(db: Session, person: str | None = None, since: datetime | None = No
             else:
                 events.append((run.created_at, agent, ticket_id, {}))
 
-    bots = {SLA_BOT: "sla_warning", COMMAND_BOT: "summary_sent"}
+    bots = {SLA_BOT: "sla_warning", COMMAND_BOT: "command_answered"}
     said = or_(Comment.body.startswith(SAID), Comment.body.startswith(EARLIER[0]))  # the agents' answers, now and before
     for c in recent(Comment, Comment.created_at, or_(Comment.author_email.in_(bots), said)):
         events.append((c.created_at, bots.get(c.author_email, "summary_sent"), c.ticket_id,
