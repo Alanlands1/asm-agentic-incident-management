@@ -21,7 +21,16 @@ type ResetResult = {
   jira_errors: string[];
 };
 
-export function ResetDemoButton() {
+/** The trigger is a red button by default; the sidebar passes its own look and label content. */
+export function ResetDemoButton({
+  variant = "destructive",
+  className,
+  children = "Reset demo",
+}: {
+  variant?: React.ComponentProps<typeof Button>["variant"];
+  className?: string;
+  children?: React.ReactNode;
+} = {}) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -50,8 +59,8 @@ export function ResetDemoButton() {
 
   return (
     <>
-      <Button variant="destructive" onClick={() => setOpen(true)}>
-        Reset demo
+      <Button variant={variant} className={className} onClick={() => setOpen(true)}>
+        {children}
       </Button>
       <Dialog open={open} onOpenChange={close}>
         <DialogContent>

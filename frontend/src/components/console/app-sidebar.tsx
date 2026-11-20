@@ -10,6 +10,7 @@ import {
 import { cn } from "cn";
 import { ROLES, useViewAs } from "@/lib/view-as";
 import { REVIEW_EVENT } from "@/components/console/review-actions";
+import { SidebarFooter } from "@/components/console/sidebar-footer";
 import { pipelineService } from "@/services/pipeline-service";
 
 type NavItem = {
@@ -117,8 +118,9 @@ export function AppSidebar({ onNavigate, className }: AppSidebarProps) {
   }, [pathname]);
 
   return (
-    <nav aria-label="Pages" className={cn("flex flex-col gap-3 rounded-[20px] bg-sidebar p-3 text-sidebar-foreground", className)}>
-      <div className="-m-1 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-1">
+    <nav aria-label="Pages" className={cn("flex h-full flex-col gap-3 rounded-[20px] bg-sidebar p-3 text-sidebar-foreground", className)}>
+      {/* Only the items scroll; the footer below stays in view. */}
+      <div className="-m-1 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain p-1 [scrollbar-color:rgb(255_255_255/0.35)_transparent] [scrollbar-width:thin]">
         {groups.map((group) => (
           <div key={group.label} className="flex flex-col gap-1">
             <p className="px-3 pb-1 pt-1 font-mono text-[10.5px] font-medium uppercase tracking-[0.08em] text-sidebar-foreground/75">{group.label}</p>
@@ -172,18 +174,7 @@ export function AppSidebar({ onNavigate, className }: AppSidebarProps) {
         ))}
       </div>
 
-      <div className="flex flex-col gap-0.5 border-t border-sidebar-border pt-3">
-        <a
-          href="/docs"
-          target="_blank"
-          rel="noopener noreferrer"
-          aria-label="API docs"
-          title="API docs"
-          className={itemBase}
-        >
-          <span>API docs</span>
-        </a>
-      </div>
+      <SidebarFooter onNavigate={onNavigate} />
     </nav>
   );
 }
