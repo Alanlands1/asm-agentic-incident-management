@@ -26,8 +26,8 @@ Branch `feature/console-workflow-p1`, from `dev` at `3460cc4`.
 | 4 Runbook side panel | Done | `c0817f9` | `RunbookButton` in its own file with `panel`; not yet seen open on a ticket with references |
 | 5–8 Ticket page | Done | `c0817f9` | Checked on AMS-6 and AMS-3: step bar, popovers, Esc, Open the section, Now / Coming up / Done |
 | 9 Close notes | Done | `b9e5898`, `657a789` | Saved live on AMS-3 (text marked "TEST (Claude)"); second save gets 409; saved notes show read-only |
-| 10 Updates | Next | | |
-| 11 Who did what | To do | | |
+| 10 Updates | Done | `5548cd1` | Internal note added live on AMS-6 (marked "TEST (Claude)"); Reply to caller greyed out with the reason while write-back is off. Sending a reply to Jira not tested (it would post to the real issue) |
+| 11 Who did what | Next | | |
 | 12 Check end to end | To do | | |
 
 **Outside the plan, found while testing**
@@ -38,7 +38,9 @@ Branch `feature/console-workflow-p1`, from `dev` at `3460cc4`.
 - Loading crash on the ticket page (lists built before the ticket loaded) fixed before `c0817f9`.
 - On a closed ticket, unfinished cards are listed under "Needs a look" instead of "Coming up".
 
-**Left behind by testing:** a close-notes decision on AMS-3 in the local database, text marked "TEST (Claude)".
+**Left behind by testing:** a close-notes decision on AMS-3 and an internal note on AMS-6 in the local database, both marked "TEST (Claude)".
+
+**For Phase 2:** comments do not record whether they were an internal note or sent to Jira, so older updates can't be labelled. Add a column when the backend work starts.
 
 ---
 
