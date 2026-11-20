@@ -81,7 +81,10 @@ async def get_ticket(ticket_id: str, db: AsyncSession = Depends(get_db)) -> Tick
     if ticket is None:
         raise HTTPException(status_code=404, detail=f"Ticket {ticket_id} not found")
     detail = TicketDetail.model_validate(ticket)
-    last = await db.scalar(select(Review).where(Review.ticket_id == ticket_id).order_by(Review.id.desc()).limit(1))
+    # Only Triage reviews decide the priority; Closure Quality and Knowledge Builder reviews are about other things.
+    last = await db.scalar(
+        select(Review).where(Review.ticket_id == ticket_id, Review.agent == "triage").order_by(Review.id.desc()).limit(1)
+    )
     detail.decided = ReviewOut.model_validate(last) if last else None
     rated = await db.scalars(select(Feedback).where(Feedback.ticket_id == ticket_id).order_by(Feedback.id))
     detail.feedback = [FeedbackOut.model_validate(f) for f in rated]

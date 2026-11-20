@@ -44,7 +44,7 @@ import re  # noqa: E402
 from app.core.config import settings  # noqa: E402
 from app.db.session import get_db  # noqa: E402
 from app.main import app  # noqa: E402
-from app.models.ticket import AgentRun, Feedback, Ticket  # noqa: E402
+from app.models.ticket import AgentRun, Feedback, Review, Ticket  # noqa: E402
 from app.services.data_quality import reporter_text  # noqa: E402
 from sqlalchemy import func, select  # noqa: E402
 from sqlalchemy.orm import selectinload  # noqa: E402
@@ -178,3 +178,17 @@ async def test_reason_is_masked_before_it_is_stored(client, monkeypatch):
     response = await client.post(f"/api/v1/tickets/{ticket_id}/feedback", json=_rating(run_id, reason=reason))
     assert response.status_code == 201
     assert "priya.raman@contoso.com" not in response.json()["reason"]
+
+
+async def test_decided_priority_ignores_reviews_of_other_agents(client):
+    ticket_id = await _first_ticket(client)
+    triage_run = await _seed_run(ticket_id, agent="triage", output={"priority": 2})
+    closure_run = await _seed_run(ticket_id, agent="closure_quality")
+    async for db in app.dependency_overrides[get_db]():
+        db.add(Review(ticket_id=ticket_id, agent_run_id=triage_run, agent="triage", action="accepted", final_priority=2,
+                      reviewer="engineer@example.com"))
+        db.add(Review(ticket_id=ticket_id, agent_run_id=closure_run, agent="closure_quality", action="edited",
+                      final_text="Cause: x. Action: y. Check: z.", reviewer="engineer@example.com"))
+        await db.commit()
+    decided = (await client.get(f"/api/v1/tickets/{ticket_id}")).json()["decided"]
+    assert decided["final_priority"] == 2
