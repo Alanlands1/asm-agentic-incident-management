@@ -8,12 +8,14 @@ export const pipelineService = {
   reviewQueue: (limit = 200) => apiClient<ReviewQueueItem[]>(`/triage/review-queue?limit=${limit}`),
   review: (ticketId: string, body: ReviewInput) =>
     apiClient(`/triage/tickets/${id(ticketId)}/review`, { method: "POST", body: JSON.stringify(body) }),
-  /** Adds the reply to the Jira issue as a comment and keeps a copy on the ticket. */
-  replyInJira: (ticketId: string, author: string, body: string) =>
+  /** Keeps an update on the ticket; with postToJira it is also added to the Jira issue as a comment. */
+  addComment: (ticketId: string, author: string, body: string, postToJira: boolean) =>
     apiClient(`/tickets/${id(ticketId)}/comments`, {
       method: "POST",
-      body: JSON.stringify({ author_email: author, body, post_to_jira: true }),
+      body: JSON.stringify({ author_email: author, body, post_to_jira: postToJira }),
     }),
+  /** Adds the reply to the Jira issue as a comment and keeps a copy on the ticket. */
+  replyInJira: (ticketId: string, author: string, body: string) => pipelineService.addComment(ticketId, author, body, true),
   /** Comments what the agents decided on the Jira issue and keeps a copy on the ticket. */
   sendToJira: (ticketId: string, author: string) =>
     apiClient(`/tickets/${id(ticketId)}/agent-summary`, { method: "POST", body: JSON.stringify({ author_email: author }) }),

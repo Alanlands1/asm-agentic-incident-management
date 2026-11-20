@@ -442,6 +442,71 @@ function StepCard({
   );
 }
 
+/** Replies on the ticket, and a box to add one: to the caller (on the Jira issue, only when Send is pressed) or an internal note. */
+function Updates({ ticket, toJira, whyNotJira, onSent }: { ticket: PipelineTicket; toJira: boolean; whyNotJira: string; onSent: () => unknown }) {
+  const person = usePerson();
+  const [mode, setMode] = useState<"caller" | "internal">(toJira ? "caller" : "internal");
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const caller = mode === "caller" && toJira;
+  const send = () => {
+    setBusy(true);
+    setFailed(null);
+    pipelineService
+      .addComment(ticket.id, person, text.trim(), caller)
+      .then(() => {
+        setText("");
+        return onSent();
+      })
+      .catch((e: unknown) => setFailed(e instanceof Error ? e.message : "Couldn't send the update"))
+      .finally(() => setBusy(false));
+  };
+  return (
+    <Card className="gap-0 py-0">
+      <SectionHead title={`Updates (${ticket.comments.length})`} />
+      {ticket.comments.length > 0 && (
+        <ul role="list">
+          {ticket.comments.map((c) => (
+            <li key={c.id} className="flex flex-col gap-1 border-b border-border px-4 py-3 text-[13px]">
+              <span className="text-xs text-muted-foreground">
+                <span className="font-semibold text-foreground">{/^<[A-Z_]+_\d+>$/.test(c.author_email) ? "Reporter" : c.author_email}</span>
+                {" "}· {c.from_reporter ? "reporter" : "support"} · {when(c.created_at)}
+              </span>
+              <p className="whitespace-pre-wrap break-words">{c.body}</p>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="flex flex-col gap-2 px-4 py-3 text-[13px]">
+        <div role="group" aria-label="Who sees this" className="flex flex-wrap gap-1.5">
+          <Button size="sm" variant={caller ? "default" : "secondary"} aria-pressed={caller} disabled={!toJira} title={toJira ? undefined : whyNotJira} onClick={() => setMode("caller")}>
+            Reply to caller
+          </Button>
+          <Button size="sm" variant={caller ? "secondary" : "default"} aria-pressed={!caller} onClick={() => setMode("internal")}>
+            Internal note
+          </Button>
+        </div>
+        <label htmlFor="update" className="text-xs text-muted-foreground">
+          {caller ? "The reporter sees this on the Jira issue once you press Send." : `Only people in the console see this.${toJira ? "" : ` ${whyNotJira}`}`}
+        </label>
+        <Textarea id="update" rows={3} maxLength={4000} value={text} onChange={(e) => setText(e.target.value)} disabled={busy} />
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" disabled={busy || !text.trim()} onClick={send}>
+            <Send />
+            {busy ? "Sending…" : caller ? "Send to the caller" : "Add the note"}
+          </Button>
+        </div>
+        {failed && (
+          <p role="alert" className="text-xs font-medium text-destructive">
+            {failed}
+          </p>
+        )}
+      </div>
+    </Card>
+  );
+}
+
 const GAP = /\[engineer to add: (?:cause|action|check)\]/;
 
 /** The close notes a check said need work: start from the agent's draft (or the notes as they are), then accept or save. */
@@ -1001,22 +1066,18 @@ function Ticket() {
                 </Card>
               )}
 
-              {ticket.comments.length > 0 && (
-                <Card className="gap-0 py-0">
-                  <SectionHead title={`Replies (${ticket.comments.length})`} />
-                  <ul role="list">
-                    {ticket.comments.map((c) => (
-                      <li key={c.id} className="flex flex-col gap-1 border-b border-border px-4 py-3 text-[13px] last:border-b-0">
-                        <span className="text-xs text-muted-foreground">
-                          <span className="font-semibold text-foreground">{/^<[A-Z_]+_\d+>$/.test(c.author_email) ? "Reporter" : c.author_email}</span>
-                          {" "}· {c.from_reporter ? "reporter" : "support"} · {when(c.created_at)}
-                        </span>
-                        <p className="whitespace-pre-wrap break-words">{c.body}</p>
-                      </li>
-                    ))}
-                  </ul>
-                </Card>
-              )}
+              <Updates
+                ticket={ticket}
+                toJira={jira && writeBack && !closed}
+                whyNotJira={
+                  !jira
+                    ? "This ticket did not come from Jira, so replies to the caller can't be sent from here."
+                    : closed
+                      ? `The ticket is closed in ${source}.`
+                      : "Writing to Jira is switched off for this console."
+                }
+                onSent={load}
+              />
             </div>
 
             <Card className="gap-0 py-0 lg:sticky lg:top-[76px]">
