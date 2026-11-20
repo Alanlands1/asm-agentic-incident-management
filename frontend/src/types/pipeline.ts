@@ -42,6 +42,8 @@ export interface PipelineTicket {
   description: string;
   assignment_group: string | null;
   assignee: string | null;
+  /** The close notes as they are in the source. */
+  resolution_notes?: string | null;
   agent_runs: AgentRun[];
   comments: TicketComment[];
   /** A person's note to the agents, read with the description on every run. */

@@ -29,4 +29,7 @@ export const pipelineService = {
   check: (agent: AgentSlug, ticketId: string) =>
     apiClient<AgentCheckResult>(`/${agent}/tickets/${id(ticketId)}/check`, { method: "POST" }),
   closureQueue: () => apiClient<ClosureQueueItem[]>("/closure/queue"),
+  /** A decision on the latest close-notes check: take the agent's draft, or keep the person's own version. */
+  closureReview: (ticketId: string, body: { action: "accepted" | "edited"; reviewer: string; final_text?: string }) =>
+    apiClient(`/closure/tickets/${id(ticketId)}/review`, { method: "POST", body: JSON.stringify(body) }),
 };

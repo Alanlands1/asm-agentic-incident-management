@@ -442,6 +442,74 @@ function StepCard({
   );
 }
 
+const GAP = /\[engineer to add: (?:cause|action|check)\]/;
+
+/** The close notes a check said need work: start from the agent's draft (or the notes as they are), then accept or save. */
+function ClosureEdit({ ticketId, run, notes, onSaved }: { ticketId: string; run: AgentRun; notes: string; onSaved: () => unknown }) {
+  const person = usePerson();
+  const draft = typeof run.output.draft_notes === "string" ? run.output.draft_notes : null;
+  const [value, setValue] = useState(draft ?? notes);
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState<string | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
+  const canAccept = draft !== null && !GAP.test(draft) && value.trim() === draft.trim();
+  const decide = (action: "accepted" | "edited") => {
+    setBusy(true);
+    setFailed(null);
+    pipelineService
+      .closureReview(ticketId, { action, reviewer: person, ...(action === "edited" ? { final_text: value.trim() } : {}) })
+      .then(() => {
+        setSaved(action === "accepted" ? "The agent's draft is kept as the final notes." : "Your version is kept as the final notes.");
+        return onSaved();
+      })
+      .catch((e: unknown) =>
+        setFailed(e instanceof ApiError && e.status === 409 ? "Already decided for this check." : e instanceof Error ? e.message : "Couldn't save the notes")
+      )
+      .finally(() => setBusy(false));
+  };
+  return (
+    <div className="flex flex-col gap-2 border-t border-border px-4 py-3 text-[13px]">
+      <label htmlFor={`closure-${run.id}`} className="font-semibold">
+        {draft ? "Close notes, as the agent would write them" : "Close notes"}
+      </label>
+      <p id={`closure-help-${run.id}`} className="text-xs text-muted-foreground">
+        {draft && GAP.test(draft) ? "Fill in the parts marked [engineer to add: …], then save. " : ""}
+        Kept in the console. They go to Jira only when you send the closure note.
+      </p>
+      <Textarea
+        id={`closure-${run.id}`}
+        rows={7}
+        className="font-mono text-[12px]"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        disabled={busy || saved !== null}
+        aria-describedby={`closure-help-${run.id}`}
+      />
+      <div className="flex flex-wrap items-center gap-2">
+        {canAccept && (
+          <Button size="sm" disabled={busy || saved !== null} onClick={() => decide("accepted")}>
+            Accept the draft
+          </Button>
+        )}
+        <Button
+          size="sm"
+          variant={canAccept ? "secondary" : "default"}
+          disabled={busy || saved !== null || !value.trim() || value.trim() === notes.trim() || GAP.test(value) || (draft !== null && value.trim() === draft.trim())}
+          onClick={() => decide("edited")}
+        >
+          {busy ? "Saving…" : "Save my version"}
+        </Button>
+        {saved && <span className="text-xs font-medium text-p3">{saved}</span>}
+      </div>
+      {failed && (
+        <p role="alert" className="text-xs font-medium text-destructive">
+          {failed}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function Text({ title, text }: { title: string; text?: string | null }) {
   return (
     <Card className="gap-0 py-0">
@@ -712,6 +780,9 @@ function Ticket() {
             )}
           </div>
         )}
+        {key === "closure_quality" && latestRun?.verdict === "needs_work" && (
+          <ClosureEdit key={latestRun.id} ticketId={ticket!.id} run={latestRun} notes={ticket!.resolution_notes ?? ""} onSaved={load} />
+        )}
         {key === "data_quality" && draft && writeBack && !closed && (
           <div className="border-t border-border px-4 py-3">
             {/* Engineer-asked only (design D9): nothing goes to Jira until this is pressed. */}
@@ -886,7 +957,7 @@ function Ticket() {
               {cardsNext.length > 0 && (
                 <section aria-labelledby="next-h" className="flex flex-col gap-2">
                   <h2 id="next-h" className="pl-1 font-mono text-[10.5px] font-medium tracking-[0.08em] text-muted-foreground uppercase">
-                    Coming up
+                    {closed ? "Needs a look" : "Coming up"}
                   </h2>
                   {cardsNext.map(card)}
                 </section>
