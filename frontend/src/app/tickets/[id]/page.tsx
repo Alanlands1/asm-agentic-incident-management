@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsIndicator, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ApiError } from "@/lib/api-client";
 import { usePerson } from "@/lib/view-as";
 import { incidentService } from "@/services/incident-service";
@@ -95,7 +96,7 @@ function Facts({ rows }: { rows: [string, React.ReactNode][] }) {
       <TableBody>
         {rows.map(([k, v]) => (
           <TableRow key={k}>
-            <TableHead scope="row" className="w-40 px-4 text-[13px] font-normal">
+            <TableHead scope="row" className="w-36 whitespace-normal px-4 text-[13px] font-normal">
               {k}
             </TableHead>
             <TableCell>{v}</TableCell>
@@ -143,7 +144,7 @@ function Step({
         >
           {Icon ? <Icon className={cn("size-4", running && "animate-spin")} /> : n}
         </span>
-        {n < 6 && <span className={cn("h-0.5 flex-1", state === "done" && !running ? "bg-foreground" : "bg-border")} />}
+        {n < 6 && <span className={cn("hidden h-0.5 flex-1 lg:block", state === "done" && !running ? "bg-foreground" : "bg-border")} />}
       </div>
       <div className="flex min-w-0 flex-col items-start gap-1 pr-3">
         <span className="text-xs text-muted-foreground">{name}</span>
@@ -346,7 +347,7 @@ function Note({
     }
   };
   return (
-    <div className="flex flex-col gap-2 border-b border-border px-4 py-3 text-[13px]">
+    <div className="flex flex-col gap-2 px-4 py-3 text-[13px]">
       <label htmlFor="note" className="font-semibold">
         Tell the agents more
       </label>
@@ -522,12 +523,182 @@ function Ticket() {
 
       {ticket && (
         <>
-          <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
-            <Card className="gap-0 py-0">
-              <SectionHead title="Where it stands" />
+          <Card className="gap-0 py-0">
+            <SectionHead title="Where the agents are">
+              {jira && writeBack && !closed && latest.length > 0 && (
+                <Post label="Post the summary to Jira" onPost={() => pipelineService.sendToJira(ticket.id, person).then(load)} />
+              )}
+            </SectionHead>
+            <ol role="list" className="grid grid-cols-2 gap-y-5 px-4 py-5 sm:grid-cols-3 lg:grid-cols-6">
+              <Step
+                n={1}
+                state={dq ? (DQ_STEP[dq.verdict]?.[0] ?? "attention") : "waiting"}
+                name="Data Quality"
+                running={running === "data_quality"}
+                action={canRun && runButton("data_quality", dq !== undefined)}
+                rating={ratingOf(dq)?.stars}
+              >
+                {dq ? (DQ_STEP[dq.verdict]?.[1] ?? dq.verdict) : "Not yet"}
+              </Step>
+              <Step
+                n={2}
+                state={recommended !== null ? "done" : triage ? "attention" : "waiting"}
+                name="Triage"
+                running={running === "triage"}
+                action={canRun && ["dq_passed", "triaged"].includes(ticket.pipeline_status) && runButton("triage", triage !== undefined)}
+                rating={ratingOf(triage)?.stars}
+              >
+                {recommended !== null ? (
+                  <>
+                    <PriorityChip priority={recommended} /> recommended
+                  </>
+                ) : triage ? (
+                  "Could not decide"
+                ) : (
+                  "Not yet"
+                )}
+              </Step>
+              <Step
+                n={3}
+                state={ticket.pipeline_status === "reviewed" ? "done" : ticket.pipeline_status === "triaged" && !closed ? "attention" : "waiting"}
+                name="Review by a person"
+              >
+                {ticket.pipeline_status === "reviewed" ? (
+                  decided ? (
+                    <>
+                      <PriorityChip priority={decided.final_priority} /> by {decided.reviewer}
+                    </>
+                  ) : (
+                    "Priority decided"
+                  )
+                ) : closed ? "Not needed" : ticket.pipeline_status === "triaged" ? "Waiting for you" : "Not yet"}
+              </Step>
+              {(["resolution", "closure_quality", "knowledge_builder"] as const).map((agent, i) => {
+                const run = ticket.agent_runs.findLast((r) => r.agent === agent);
+                // The server takes Resolution on reviewed tickets and Closure Quality on resolved ones.
+                const ready = agent === "resolution" ? !closed && ticket.pipeline_status === "reviewed" : ["resolved", "closed"].includes(ticket.status);
+                return (
+                  <Step
+                    key={agent}
+                    n={4 + i}
+                    state={run ? (LATER_STEP[run.verdict]?.[0] ?? "attention") : "waiting"}
+                    name={AGENTS[agent]}
+                    running={running === agent}
+                    // Knowledge Builder has no one-ticket run: it follows Closure Quality on its own.
+                    action={ready && agent !== "knowledge_builder" && runButton(agent, run !== undefined)}
+                    rating={ratingOf(run)?.stars}
+                  >
+                    {run ? (LATER_STEP[run.verdict]?.[1] ?? run.verdict) : "Not yet"}
+                  </Step>
+                );
+              })}
+            </ol>
+            <div className="flex flex-col gap-2 border-t border-border bg-muted px-4 py-3 text-[13px]">
+              <p>
+                <span className="font-semibold">What to do next: </span>
+                {closed
+                  ? `Nothing. This ticket is closed in ${source}.`
+                  : ticket.pipeline_status === "reviewed" && jira && writeBack
+                    ? NEXT.reviewed.replace("decided.", "decided and set on the Jira issue.")
+                    : (NEXT[ticket.pipeline_status] ?? ticket.pipeline_status)}
+              </p>
+              {runFailed && (
+                <p role="alert" className="text-xs font-medium text-destructive">
+                  {runFailed}
+                </p>
+              )}
+              {!closed && ticket.pipeline_status === "triaged" && recommended !== null && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <ReviewActions ticketId={ticket.id} recommended={recommended} onDone={load} />
+                </div>
+              )}
+              {draft && writeBack && !closed && (
+                <Post
+                  label="Post the draft reply to Jira"
+                  done={ticket.comments.some((c) => c.body.includes(draft))}
+                  onPost={() => pipelineService.replyInJira(ticket.id, person, draft).then(load)}
+                />
+              )}
+            </div>
+          </Card>
+
+          <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
+            <div className="flex min-w-0 flex-col gap-4">
+              <Text title="Description" text={ticket.description} />
+
+              <Card className="gap-0 py-0">
+                <SectionHead title="What each agent decided" />
+                {latest.length ? (
+                  <Tabs defaultValue={String(latest[latest.length - 1].id)} className="gap-0">
+                    <TabsList aria-label="Agent results" className="px-2">
+                      {latest.map((r) => (
+                        <TabsTrigger key={r.id} value={String(r.id)}>
+                          {AGENTS[r.agent] ?? humanize(r.agent)}
+                        </TabsTrigger>
+                      ))}
+                      {earlier.length > 0 && <TabsTrigger value="earlier">Earlier checks ({earlier.length})</TabsTrigger>}
+                      <TabsIndicator />
+                    </TabsList>
+                    {latest.map((r) => (
+                      <TabsContent key={r.id} value={String(r.id)}>
+                        <ul role="list">
+                          <Run run={r}>
+                            <FeedbackStars ticketId={ticket.id} runId={r.id} given={ratingOf(r)} onSent={load} />
+                          </Run>
+                        </ul>
+                      </TabsContent>
+                    ))}
+                    {earlier.length > 0 && (
+                      <TabsContent value="earlier">
+                        <ul role="list">
+                          {earlier.map((r) => (
+                            <Run key={r.id} run={r} />
+                          ))}
+                        </ul>
+                      </TabsContent>
+                    )}
+                  </Tabs>
+                ) : (
+                  <p className="px-4 py-3 text-[13px] text-muted-foreground">No agent has checked this ticket yet.</p>
+                )}
+              </Card>
+
+              {!closed && (
+                <Card className="gap-0 py-0">
+                  {/* Remounts when the stored note changes, so the box shows it as kept (personal details masked). */}
+                  <Note key={ticket.guidance ?? ""} ticketId={ticket.id} text={ticket.guidance ?? ""} busy={running !== null} rerun={rerun} inputChanged={rerunAgent !== null && inputChanged(rerunAgent)} onSaved={load} />
+                </Card>
+              )}
+
+              {ticket.comments.length > 0 && (
+                <Card className="gap-0 py-0">
+                  <SectionHead title={`Replies (${ticket.comments.length})`} />
+                  <ul role="list">
+                    {ticket.comments.map((c) => (
+                      <li key={c.id} className="flex flex-col gap-1 border-b border-border px-4 py-3 text-[13px] last:border-b-0">
+                        <span className="text-xs text-muted-foreground">
+                          <span className="font-semibold text-foreground">{/^<[A-Z_]+_\d+>$/.test(c.author_email) ? "Reporter" : c.author_email}</span>
+                          {" "}· {c.from_reporter ? "reporter" : "support"} · {when(c.created_at)}
+                        </span>
+                        <p className="whitespace-pre-wrap break-words">{c.body}</p>
+                      </li>
+                    ))}
+                  </ul>
+                </Card>
+              )}
+            </div>
+
+            <Card className="gap-0 py-0 lg:sticky lg:top-4">
+              <SectionHead title="Details" />
               <Facts
                 rows={[
                   ["Stage", closed ? `Closed in ${source}` : (STAGE_WORDS[ticket.pipeline_status] ?? ticket.pipeline_status)],
+                  ...(sla && !closed
+                    ? ([["SLA", <SlaClock key="sla" state={sla.state} minutesLeft={sla.minutes_left} usedPercent={sla.used_percent} />]] as [
+                        string,
+                        React.ReactNode,
+                      ][])
+                    : []),
                   ["Recommended", recommended !== null ? <PriorityChip priority={recommended} /> : "Not triaged yet"],
                   ...(decided
                     ? [
@@ -555,160 +726,11 @@ function Ticket() {
                   ["Assigned to", [ticket.assignment_group, ticket.assignee].filter(Boolean).join(" · ") || "—"],
                   ["Opened", when(ticket.opened_at)],
                   ...(closed ? ([["Closed", when(ticket.closed_at)]] as [string, React.ReactNode][]) : []),
-                  ...(sla && !closed
-                    ? ([["SLA", <SlaClock key="sla" state={sla.state} minutesLeft={sla.minutes_left} usedPercent={sla.used_percent} />]] as [
-                        string,
-                        React.ReactNode,
-                      ][])
-                    : []),
                   ["Status in the source", ticket.source_status ?? ticket.status],
                 ]}
               />
             </Card>
-
-            <Card className="gap-0 py-0">
-              <SectionHead title="What the agents decided">
-                {jira && writeBack && !closed && latest.length > 0 && (
-                  <Post label="Post the summary to Jira" onPost={() => pipelineService.sendToJira(ticket.id, person).then(load)} />
-                )}
-              </SectionHead>
-              <ol role="list" className="grid grid-cols-6 border-b border-border px-4 py-4">
-                <Step
-                  n={1}
-                  state={dq ? (DQ_STEP[dq.verdict]?.[0] ?? "attention") : "waiting"}
-                  name="Data Quality"
-                  running={running === "data_quality"}
-                  action={canRun && runButton("data_quality", dq !== undefined)}
-                  rating={ratingOf(dq)?.stars}
-                >
-                  {dq ? (DQ_STEP[dq.verdict]?.[1] ?? dq.verdict) : "Not yet"}
-                </Step>
-                <Step
-                  n={2}
-                  state={recommended !== null ? "done" : triage ? "attention" : "waiting"}
-                  name="Triage"
-                  running={running === "triage"}
-                  action={canRun && ["dq_passed", "triaged"].includes(ticket.pipeline_status) && runButton("triage", triage !== undefined)}
-                  rating={ratingOf(triage)?.stars}
-                >
-                  {recommended !== null ? (
-                    <>
-                      <PriorityChip priority={recommended} /> recommended
-                    </>
-                  ) : triage ? (
-                    "Could not decide"
-                  ) : (
-                    "Not yet"
-                  )}
-                </Step>
-                <Step
-                  n={3}
-                  state={ticket.pipeline_status === "reviewed" ? "done" : ticket.pipeline_status === "triaged" && !closed ? "attention" : "waiting"}
-                  name="Review by a person"
-                >
-                  {ticket.pipeline_status === "reviewed" ? (
-                    decided ? (
-                      <span className="inline-flex items-center gap-2">
-                        <PriorityChip priority={decided.final_priority} /> decided by {decided.reviewer}
-                      </span>
-                    ) : (
-                      "Priority decided"
-                    )
-                  ) : closed ? "Not needed" : ticket.pipeline_status === "triaged" ? "Waiting for you" : "Not yet"}
-                </Step>
-                {(["resolution", "closure_quality", "knowledge_builder"] as const).map((agent, i) => {
-                  const run = ticket.agent_runs.findLast((r) => r.agent === agent);
-                  // The server takes Resolution on reviewed tickets and Closure Quality on resolved ones.
-                  const ready = agent === "resolution" ? !closed && ticket.pipeline_status === "reviewed" : ["resolved", "closed"].includes(ticket.status);
-                  return (
-                    <Step
-                      key={agent}
-                      n={4 + i}
-                      state={run ? (LATER_STEP[run.verdict]?.[0] ?? "attention") : "waiting"}
-                      name={AGENTS[agent]}
-                      running={running === agent}
-                      // Knowledge Builder has no one-ticket run: it follows Closure Quality on its own.
-                      action={ready && agent !== "knowledge_builder" && runButton(agent, run !== undefined)}
-                      rating={ratingOf(run)?.stars}
-                    >
-                      {run ? (LATER_STEP[run.verdict]?.[1] ?? run.verdict) : "Not yet"}
-                    </Step>
-                  );
-                })}
-              </ol>
-              <div className="flex flex-col gap-2 border-b border-border bg-muted px-4 py-3 text-[13px]">
-                <p>
-                  <span className="font-semibold">What to do next: </span>
-                  {closed
-                    ? `Nothing. This ticket is closed in ${source}.`
-                    : ticket.pipeline_status === "reviewed" && jira && writeBack
-                      ? NEXT.reviewed.replace("decided.", "decided and set on the Jira issue.")
-                      : (NEXT[ticket.pipeline_status] ?? ticket.pipeline_status)}
-                </p>
-                {runFailed && (
-                  <p role="alert" className="text-xs font-medium text-destructive">
-                    {runFailed}
-                  </p>
-                )}
-                {!closed && ticket.pipeline_status === "triaged" && recommended !== null && (
-                  <div className="flex flex-wrap items-center gap-2">
-                    <ReviewActions ticketId={ticket.id} recommended={recommended} onDone={load} />
-                  </div>
-                )}
-                {draft && writeBack && !closed && (
-                  <Post
-                    label="Post the draft reply to Jira"
-                    done={ticket.comments.some((c) => c.body.includes(draft))}
-                    onPost={() => pipelineService.replyInJira(ticket.id, person, draft).then(load)}
-                  />
-                )}
-              </div>
-              {!closed && (
-                // After the decision, not before it. Remounts when the stored note changes, so the box shows it as kept (personal details masked).
-                <Note key={ticket.guidance ?? ""} ticketId={ticket.id} text={ticket.guidance ?? ""} busy={running !== null} rerun={rerun} inputChanged={rerunAgent !== null && inputChanged(rerunAgent)} onSaved={load} />
-              )}
-              {latest.length ? (
-                <ul role="list">
-                  {latest.map((r) => (
-                    <Run key={r.id} run={r}>
-                      <FeedbackStars ticketId={ticket.id} runId={r.id} given={ratingOf(r)} onSent={load} />
-                    </Run>
-                  ))}
-                </ul>
-              ) : (
-                <p className="px-4 py-3 text-[13px] text-muted-foreground">No agent has checked this ticket yet.</p>
-              )}
-              {earlier.length > 0 && (
-                <details className="border-t border-border">
-                  <summary className="cursor-pointer px-4 py-3 text-xs font-semibold text-primary">Earlier checks ({earlier.length})</summary>
-                  <ul role="list" className="border-t border-border">
-                    {earlier.map((r) => (
-                      <Run key={r.id} run={r} />
-                    ))}
-                  </ul>
-                </details>
-              )}
-            </Card>
           </div>
-
-          <Text title="Description" text={ticket.description} />
-
-          {ticket.comments.length > 0 && (
-            <Card className="gap-0 py-0">
-              <SectionHead title="Replies" />
-              <ul role="list">
-                {ticket.comments.map((c) => (
-                  <li key={c.id} className="flex flex-col gap-1 border-b border-border px-4 py-3 text-[13px] last:border-b-0">
-                    <span className="text-xs text-muted-foreground">
-                      {/^<[A-Z_]+_\d+>$/.test(c.author_email) ? "Reporter" : c.author_email} · {c.from_reporter ? "reporter" : "support"} ·{" "}
-                      {when(c.created_at)}
-                    </span>
-                    <p className="whitespace-pre-wrap break-words">{c.body}</p>
-                  </li>
-                ))}
-              </ul>
-            </Card>
-          )}
         </>
       )}
 
