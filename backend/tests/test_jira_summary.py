@@ -15,6 +15,13 @@ def test_a_triaged_issue_also_says_data_quality_passed():
     assert label == "ams-p2"
 
 
+def test_a_triaged_issue_without_its_triage_run_does_not_crash():
+    ticket = Ticket(id="AMS-4", pipeline_status=PipelineStatus.TRIAGED, agent_runs=[DQ])
+    text, label = jira._announcement(ticket)
+    assert "Next: set the priority on this issue." in text
+    assert label == "ams-uncertain"
+
+
 def test_an_issue_waiting_for_triage_is_told_its_details_are_complete():
     ticket = Ticket(id="AMS-4", pipeline_status=PipelineStatus.DQ_PASSED, agent_runs=[DQ])
     text, label = jira._announcement(ticket)

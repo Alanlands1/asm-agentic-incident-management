@@ -624,7 +624,7 @@ def agent_summary(ticket: Ticket, only: str | None = None, title: str | None = N
         lines += [f"Data Quality: complete. {_why(dq)}", NEXT[status]]
     elif status == PipelineStatus.TRIAGED:
         lines += [f"Data Quality: complete. {_why(dq)}", f"Why: {_why(triage)}"]
-        if triage.output.get("priority"):
+        if triage and triage.output.get("priority"):
             if ticket.reported_priority and ticket.reported_priority != triage.output["priority"]:
                 lines.append(f"Reported as: P{ticket.reported_priority}")
             lines.append("Next: an engineer confirms it. Reply `ams agree` to accept, or set another priority here.")
@@ -685,7 +685,7 @@ def _announcement(ticket: Ticket) -> tuple[str, str]:
     if ticket.pipeline_status == PipelineStatus.DQ_PASSED:
         return agent_summary(ticket), "ams-dq-passed"
     run = last_run(ticket, "triage")
-    return agent_summary(ticket), f"ams-{run.verdict.lower()}" if run.output["priority"] else "ams-uncertain"
+    return agent_summary(ticket), f"ams-{run.verdict.lower()}" if run and run.output.get("priority") else "ams-uncertain"
 
 
 async def announce(db: AsyncSession, since: datetime) -> int:
