@@ -27,8 +27,8 @@ Branch `feature/console-workflow-p1`, from `dev` at `3460cc4`.
 | 5–8 Ticket page | Done | `c0817f9` | Checked on AMS-6 and AMS-3: step bar, popovers, Esc, Open the section, Now / Coming up / Done |
 | 9 Close notes | Done | `b9e5898`, `657a789` | Saved live on AMS-3 (text marked "TEST (Claude)"); second save gets 409; saved notes show read-only |
 | 10 Updates | Done | `5548cd1` | Internal note added live on AMS-6 (marked "TEST (Claude)"); Reply to caller greyed out with the reason while write-back is off. Sending a reply to Jira not tested (it would post to the real issue) |
-| 11 Who did what | Next | | |
-| 12 Check end to end | To do | | |
+| 11 Who did what | Done | `d7f57d0` | Checked against the API on AMS-6 (4 entries), AMS-3 (11, Show all) and AMS-1 (empty). No ticket has a rating yet, so a rating line was not seen live |
+| 12 Check end to end | Next | | |
 
 **Outside the plan, found while testing**
 - `b03538c` backend fix: `decided` on `GET /tickets/{id}` took the newest review of any agent, so saving close notes
@@ -220,8 +220,8 @@ with `Collapsible`. Bodies reuse what the page already renders:
 **File:** `src/app/tickets/[id]/page.tsx` (right column, under Details)
 
 1. One list, newest first, from `agent_runs` (agent, verdict, `created_at`), `feedback` (who rated, stars,
-   `created_at`) and `comments` (author, `created_at`). The decided priority has no time in the API
-   (`decided` has none): show it without a time, as "Priority decided by …".
+   `created_at`) and `comments` (author, `created_at`). The decided priority goes in by its `created_at`
+   (the API always sent it; the frontend type now has it too).
 2. Last 5, then **Show all (n)**.
 
 **Done when:** the list matches the ticket's data; build passes.
