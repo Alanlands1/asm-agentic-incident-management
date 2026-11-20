@@ -192,3 +192,16 @@ async def test_decided_priority_ignores_reviews_of_other_agents(client):
         await db.commit()
     decided = (await client.get(f"/api/v1/tickets/{ticket_id}")).json()["decided"]
     assert decided["final_priority"] == 2
+
+
+async def test_ticket_detail_carries_the_close_notes_decision(client):
+    ticket_id = await _first_ticket(client)
+    assert (await client.get(f"/api/v1/tickets/{ticket_id}")).json()["closure_decision"] is None
+    closure_run = await _seed_run(ticket_id, agent="closure_quality")
+    async for db in app.dependency_overrides[get_db]():
+        db.add(Review(ticket_id=ticket_id, agent_run_id=closure_run, agent="closure_quality", action="edited",
+                      final_text="Cause: x. Action: y. Check: z.", reviewer="engineer@example.com"))
+        await db.commit()
+    decision = (await client.get(f"/api/v1/tickets/{ticket_id}")).json()["closure_decision"]
+    assert decision["agent_run_id"] == closure_run
+    assert decision["final_text"] == "Cause: x. Action: y. Check: z."

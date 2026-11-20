@@ -780,8 +780,25 @@ function Ticket() {
             )}
           </div>
         )}
-        {key === "closure_quality" && latestRun?.verdict === "needs_work" && (
-          <ClosureEdit key={latestRun.id} ticketId={ticket!.id} run={latestRun} notes={ticket!.resolution_notes ?? ""} onSaved={load} />
+        {key === "closure_quality" && latestRun && ticket?.closure_decision?.agent_run_id === latestRun.id ? (
+          <div className="flex flex-col gap-2 border-t border-border px-4 py-3 text-[13px]">
+            <p className="font-semibold">
+              {ticket.closure_decision.action === "accepted"
+                ? "Final close notes: the agent's draft, accepted"
+                : ticket.closure_decision.action === "edited"
+                  ? "Final close notes: your version"
+                  : "The check was set aside; the notes stand as they are"}
+            </p>
+            {ticket.closure_decision.final_text && (
+              <p className="whitespace-pre-wrap break-words rounded-lg border border-border bg-muted px-3 py-2 font-mono text-[12px]">{ticket.closure_decision.final_text}</p>
+            )}
+            <p className="text-xs text-muted-foreground">Kept in the console. They go to Jira only when you send the closure note.</p>
+          </div>
+        ) : (
+          key === "closure_quality" &&
+          latestRun?.verdict === "needs_work" && (
+            <ClosureEdit key={latestRun.id} ticketId={ticket!.id} run={latestRun} notes={ticket!.resolution_notes ?? ""} onSaved={load} />
+          )
         )}
         {key === "data_quality" && draft && writeBack && !closed && (
           <div className="border-t border-border px-4 py-3">

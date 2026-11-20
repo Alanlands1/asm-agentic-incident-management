@@ -16,6 +16,7 @@ from app.privacy.masking import Masker
 from app.schemas.ticket import (
     CommentCreate, CommentOut, FeedbackCreate, FeedbackOut, IngestResponse, TicketDetail, TicketList, TicketSummary,
 )
+from app.schemas.closure import ClosureReviewOut
 from app.schemas.triage import ReviewOut
 from app.services import jira
 from app.services.atlassian import AtlassianError
@@ -86,6 +87,10 @@ async def get_ticket(ticket_id: str, db: AsyncSession = Depends(get_db)) -> Tick
         select(Review).where(Review.ticket_id == ticket_id, Review.agent == "triage").order_by(Review.id.desc()).limit(1)
     )
     detail.decided = ReviewOut.model_validate(last) if last else None
+    closing = await db.scalar(
+        select(Review).where(Review.ticket_id == ticket_id, Review.agent == "closure_quality").order_by(Review.id.desc()).limit(1)
+    )
+    detail.closure_decision = ClosureReviewOut.model_validate(closing) if closing else None
     rated = await db.scalars(select(Feedback).where(Feedback.ticket_id == ticket_id).order_by(Feedback.id))
     detail.feedback = [FeedbackOut.model_validate(f) for f in rated]
     detail.changed = await _changed(db, ticket)

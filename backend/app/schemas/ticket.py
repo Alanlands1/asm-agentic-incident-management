@@ -5,6 +5,7 @@ from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.schemas.closure import ClosureReviewOut
 from app.schemas.triage import ReviewOut
 
 
@@ -108,6 +109,7 @@ class TicketDetail(TicketSummary):
     comments: list[CommentOut]
     feedback: list[FeedbackOut] = Field(default_factory=list, description="Star ratings people gave the agents' results")
     decided: Optional[ReviewOut] = Field(None, description="The last decision a person made on the priority, here or in Jira")
+    closure_decision: Optional[ClosureReviewOut] = Field(None, description="The last decision a person made on the close notes")
     changed: dict[str, bool] = Field(
         default_factory=dict,
         description="Per agent that ran before: true when what it would see now differs from its last run, so running again "
