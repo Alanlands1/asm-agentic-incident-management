@@ -507,6 +507,54 @@ function Updates({ ticket, toJira, whyNotJira, onSent }: { ticket: PipelineTicke
   );
 }
 
+/** Who did what on the ticket, newest first: agent results, the decided priority, ratings and updates. */
+function Activity({ ticket }: { ticket: PipelineTicket }) {
+  const [all, setAll] = useState(false);
+  const masked = (s: string) => (/^<[A-Z_]+_\d+>$/.test(s) ? "Reporter" : s);
+  const decided = ticket.decided?.final_priority ? ticket.decided : null;
+  const rows = [
+    ...ticket.agent_runs.map((r) => ({
+      key: `r${r.id}`,
+      at: r.created_at,
+      who: AGENTS[r.agent] ?? humanize(r.agent),
+      what: /^P\d$/.test(r.verdict) ? `recommends ${r.verdict}` : (VERDICTS[r.verdict] ?? humanize(r.verdict)),
+    })),
+    ...(decided ? [{ key: "decided", at: decided.created_at, who: decided.reviewer, what: `decided the priority: P${decided.final_priority}` }] : []),
+    ...(ticket.feedback ?? []).map((f) => ({ key: `f${f.id}`, at: f.created_at, who: f.reviewer, what: `rated ${AGENTS[f.agent] ?? humanize(f.agent)} ${f.stars} of 5` })),
+    ...ticket.comments.map((c) => ({ key: `c${c.id}`, at: c.created_at, who: masked(c.author_email), what: "added an update" })),
+  ]
+    // The lists come oldest first; reversed, two entries with the same time keep the later one on top.
+    .reverse()
+    .sort((a, b) => b.at.localeCompare(a.at));
+  const shown = all ? rows : rows.slice(0, 5);
+  return (
+    <Card className="gap-0 py-0">
+      <SectionHead title="Who did what" />
+      {rows.length === 0 ? (
+        <p className="px-4 py-3 text-[13px] text-muted-foreground">Nothing yet.</p>
+      ) : (
+        <ul role="list">
+          {shown.map((i) => (
+            <li key={i.key} className="flex flex-col gap-0.5 border-b border-border px-4 py-2.5 text-[13px] last:border-b-0">
+              <span>
+                <span className="font-semibold">{i.who}</span> {i.what}
+              </span>
+              <span className="text-xs text-muted-foreground">{when(i.at)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {rows.length > 5 && (
+        <div className="border-t border-border px-4 py-2">
+          <Button size="xs" variant="ghost" onClick={() => setAll(!all)}>
+            {all ? "Show the last 5" : `Show all (${rows.length})`}
+          </Button>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 const GAP = /\[engineer to add: (?:cause|action|check)\]/;
 
 /** The close notes a check said need work: start from the agent's draft (or the notes as they are), then accept or save. */
@@ -1080,48 +1128,51 @@ function Ticket() {
               />
             </div>
 
-            <Card className="gap-0 py-0 lg:sticky lg:top-[76px]">
-              <SectionHead title="Details" />
-              <Facts
-                rows={[
-                  ["Stage", closed ? `Closed in ${source}` : (STAGE_WORDS[ticket.pipeline_status] ?? ticket.pipeline_status)],
-                  ...(sla && !closed
-                    ? ([["SLA", <SlaClock key="sla" state={sla.state} minutesLeft={sla.minutes_left} usedPercent={sla.used_percent} />]] as [
-                        string,
-                        React.ReactNode,
-                      ][])
-                    : []),
-                  ["Recommended", recommended !== null ? <PriorityChip priority={recommended} /> : "Not triaged yet"],
-                  ...(decided
-                    ? [
-                        [
-                          "Decided",
-                          <span key="d" className="inline-flex flex-wrap items-center gap-2">
-                            <PriorityChip priority={decided.final_priority} />
-                            {[`by ${decided.reviewer}`, decided.note].filter(Boolean).join(" · ")}
-                          </span>,
-                        ] as [string, React.ReactNode],
-                      ]
-                    : []),
-                  [
-                    "Reporter asked for",
-                    ticket.reported_priority ? (
-                      <span className="inline-flex items-center gap-2">
-                        <PriorityChip priority={ticket.reported_priority} />
-                        {ticket.reported_priority_label}
-                      </span>
-                    ) : (
-                      "—"
-                    ),
-                  ],
-                  ["Reporter", /^<[A-Z_]+_\d+>$/.test(ticket.reporter_name ?? "") ? "Name masked" : (ticket.reporter_name ?? "—")],
-                  ["Assigned to", [ticket.assignment_group, ticket.assignee].filter(Boolean).join(" · ") || "—"],
-                  ["Opened", when(ticket.opened_at)],
-                  ...(closed ? ([["Closed", when(ticket.closed_at)]] as [string, React.ReactNode][]) : []),
-                  ["Status in the source", ticket.source_status ?? ticket.status],
-                ]}
-              />
-            </Card>
+            <div className="flex flex-col gap-4 lg:sticky lg:top-[76px] lg:max-h-[calc(100vh-92px)] lg:overflow-y-auto lg:overscroll-contain">
+              <Card className="gap-0 py-0">
+                <SectionHead title="Details" />
+                <Facts
+                  rows={[
+                    ["Stage", closed ? `Closed in ${source}` : (STAGE_WORDS[ticket.pipeline_status] ?? ticket.pipeline_status)],
+                    ...(sla && !closed
+                      ? ([["SLA", <SlaClock key="sla" state={sla.state} minutesLeft={sla.minutes_left} usedPercent={sla.used_percent} />]] as [
+                          string,
+                          React.ReactNode,
+                        ][])
+                      : []),
+                    ["Recommended", recommended !== null ? <PriorityChip priority={recommended} /> : "Not triaged yet"],
+                    ...(decided
+                      ? [
+                          [
+                            "Decided",
+                            <span key="d" className="inline-flex flex-wrap items-center gap-2">
+                              <PriorityChip priority={decided.final_priority} />
+                              {[`by ${decided.reviewer}`, decided.note].filter(Boolean).join(" · ")}
+                            </span>,
+                          ] as [string, React.ReactNode],
+                        ]
+                      : []),
+                    [
+                      "Reporter asked for",
+                      ticket.reported_priority ? (
+                        <span className="inline-flex items-center gap-2">
+                          <PriorityChip priority={ticket.reported_priority} />
+                          {ticket.reported_priority_label}
+                        </span>
+                      ) : (
+                        "—"
+                      ),
+                    ],
+                    ["Reporter", /^<[A-Z_]+_\d+>$/.test(ticket.reporter_name ?? "") ? "Name masked" : (ticket.reporter_name ?? "—")],
+                    ["Assigned to", [ticket.assignment_group, ticket.assignee].filter(Boolean).join(" · ") || "—"],
+                    ["Opened", when(ticket.opened_at)],
+                    ...(closed ? ([["Closed", when(ticket.closed_at)]] as [string, React.ReactNode][]) : []),
+                    ["Status in the source", ticket.source_status ?? ticket.status],
+                  ]}
+                />
+              </Card>
+              <Activity ticket={ticket} />
+            </div>
           </div>
         </>
       )}
