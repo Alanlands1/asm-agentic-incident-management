@@ -28,7 +28,11 @@ Branch `feature/console-workflow-p1`, from `dev` at `3460cc4`.
 | 9 Close notes | Done | `b9e5898`, `657a789` | Saved live on AMS-3 (text marked "TEST (Claude)"); second save gets 409; saved notes show read-only |
 | 10 Updates | Done | `5548cd1` | Internal note added live on AMS-6 (marked "TEST (Claude)"); Reply to caller greyed out with the reason while write-back is off. Sending a reply to Jira not tested (it would post to the real issue) |
 | 11 Who did what | Done | `d7f57d0` | Checked against the API on AMS-6 (4 entries), AMS-3 (11, Show all) and AMS-1 (empty). No ticket has a rating yet, so a rating line was not seen live |
-| 12 Check end to end | Next | | |
+| 12 Check end to end | Checked, code review to do | | See "Task 12 results" below |
+| 13 Live results | Done, not committed | | Added at the user's request; one small backend field. See Task 13 below |
+| 14 Auto-approval, Resolution right away, animations | Done, not committed | | Added at the user's request; changes Triage's behaviour. See Task 14 below |
+| 15 Fix loop and closure note | Done, not committed; Send not tried on the real Jira | | Pulled forward from design Phase 2 and 3 at the user's request. See Task 15 below |
+| 16 Review only when lowered, card motion | Done, not committed | | Asked for on 2026-11-23. See Task 16 below |
 
 **Outside the plan, found while testing**
 - `b03538c` backend fix: `decided` on `GET /tickets/{id}` took the newest review of any agent, so saving close notes
@@ -38,7 +42,28 @@ Branch `feature/console-workflow-p1`, from `dev` at `3460cc4`.
 - Loading crash on the ticket page (lists built before the ticket loaded) fixed before `c0817f9`.
 - On a closed ticket, unfinished cards are listed under "Needs a look" instead of "Coming up".
 
-**Left behind by testing:** a close-notes decision on AMS-3 and an internal note on AMS-6 in the local database, both marked "TEST (Claude)".
+**Task 12 results (2026-11-20)**
+- Build passes; lint unchanged from the baseline (3 errors, 2 warnings in untouched files).
+- One ticket per stage: pending and awaiting_info (AMS-11), triaged (AMS-6), reviewed (AMS-14), closed (AMS-3),
+  historical (AMS-1). Now, step popovers (keyboard: Enter opens, Esc closes, focus returns), runbook side panel (opens
+  460px on the right, Esc closes), sticky menu, top bar and right column, Who did what.
+- Roles: Engineer, Lead and Admin on the ticket page; bell for Lead and Admin only.
+- Widths: Chrome would not resize, so 1440px and 390px were checked in a same-origin iframe of that width. 390px: no
+  sideways scroll, phone menu opens with its footer.
+- Jira: `JIRA_WRITE_BACK` was on in `backend/.env`; switched off for the test, then set back to true. With it off, no
+  write reached Jira on page loads or after a run (`POST /tickets/AMS-11/run-agents`). Before the switch, the backend's
+  scheduled job posted a Resolution comment to the real AMS-14 issue; it is still there.
+- Fixed: on a reviewed ticket whose Resolution had already run, the Now line still said Resolution would run on the
+  next sync. Not seen live: after a demo reset no open reviewed ticket had a Resolution run.
+- Found, not fixed (backend, outside Phase 1): the runbook panel says "could not be opened" for KB-ORD-006.
+  Resolution cites articles from `data/confluence_copy/`, but `GET /runbooks/{id}` only reads `data/knowledge_base/`.
+- Found, minor: on the phone menu the close button sits on the top edge, half cut off.
+- Not checked: a rating line in Who did what (no ticket has a rating).
+
+**Left behind by testing:** none in the local database (a demo reset at 18:53 cleared the "TEST (Claude)" close-notes decision on AMS-3 and internal note on AMS-6).
+Task 13 testing then left AMS-11 **rejected** (a test note to the agents read as "not an incident"; the note is cleared)
+with an internal note "TEST (Claude): live update check" in its Updates. Only a demo reset puts it back.
+Task 14 testing: AMS-7 was agreed at P3 by "Alan Test" (a real lowered case), and Resolution found its fix (KB-PAY-001).
 
 **For Phase 2:** comments do not record whether they were an internal note or sent to Jira, so older updates can't be labelled. Add a column when the backend work starts.
 
@@ -234,9 +259,136 @@ with `Collapsible`. Bodies reuse what the page already renders:
 3. Check nothing writes to Jira on page load or after a run (watch the backend log for Jira calls).
 4. Ask for a code review (`/code-review`), then report what was checked and what was not.
 
+
+## Task 13: Live results while agents run
+
+**Why:** asked for after Task 12. A result only showed after a refresh unless the person pressed Run on that page, and
+the only sign of a run was the spinner on the step's circle.
+
+**Files:** `backend/app/schemas/ticket.py`, `backend/app/api/v1/endpoints/tickets.py`, `backend/tests/test_tickets.py`,
+`frontend/src/types/pipeline.ts`, `frontend/src/app/tickets/[id]/page.tsx`
+
+1. Backend: `GET /tickets/{id}` returns `agents_running`, true while the agents' pass after a Jira sync holds
+   `jira.agents_lock`. Test added.
+2. The ticket page reads the ticket again while the tab is visible: every 3 s while an agent runs (own run or
+   `agents_running`), else every 30 s. A failed read keeps what is shown.
+3. Under the Now line, while agents work: a spinner and "Data Quality is checking this ticket…" for a run started
+   here, or "The agents are working through the latest Jira sync. This page updates by itself."
+4. Run buttons and the agents' note wait while agents work (title says why). The page does not scroll to a new Now
+   step while someone is typing.
+
+**Result:** 303 backend tests pass, ruff unchanged in the touched files, build passes, lint unchanged. Checked on
+AMS-11: a note added through the API showed in Updates and Who did what without a reload; the status line showed during
+a run and the result appeared without a reload. The background-sync line was not seen live (no new Jira tickets to
+start a pass); the backend test covers the flag.
+
+
+## Task 14: Auto-approval, Resolution right away, animations
+
+**Why:** asked for after Task 13. A person should only have to approve a priority Triage lowered; after a decision the
+next agent should start at once and show its result live, with the cards moving in rather than swapping.
+
+**Decisions (user, 2026-11-20):** auto-approve when Triage's priority is the same as the reporter's or more urgent; a
+person reviews when it is lower or the reporter gave none; an auto-approval does not change the Jira priority (console
+only); Resolution starts right away after any decision.
+
+**Backend:** `services/triage/run.py` records an accepted review by `AMS agents (auto)` and moves the ticket to
+`reviewed`, else `triaged` as before (storm followers too). The agreement report leaves auto-approvals out.
+`jira.start_resolution()` runs Resolution (and its Jira comment, if write-back is on) in the background after a person's
+review, after a console run that ended auto-approved, and at the end of every agents pass. `agents_running` is also true
+while Resolution runs. Tests: two new, three updated to the new rule (they expected `triaged` for raised priorities);
+tests never start background Resolution (`conftest.py`).
+
+**Frontend:** while an agent works on the ticket, the Now card becomes a pulsing placeholder with "Resolution is looking
+for the fix in the runbooks…" (or the agent's own line), and its step in the bar spins. The step that just got a result
+stays open under Now as **Just finished**. The Now block and Just finished slide in; new Who did what rows fade in; step
+circles change colour smoothly. All motion is off under `prefers-reduced-motion`.
+
+**Result:** 305 backend tests pass; ruff unchanged in the touched files; build passes; lint unchanged. Checked live on
+AMS-7 (write-back off for the backend process): Agree with P3, then the placeholder and Resolution line, Triage under
+Just finished, and 11 s later the fix under Just finished with Now on Closure Quality, all without a reload; nothing
+written to Jira. Not seen live: an auto-approval (tickets triaged before this change keep waiting; a demo reset and
+sync would show it). AMS-14 (reporter P2, Triage P2) is one of those.
+
 ---
+
+## Task 15: Fix loop and closure note
+
+**Why:** asked for after Task 14, to match the canvas's ticket flow. **Decisions (user, 2026-11-20):** the fix loop
+and the closure note now (not lead review); Send posts the closure note on the Jira issue and moves it to done.
+
+**Backend:**
+- Two stages, no migration (`pipeline_status` is a string): `fix_confirmed` (closure note open) and `needs_lead`.
+- `services/fix.py`: the engineer's answer is a review of the Resolution run (agent `resolution`; action `worked`,
+  `partly` or `wrong`, with a note for the last two). The latest answer on a run counts.
+  - Worked or partly drafts the closure note into `resolution_notes` (cause, steps, what changed,
+    `[engineer to add: check]`) and runs Closure Quality.
+  - Wrong runs Resolution again for that ticket. Three wrong answers mean Needs the lead.
+- Resolution reads the fixes that did not work and what happened (in the case text, so in the fingerprint). Rule R4 is in
+  `resolution_react@2`; the version change re-resolves every reviewed ticket once on the next agents pass.
+- Endpoints:
+  - `POST /tickets/{id}/fix-outcome`
+  - `PUT /tickets/{id}/closure-note`: saves and checks again.
+  - `POST /tickets/{id}/close`: posts the note, moves the issue to a done status (it checks for the move first), closes the
+    ticket, and keeps a copy under Updates. It is refused while `[engineer to add: …]` gaps remain. `JIRA_WRITE_BACK` is
+    still the master switch.
+  - The closure check endpoint also takes `fix_confirmed` tickets.
+- Other changes:
+  - A Jira sync keeps the console's note while the issue is open.
+  - The SLA, dashboard and personas lists count the new stages as open.
+  - Closure Quality ignores `[engineer to add: …]` marks, so a gap counts as missing.
+- 12 new tests; 317 pass.
+
+**Frontend:** the Suggested fix card asks "Did it work?":
+- Yes, Partly (what changed), or No (what happened, then "Get a new suggestion", with the count left before the lead).
+- With no runbook match, the card offers "I fixed it another way".
+- It shows Fix vN, earlier fixes with the engineer's answers, Change answer, and the Needs-the-lead alert.
+
+The Close notes card, once the fix is confirmed:
+- What the note still needs, and the note to edit.
+- Save and check again, and Use the agent's draft.
+- Send the closure note to Jira. It is disabled until the note is saved, has no gaps, and write-back is on, and says why.
+
+Step bar and Now follow it. Overview stage words cover the two new stages.
+
+**Checked live on AMS-14** (write-back off):
+- No, with a note: the placeholder showed while Resolution looked again. Fix v2 said no runbook covers it rather than
+  repeat the rollback.
+- I fixed it another way: Now moved to the closure note, drafted with gaps. Before the gap fix, Closure Quality called
+  that draft good; fixed.
+- Filled in, saved: 6 of 6, Ready to send.
+- Send itself is tested with a fake Jira only.
 
 ## Not in Phase 1
 
-"Did it work?", new suggestions from a note, fix versions, the closure-note lock, Closure Quality in the console,
-lead review, sending the closure note, the backend write-back switches (Phase 2 and 3 of the design).
+Lead review and its setting, the backend write-back switches (Phase 3 of the design). Task 15 brought the rest of
+Phase 2 and 3 forward.
+
+---
+
+## Task 16: Review only when lowered, card motion
+
+**Why:** asked for on 2026-11-23. **Decisions (user):** a person reviews only a priority Triage lowered; a ticket the
+reporter gave no priority is approved by the agents too (this changes Task 14's rule). The ticket page always moves,
+even when the computer asks for reduced motion (this laptop has Windows animation effects off, so nothing moved before).
+
+**Backend:** `services/triage/run.py` `_triaged()` waits for a person only when the priority went down. Tests updated:
+`test_triage.py` (MBX-00006, no reported priority, is now `reviewed`) and `test_triage_review.py` (rule, and the queue
+limit check, since the fixture now has one waiting ticket). 317 pass; ruff clean in the touched files.
+
+**Frontend (`tickets/[id]/page.tsx`):** the Review by a person step says "Not needed" for an agents' approval, why a
+person is needed when Triage lowered it, and "Only if lowered" before Triage. Clicking a card opens it and scrolls to it;
+"Open the section" and a new Now step scroll the same way, eased by hand (`glideTo`), because Chrome makes
+`behavior: "smooth"` instant under reduced motion. Cards glide to their new place when they move (Now, Just finished,
+Coming up, Done) or when a card above opens; a card that appears fades up. `globals.css` exempts `.keep-motion` (the
+ticket page) from the reduced-motion rule. Checked in Chrome on AMS-14 with reduced motion on.
+
+Not seen live: a ticket moving through the agents with the new rule (tickets already waiting keep waiting until triaged again).
+
+
+**Knowledge Builder after Send (2026-11-23):** it ran only at the end of the agents' pass after a Jira sync, so a ticket
+closed with Send waited for the next sync. `POST /tickets/{id}/close` now calls `jira.start_knowledge()`, which runs
+Knowledge Builder in the background under the agents' lock (in its own thread and engine, like the pass). The ticket page
+shows "Knowledge Builder is learning from the close notes…" meanwhile, when the notes passed Closure Quality. Test:
+`test_send_posts_the_closure_note_and_closes_the_issue` checks it starts; `conftest.py` stubs it. Checked on AMS-14
+(closed, notes good, no case yet): `learn_now()` matched it to KB-ORD-006. Send itself not retried (it writes to Jira).
