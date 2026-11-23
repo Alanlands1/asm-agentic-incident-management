@@ -13,6 +13,7 @@ import {
 } from "@/components/console/persona-parts";
 import { SectionHead, Status, dueWords, span } from "@/components/console/sync-parts";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -48,6 +49,11 @@ function TicketCard({ ticket, now }: { ticket: BoardTicket; now: number | null }
         <p className="text-xs text-muted-foreground">{appOf(ticket)}</p>
         <div className="mt-auto flex flex-wrap items-center gap-x-2 gap-y-1 pt-1">
           <StagePill ticket={ticket} />
+          {ticket.fix_verdict === "no_match" && (
+            <Badge variant="destructive" title="Resolution found no runbook article for this ticket">
+              No KB
+            </Badge>
+          )}
           <span className="text-xs text-muted-foreground">
             {[age?.words, ticket.assignee ?? "Unassigned"].filter(Boolean).join(" · ")}
           </span>
@@ -68,6 +74,7 @@ export function PersonaOverview({ lead }: { lead: boolean }) {
   const [query, setQuery] = useState("");
   const [app, setApp] = useState("");
   const [age, setAge] = useState<string | null>(null);
+  const [noKb, setNoKb] = useState(false); // only tickets Resolution found no runbook fix for
   const [running, setRunning] = useState(false);
   const [ran, setRan] = useState<string | null>(null);
   // The clock is read in the browser only: prerendered, the date and ages would be the build's.
@@ -98,6 +105,7 @@ export function PersonaOverview({ lead }: { lead: boolean }) {
   const tickets = board?.tickets ?? [];
   const needDetails = tickets.filter((x) => x.stage === "awaiting_info");
   const drafted = needDetails.filter((x) => x.has_draft).length;
+  const noRunbook = tickets.filter((x) => x.fix_verdict === "no_match" && x.fix_answer !== "partly" && x.fix_answer !== "worked");
   const wrong = [
     t?.sla_breached && `${count(t.sla_breached, "ticket has", "tickets have")} breached SLA`,
     t?.sla_at_risk && `${count(t.sla_at_risk, "ticket is", "tickets are")} close to breach`,
@@ -109,7 +117,7 @@ export function PersonaOverview({ lead }: { lead: boolean }) {
   );
 
   const chosen = STATUSES.find((s) => s.key === status);
-  const byStatus = chosen ? tickets.filter((x) => chosen.stages.includes(x.stage)) : tickets;
+  const byStatus = (chosen ? tickets.filter((x) => chosen.stages.includes(x.stage)) : tickets).filter((x) => !noKb || noRunbook.includes(x));
   const apps = [...byStatus.reduce((c, x) => c.set(appOf(x), (c.get(appOf(x)) ?? 0) + 1), new Map<string, number>())].sort((a, b) => b[1] - a[1]);
   const ageFilter = AGES.find((a) => a.key === age);
   const q = query.trim().toLowerCase();
@@ -125,6 +133,7 @@ export function PersonaOverview({ lead }: { lead: boolean }) {
   const pick = (key: string | null) => {
     setStatus(key);
     setApp("");
+    setNoKb(false);
   };
 
   return (
@@ -221,6 +230,22 @@ export function PersonaOverview({ lead }: { lead: boolean }) {
             </span>
             <Button size="sm" variant="secondary" onClick={() => pick("needs")}>
               Show them
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {(noRunbook.length > 0 || noKb) && (
+        <Alert className={noKb ? "border-primary" : undefined}>
+          <AlertDescription className="flex flex-wrap items-center justify-between gap-2">
+            <span>
+              <span className="font-semibold">
+                {noRunbook.length ? `${count(noRunbook.length, "ticket has", "tickets have")} no runbook fix.` : "No ticket is without a runbook fix now."}
+              </span>{" "}
+              The knowledge base doesn&rsquo;t cover {noRunbook.length === 1 ? "it" : "them"}: work it out with AI on the ticket page; the fix becomes a knowledge article after it is closed.
+            </span>
+            <Button size="sm" variant={noKb ? "default" : "secondary"} aria-pressed={noKb} onClick={() => setNoKb(!noKb)}>
+              {noKb ? "Show all" : "Show them"}
             </Button>
           </AlertDescription>
         </Alert>

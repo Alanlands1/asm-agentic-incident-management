@@ -57,7 +57,8 @@ export default function TicketsPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all"); // 'all', 'open', 'closed'
   const [selectedTicket, setSelectedTicket] = useState<ServiceNowTicket | null>(null);
   // What the agents made of each open ticket: its stage and the priority in force (decided, else recommended).
-  const [agents, setAgents] = useState<Record<string, { stage: string; priority: number | null }>>({});
+  const [agents, setAgents] = useState<Record<string, { stage: string; priority: number | null; fix_verdict?: string | null }>>({});
+  const [kbFilter, setKbFilter] = useState<string>("all"); // all, none (no runbook fix), found
 
   // Pagination
   const [page, setPage] = useState<number>(1);
@@ -72,7 +73,7 @@ export default function TicketsPage() {
       });
       setTickets(data.items);
       setTotalCount(data.total);
-      apiClient<{ tickets: { id: string; stage: string; priority: number | null }[] }>("/personas/board")
+      apiClient<{ tickets: { id: string; stage: string; priority: number | null; fix_verdict?: string | null }[] }>("/personas/board")
         .then((board) => setAgents(Object.fromEntries(board.tickets.map((t) => [t.id, t]))))
         .catch(() => setAgents({})); // the list still works without the agents' view
     } catch (err: unknown) {
@@ -117,13 +118,18 @@ export default function TicketsPage() {
       if (dqFilter === "flagged" && !t.dq_flag) return false;
       if (dqFilter === "clean" && t.dq_flag) return false;
 
+      // Runbook fix: what Resolution found for the ticket
+      const fix = agents[t.ticket_id]?.fix_verdict;
+      if (kbFilter === "none" && fix !== "no_match") return false;
+      if (kbFilter === "found" && fix !== "resolved") return false;
+
       // Status filter
       if (statusFilter === "open" && t.closed_at !== null) return false;
       if (statusFilter === "closed" && t.closed_at === null) return false;
 
       return true;
     });
-  }, [tickets, searchTerm, serviceFilter, dqFilter, statusFilter]);
+  }, [tickets, searchTerm, serviceFilter, dqFilter, statusFilter, kbFilter, agents]);
 
   // Paginated slice
   const paginatedTickets = useMemo(() => {
@@ -227,6 +233,21 @@ export default function TicketsPage() {
           </div>
           <div className="flex-[1_1_9rem]">
             <select
+              aria-label="Runbook fix"
+              value={kbFilter}
+              onChange={(e) => {
+                setKbFilter(e.target.value);
+                setPage(1);
+              }}
+              className={selectClass}
+            >
+              <option value="all">Any runbook fix</option>
+              <option value="none">No runbook fix</option>
+              <option value="found">Runbook fix found</option>
+            </select>
+          </div>
+          <div className="flex-[1_1_9rem]">
+            <select
               aria-label="Lifecycle"
               value={statusFilter}
               onChange={(e) => {
@@ -278,7 +299,10 @@ export default function TicketsPage() {
                       Flagged
                     </span>
                   ) : agents[ticket.ticket_id] ? (
-                    <span>{STAGE_WORDS[agents[ticket.ticket_id].stage] ?? agents[ticket.ticket_id].stage}</span>
+                    <span>
+                      {STAGE_WORDS[agents[ticket.ticket_id].stage] ?? agents[ticket.ticket_id].stage}
+                      {agents[ticket.ticket_id].fix_verdict === "no_match" && <span className="font-semibold text-critical"> · no runbook fix</span>}
+                    </span>
                   ) : (
                     <span className="inline-flex items-center gap-1.5">
                       <CheckCircle2 className="size-4" aria-hidden="true" />
