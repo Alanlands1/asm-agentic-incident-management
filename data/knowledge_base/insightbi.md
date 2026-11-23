@@ -107,6 +107,43 @@ Subscription owner left the company (subscription disabled) or attachment exceed
 
 ---
 
+### KB-BI-006 — Dashboard totals doubled after a data model change
+
+**Symptoms**
+- Revenue or order totals on a dashboard are about twice the expected value.
+- Started after a dataset or data model was published.
+
+**Root cause**
+A new relationship or join in the model made rows repeat (one-to-many joined as one-to-one), so measures count every row twice.
+
+**Resolution steps**
+1. Compare the dashboard total with the source system for one day (KB-BI-004 for small differences).
+2. Open the dataset's version history and find the change published before the problem started.
+3. Roll back to the previous version, or fix the relationship to the right cardinality and republish.
+4. Refresh the dataset and confirm the totals match the source.
+
+**Escalation:** P2 if a board or statutory report is due; otherwise P3. Data Engineering for model changes.
+
+---
+
+### KB-BI-007 — Export to Excel fails or is cut off
+
+**Symptoms**
+- "Export failed" or the downloaded file stops at 150,000 rows.
+- Large report pages time out when exporting.
+
+**Root cause**
+The reporting service limits exports to 150,000 rows and 10 minutes; large exports hit the limit.
+
+**Resolution steps**
+1. Ask the user to filter the report (date range or region) to fewer rows and export again.
+2. For a full extract, schedule a paginated report delivery to the user's mailbox instead.
+3. If the user needs it regularly, ask Data Engineering for a Snowflake extract share.
+
+**Escalation:** P4 (workaround available).
+
+---
+
 ## Escalation contacts
 
 | Level | Team | When |

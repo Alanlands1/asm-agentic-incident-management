@@ -110,6 +110,44 @@ The bank remittance reference did not match the invoice number format (e.g. cust
 
 ---
 
+### KB-BIL-006 — Invoice generated twice for the same order
+
+**Symptoms**
+- A customer receives two invoices with different numbers for one order.
+- Celery logs show the `generate_invoice` task ran twice for the same order id.
+
+**Root cause**
+A Celery worker restarted during the run and the task was retried without the idempotency check on the order id, so a second invoice was created.
+
+**Resolution steps**
+1. Find duplicates: BillingEngine Admin → *Reports → Duplicate invoices* for the run date.
+2. Cancel the later invoice of each pair with a credit note (KB-BIL-004 if credit notes fail).
+3. Make sure only one AR posting per order reached SAP FI; reverse the extra posting with Finance.
+4. Raise a defect for the Billing Dev team to enforce one invoice per order.
+
+**Escalation:** P2 near month-end or above 50 duplicates, otherwise P3. Finance Controller approves reversals.
+
+---
+
+### KB-BIL-007 — Rounding differences on multi-currency invoices
+
+**Symptoms**
+- Invoice totals differ by 0.01 from the sum of the lines for non-INR invoices.
+- SAP FI rejects postings with `BALANCE_NOT_ZERO`.
+
+**Root cause**
+Lines are converted and rounded one by one, while the total is converted once, so rounding differs; the exchange-rate table for the day may also have too few decimals.
+
+**Resolution steps**
+1. Check the day's rate in BillingEngine Admin → *Exchange rates* has 6 decimals.
+2. Correct the rate if needed and re-run *Recalculate totals* for the affected invoices.
+3. Re-post rejected entries to SAP FI from *Interfaces → Failed postings → Retry*.
+4. If differences remain, book them to the rounding account agreed with Finance.
+
+**Escalation:** P3; P2 if it blocks month-end close.
+
+---
+
 ## Escalation contacts
 
 | Level | Team | When |

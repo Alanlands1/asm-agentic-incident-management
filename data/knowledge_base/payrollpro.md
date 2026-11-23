@@ -128,6 +128,44 @@ The `TT_SYNC` integration job that pulls approved timesheets from TimeTrack ran 
 
 ---
 
+### KB-PAY-006 — Employee missing from the monthly payroll run
+
+**Symptoms**
+- An employee has no payslip after `PAY_CALC_MONTHLY` finished.
+- The employee is active in EmployeePortal but not in the payroll population report.
+
+**Root cause**
+The employee's payroll record was not created: missing bank details or tax id stopped the employee master load, or the joining date is after the payroll cut-off.
+
+**Resolution steps**
+1. Check the employee in payroll-web → *Population report* for the month and the load error log.
+2. Ask HR to add the missing bank details or tax id.
+3. Run an off-cycle calculation for the employee: Control-M job `PAY_CALC_OFFCYCLE` with the employee id.
+4. Generate the payslip (`PAY_PDF_GEN`) and add the payment to the next bank file or a manual transfer.
+
+**Escalation:** P2 inside the payroll window (salary date at risk), otherwise P3. Head of Payroll approves off-cycle payments.
+
+---
+
+### KB-PAY-007 — Payslip shows last month's figures
+
+**Symptoms**
+- Employees open this month's payslip and see last month's amounts.
+- payslip-renderer logs show cache hits for the new period.
+
+**Root cause**
+The renderer cache was not cleared after the new period was published, so it served the previous PDFs.
+
+**Resolution steps**
+1. Confirm the figures in payroll-web are correct for the new month.
+2. Clear the renderer cache: payroll-web Admin → *Payslips → Clear cache* (or restart payslip-renderer).
+3. Re-run `PAY_PDF_GEN` for the period.
+4. Spot-check five payslips, then tell the Service Desk the issue is fixed.
+
+**Escalation:** P3; P2 on salary day.
+
+---
+
 ## Escalation contacts
 
 | Level | Team | When |

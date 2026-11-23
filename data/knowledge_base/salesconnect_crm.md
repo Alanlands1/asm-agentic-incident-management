@@ -112,6 +112,42 @@ The forwarding rule on the support mailbox was disabled (mailbox migration / pol
 
 ---
 
+### KB-CRM-006 — Duplicate leads from website forms
+
+**Symptoms**
+- Sales reps see the same lead two or three times with the same email.
+- The integration middleware log shows the same form submission posted more than once.
+
+**Root cause**
+The middleware retried lead creation after a timeout, and the duplicate rule on email is set to alert only, so duplicates are saved.
+
+**Resolution steps**
+1. Merge the duplicates: CRM → *Leads → Find duplicates* by email, then *Merge*.
+2. Set the lead duplicate rule on email to *Block* (CRM admin).
+3. Ask the CRM Dev team to make the middleware send an idempotency key with each submission.
+
+**Escalation:** P3; P2 at quarter end or during a campaign.
+
+---
+
+### KB-CRM-007 — Quote PDF not generated
+
+**Symptoms**
+- *Generate quote* spins and no PDF is attached to the opportunity.
+- Error `TEMPLATE_RENDER_ERROR` in the quote log.
+
+**Root cause**
+The quote template refers to a field that was renamed or removed, or a product has no list price in the price book used by the quote.
+
+**Resolution steps**
+1. Open the quote log for the opportunity and note the field or product in the error.
+2. Add the missing price to the price book, or update the template field mapping (CRM admin).
+3. Generate the quote again and check the PDF.
+
+**Escalation:** P3; P2 when a deal must be quoted the same day.
+
+---
+
 ## Escalation contacts
 
 | Level | Team | When |
