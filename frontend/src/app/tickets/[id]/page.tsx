@@ -158,8 +158,9 @@ function Post({ label, done, onPost }: { label: string; done?: boolean; onPost: 
 
 type Audit = { model?: string; input_tokens?: number; output_tokens?: number; latency_ms?: number; attempts?: number };
 
-/** One agent verdict: what it decided, why, and (for a model call) what it cost. */
-function Run({ run, children }: { run: AgentRun; children?: React.ReactNode }) {
+/** One agent verdict: what it decided, why, and (for a model call) what it cost.
+ *  With `action` (the question to answer on a fix), that comes right after the steps and the rest folds under it. */
+function Run({ run, action, children }: { run: AgentRun; action?: React.ReactNode; children?: React.ReactNode }) {
   const o = run.output;
   // Resolution only: runbook id -> ranking factor from engineers' ratings on tickets of the same kind.
   const weights = Object.entries((o.kb_weights ?? {}) as Record<string, number>);
@@ -176,49 +177,8 @@ function Run({ run, children }: { run: AgentRun; children?: React.ReactNode }) {
   const signals = o.signals as Record<string, unknown> | undefined;
   const impact = o.impact as Record<string, { level: string; quote: string | null }> | null | undefined;
   const flags = Object.keys(FLAGS).filter((f) => o[f] === true);
-  return (
-    <li className="flex flex-col gap-1.5 border-b border-border px-4 py-3 text-[13px] last:border-b-0">
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <span className="font-semibold">{AGENTS[run.agent] ?? humanize(run.agent)}</span>
-        <span>
-          {o.source === "chat" ? "uses the fix worked out with the AI assistant" : /^P[1-5]$/.test(run.verdict) ? `recommends ${run.verdict}` : (VERDICTS[run.verdict] ?? run.verdict)}
-        </span>
-        {o.source === "chat" && <Badge variant="outline">AI suggestion, not from a runbook</Badge>}
-        <Badge variant="secondary">{o.stage === "model" || run.agent === "resolution" ? "Model" : "Rules"}</Badge>
-        {flags.map((f) => (
-          <Badge key={f}>{FLAGS[f]}</Badge>
-        ))}
-        {/* Closure Quality: the notes said the engineer followed Resolution's fix, so its cause and steps were counted */}
-        {o.adopted_fix === true && <Badge variant="outline">Followed the suggested fix</Badge>}
-        <span className="ml-auto text-xs text-muted-foreground">{when(run.created_at)}</span>
-      </div>
-      {reason && <p className="break-words">{reason}</p>}
-      {impact && (
-        <dl className="grid grid-cols-[minmax(0,12rem)_minmax(0,1fr)] gap-x-4 gap-y-1">
-          {Object.entries(impact).map(([pillar, { level, quote }]) => (
-            <div key={pillar} className="contents">
-              <dt className="text-muted-foreground">{humanize(pillar)} impact</dt>
-              <dd className="break-words">
-                <span className="font-semibold">{humanize(level)}</span>
-                {quote && <span className="text-muted-foreground"> · “{quote}”</span>}
-              </dd>
-            </div>
-          ))}
-        </dl>
-      )}
-      {typeof o.root_cause === "string" && (
-        <p className="break-words">
-          <span className="font-semibold">Cause: </span>
-          {o.root_cause}
-        </p>
-      )}
-      {steps.length > 0 && (
-        <ol className="flex list-decimal flex-col gap-1 break-words pl-5">
-          {steps.map((s, i) => (
-            <li key={i}>{s.replace(/^\d+[.)]\s*/, "")}</li>
-          ))}
-        </ol>
-      )}
+  const more = (
+    <>
       {typeof o.notes === "string" && o.notes && <p className="break-words text-muted-foreground">{o.notes}</p>}
       <p className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
         {typeof o.rule === "string" && <span>Rule: <span className="font-mono">{o.rule}</span></span>}
@@ -278,6 +238,62 @@ function Run({ run, children }: { run: AgentRun; children?: React.ReactNode }) {
         </details>
       )}
       {children}
+    </>
+  );
+  return (
+    <li className="flex flex-col gap-1.5 border-b border-border px-4 py-3 text-[13px] last:border-b-0">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span className="font-semibold">{AGENTS[run.agent] ?? humanize(run.agent)}</span>
+        <span>
+          {o.source === "chat" ? "uses the fix worked out with the AI assistant" : /^P[1-5]$/.test(run.verdict) ? `recommends ${run.verdict}` : (VERDICTS[run.verdict] ?? run.verdict)}
+        </span>
+        {o.source === "chat" && <Badge variant="outline">AI suggestion, not from a runbook</Badge>}
+        <Badge variant="secondary">{o.stage === "model" || run.agent === "resolution" ? "Model" : "Rules"}</Badge>
+        {flags.map((f) => (
+          <Badge key={f}>{FLAGS[f]}</Badge>
+        ))}
+        {/* Closure Quality: the notes said the engineer followed Resolution's fix, so its cause and steps were counted */}
+        {o.adopted_fix === true && <Badge variant="outline">Followed the suggested fix</Badge>}
+        <span className="ml-auto text-xs text-muted-foreground">{when(run.created_at)}</span>
+      </div>
+      {reason && <p className="break-words">{reason}</p>}
+      {impact && (
+        <dl className="grid grid-cols-[minmax(0,12rem)_minmax(0,1fr)] gap-x-4 gap-y-1">
+          {Object.entries(impact).map(([pillar, { level, quote }]) => (
+            <div key={pillar} className="contents">
+              <dt className="text-muted-foreground">{humanize(pillar)} impact</dt>
+              <dd className="break-words">
+                <span className="font-semibold">{humanize(level)}</span>
+                {quote && <span className="text-muted-foreground"> · “{quote}”</span>}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      {typeof o.root_cause === "string" && (
+        <p className="break-words">
+          <span className="font-semibold">Cause: </span>
+          {o.root_cause}
+        </p>
+      )}
+      {steps.length > 0 && (
+        <ol className="flex list-decimal flex-col gap-1 break-words pl-5">
+          {steps.map((s, i) => (
+            <li key={i}>{s.replace(/^\d+[.)]\s*/, "")}</li>
+          ))}
+        </ol>
+      )}
+      {action ? (
+        <>
+          <div className="-mx-4">{action}</div>
+          <details>
+            <summary className="cursor-pointer text-xs font-semibold text-primary">Why this fix</summary>
+            <div className="mt-1.5 flex flex-col gap-1.5">{more}</div>
+          </details>
+        </>
+      ) : (
+        more
+      )}
     </li>
   );
 }
@@ -421,7 +437,7 @@ function glideTo(el: HTMLElement | null, offset = 148) {  // under the top bar a
 
 /** The circle in front of a step or card: done, needs a person, waiting, or the step to act on now. */
 function StateDot({ state, now, running, n }: { state: FlowState; now?: boolean; running?: boolean; n?: number }) {
-  const Icon = running ? LoaderCircle : state === "done" ? Check : state === "attention" ? TriangleAlert : null;
+  const Icon = running ? LoaderCircle : state === "done" ? Check : state === "attention" && !now ? TriangleAlert : null;
   return (
     <span
       aria-hidden="true"
@@ -760,8 +776,8 @@ function FixAnswer({
         <div className="flex flex-wrap items-center gap-2 rounded-xl bg-selected px-3 py-2.5">
           <span className="font-semibold">{found ? "Did it work?" : "No runbook covers this. Fixed it another way?"}</span>
           {found && (
-            <Button size="sm" disabled={busy || sending} onClick={() => send("worked")}>
-              {sending ? <LoaderCircle className="animate-spin" /> : <Check />}
+            <Button size="sm" variant="secondary" disabled={busy || sending} onClick={() => send("worked")}>
+              {sending && <LoaderCircle className="animate-spin" />}
               {sending ? "Opening the closure note…" : "Yes, it worked"}
             </Button>
           )}
@@ -1359,25 +1375,29 @@ function Ticket() {
       <>
         {latestRun ? (
           <ul role="list">
-            <Run run={latestRun}>
+            <Run
+              run={latestRun}
+              action={
+                key === "resolution" && !closed && (asking || confirmed) ? (
+                  <FixAnswer
+                    key={latestRun.id}
+                    ticketId={ticket!.id}
+                    run={latestRun}
+                    version={runs.length}
+                    answer={fixAnswer}
+                    wrong={wrongBefore}
+                    needsLead={needsLead}
+                    busy={busy}
+                    onDone={load}
+                  />
+                ) : undefined
+              }
+            >
               <FeedbackThumbs ticketId={ticket!.id} runId={latestRun.id} agent={latestRun.agent} references={references} given={ratingOf(latestRun)} onSent={load} />
             </Run>
           </ul>
         ) : (
           <p className="px-4 py-3 text-[13px] text-muted-foreground">{key === "triage" ? "Not triaged yet." : (WAITS[key] ?? "Not run yet.")}</p>
-        )}
-        {key === "resolution" && latestRun && !closed && (asking || confirmed) && (
-          <FixAnswer
-            key={latestRun.id}
-            ticketId={ticket!.id}
-            run={latestRun}
-            version={runs.length}
-            answer={fixAnswer}
-            wrong={wrongBefore}
-            needsLead={needsLead}
-            busy={busy}
-            onDone={load}
-          />
         )}
         {key === "resolution" && !closed && (
           <FixChat ticket={ticket!} noRunbook={latestRun?.verdict === "no_match"} onDone={load} />
@@ -1560,11 +1580,6 @@ function Ticket() {
 
       {ticket && (
         <>
-          <Card id="step-jira" className="scroll-mt-24 gap-0 py-0">
-            <SectionHead title="Description" />
-            <p className="whitespace-pre-wrap break-words px-4 py-3 text-[13px]">{ticket.description || "Nothing written."}</p>
-          </Card>
-
           {/* The step bar: three groups, a popover per step (click or Enter; Esc or outside closes). */}
           {/* From tablet width up it stays under the top bar on a strip of page background, so nothing shows through;
               pinned, it drops the group labels to take less height. On a phone it scrolls away with the page. */}
@@ -1647,6 +1662,11 @@ function Ticket() {
 
           <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
             <div className="flex min-w-0 flex-col gap-4">
+              <Card id="step-jira" className="scroll-mt-24 gap-0 py-0">
+                <SectionHead title="Description" />
+                <p className="whitespace-pre-wrap break-words px-4 py-3 text-[13px]">{ticket.description || "Nothing written."}</p>
+              </Card>
+
               {/* Now: the step to act on, open. */}
               <section id="now" aria-labelledby="now-h" className="flex scroll-mt-24 flex-col gap-2">
                 <div className="flex flex-wrap items-center gap-2">
@@ -1772,7 +1792,7 @@ function Ticket() {
               />
             </div>
 
-            <div className="flex flex-col gap-4 *:shrink-0 lg:sticky lg:top-[140px] lg:max-h-[calc(100vh-156px)] lg:overflow-y-auto lg:overscroll-contain scroll-thin">
+            <div className="flex flex-col gap-4">
               <Card className="gap-0 py-0">
                 <SectionHead title="Details" />
                 <Facts

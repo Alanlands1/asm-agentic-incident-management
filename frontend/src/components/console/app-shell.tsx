@@ -72,7 +72,7 @@ export function AppShell({ children, className }: { children: React.ReactNode; c
         <aside className="sticky top-[76px] hidden h-[calc(100vh-92px)] w-[216px] shrink-0 rounded-[20px] md:block">
           <AppSidebar />
         </aside>
-        <main className={cn("flex min-w-0 max-w-[1200px] flex-1 flex-col gap-5", className)}>
+        <main className={cn("flex min-w-0 max-w-[1440px] flex-1 flex-col gap-5", className)}>
           {allowed && children}
         </main>
       </div>
