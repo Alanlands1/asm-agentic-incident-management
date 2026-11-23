@@ -76,6 +76,8 @@ async def test_submit_send_back_then_approve_then_send(client, monkeypatch):
     monkeypatch.setattr(jira, "close_issue", close_issue)
     assert (await client.post("/api/v1/tickets/AMS-1209/close", json=send)).json()["status"] == "closed"
     assert closed == ["AMS-1209"]
+    mine = (await client.get("/api/v1/personas/closed", params={"person": "ravi@contoso.com"})).json()
+    assert [c["id"] for c in mine] == ["AMS-1209"]  # who pressed Send is recorded
 
 
 async def test_a_changed_note_needs_approval_again(client):

@@ -160,3 +160,64 @@ async def test_activity_and_runbook_endpoints(client):
 async def test_board_endpoint(client):
     body = (await client.get("/api/v1/personas/board")).json()
     assert (body["totals"]["open"], body["tickets"], body["people"]) == (0, [], [])
+
+
+def test_lead_review_steps_fix_answers_and_closes_have_their_own_kinds(session):  # noqa: F811
+    """Before: every stored review read as a Triage decision ("rejected the recommendation")."""
+    day = datetime(2026, 11, 10, tzinfo=UTC)
+    session.add(Ticket(id="AMS-1", source="JIRA", summary="s", status="new", pipeline_status="in_review"))
+    session.flush()
+    fix = AgentRun(ticket_id="AMS-1", agent="resolution", verdict="resolved", output={}, created_at=day)
+    session.add(fix)
+    session.flush()
+
+    def step(agent, action, minute):
+        return Review(ticket_id="AMS-1", agent_run_id=fix.id, agent=agent, action=action, reviewer="Ravi",
+                      created_at=day + timedelta(hours=9, minutes=minute))
+
+    session.add_all([step("resolution", "worked", 0), step("lead_review", "submitted", 5),
+                     step("lead_review", "approved", 10), step("close", "sent", 15)])
+    session.commit()
+    told = [(i["kind"], i["action"]) for i in service.activity(session, since=day)]
+    assert told == [("closed", "sent"), ("lead_review", "approved"), ("lead_review", "submitted"), ("fix_answer", "worked")]
+
+
+def test_board_says_where_each_ticket_is(session, monkeypatch):  # noqa: F811
+    monkeypatch.setattr(settings, "LEAD_REVIEW", "always")
+    session.add(Ticket(id="AMS-1", source="JIRA", summary="s", status="new", pipeline_status="fix_confirmed", assignee="Ravi"))
+    session.flush()
+    fix = AgentRun(ticket_id="AMS-1", agent="resolution", verdict="resolved", output={})
+    check = AgentRun(ticket_id="AMS-1", agent="closure_quality", verdict="good", output={"score": 6})
+    session.add_all([fix, check])
+    session.flush()
+    session.add_all([Review(ticket_id="AMS-1", agent_run_id=fix.id, agent="resolution", action="worked", reviewer="Ravi"),
+                     Review(ticket_id="AMS-1", agent_run_id=check.id, agent="lead_review", action="sent_back",
+                            note="Say how you checked", reviewer="Priya")])
+    session.commit()
+    row = service.board(session, at=AT)["tickets"][0]
+    assert {k: row[k] for k in ("fix_verdict", "fix_answer", "fix_rated", "closure_verdict", "closure_score",
+                                "lead_step", "lead_by", "review_required")} == {
+        "fix_verdict": "resolved", "fix_answer": "worked", "fix_rated": False, "closure_verdict": "good",
+        "closure_score": 6, "lead_step": "sent_back", "lead_by": "Priya", "review_required": True}
+
+
+def test_today_counts_each_agent_and_closed_by_names_the_closer(session):  # noqa: F811
+    day = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+    session.add_all([Ticket(id="AMS-1", source="JIRA", summary="Paid orders stuck", status="closed",
+                            pipeline_status="fix_confirmed", closed_at=datetime.now(UTC).replace(tzinfo=None)),
+                     Ticket(id="AMS-2", source="JIRA", summary="s", status="new", pipeline_status="awaiting_info")])
+    session.flush()
+    runs = [AgentRun(ticket_id="AMS-1", agent=a, verdict=v, output={"priority": 2} if a == "triage" else {})
+            for a, v in (("data_quality", "passed"), ("triage", "P2"), ("resolution", "resolved"),
+                         ("closure_quality", "good"), ("knowledge_builder", "matched"))]
+    runs.append(AgentRun(ticket_id="AMS-2", agent="data_quality", verdict="needs_info", output={}))
+    session.add_all(runs)
+    session.flush()
+    session.add(Review(ticket_id="AMS-1", agent_run_id=runs[3].id, agent="close", action="sent", reviewer="Ravi"))
+    session.commit()
+    got = service.today(session, day)
+    assert got["data_quality"] == {"done": 2, "flagged": 1} and got["resolution"]["done"] == 1
+    assert got["knowledge_builder"] == {"done": 1, "flagged": 1} and got["closed"] == 1
+    closed = service.closed_by(session, "Ravi")
+    assert [(c["id"], c["summary"], c["kb"]) for c in closed] == [("AMS-1", "Paid orders stuck", None)]
+    assert service.closed_by(session, "Priya") == []

@@ -14,6 +14,7 @@ from app.services.data_quality import last_run
 from app.services.fix import GAP
 
 AGENT = "lead_review"
+CLOSE = "close"  # a review row per closure note sent: who closed the ticket (action "sent")
 CHECK = "closure_quality"
 
 

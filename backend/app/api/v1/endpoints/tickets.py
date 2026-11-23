@@ -364,6 +364,10 @@ def _closed(db: Session, ticket_id: str, author_email: str, notes: str, moved_to
     now = datetime.now(UTC).replace(tzinfo=None)  # naive UTC, as the sync stores it
     ticket.status, ticket.source_status = "closed", moved_to  # what the next sync would bring
     ticket.resolved_at, ticket.closed_at = ticket.resolved_at or now, now
+    check = last_run(ticket, "closure_quality") or (ticket.agent_runs[-1] if ticket.agent_runs else None)
+    if check is not None:  # who closed it, for "Closed by you" and the activity
+        db.add(Review(ticket_id=ticket.id, agent_run_id=check.id, agent=lead_review.CLOSE, action="sent",
+                      reviewer=author_email.strip()))
     add_comment(db, ticket, author_email, notes)  # the copy under Updates; commits
     db.refresh(ticket)
     return TicketSummary.model_validate(ticket)

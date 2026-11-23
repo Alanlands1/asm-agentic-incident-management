@@ -7,7 +7,7 @@ in Jira, through the ticket's link.
 import re
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.agents.triage.config import get_config
@@ -15,13 +15,18 @@ from app.agents.triage.rules import find_rule
 from app.core.config import settings
 from app.models.incident import FirstMessage
 from app.models.jira import JiraSync
-from app.models.ticket import AgentRun, Comment, PipelineStatus, Review, Ticket
+from app.models.knowledge import ResolvedCase
+from app.models.ticket import AgentRun, Comment, Feedback, PipelineStatus, Review, Ticket
+from app.services import lead_review
 from app.services.data_quality import AGENT as DATA_QUALITY
+from app.services.data_quality import last_run
 from app.services.jira import COMMAND_BOT, EARLIER, SAID, SLA_BOT
 from app.services.triage import sla
 from app.services.triage.run import AGENT as TRIAGE
 
 TRIAGED = sla.TRIAGED
+FIX = "resolution"
+AUTO = "AMS agents (auto)"  # services/triage/run.AUTO_REVIEWER
 KB_ID = re.compile(r"KB-[A-Z]+-\d+")
 
 
@@ -47,6 +52,12 @@ def board(db: Session, person: str | None = None, at: datetime | None = None) ->
     working = sla.working_priorities(db, [t for t in tickets if t.pipeline_status in TRIAGED])
     urgent = {i.ticket.id: i.sla for i in sla.open_p1_p2(db, at)}
     site = settings.ATLASSIAN_BASE_URL.rstrip("/")
+    ids = [t.id for t in tickets]
+    steps: dict[tuple[str, str], Review] = {}  # (ticket, agent) -> the latest fix answer or lead review step
+    for r in db.scalars(select(Review).where(Review.ticket_id.in_(ids), Review.agent.in_((FIX, lead_review.AGENT)))
+                        .order_by(Review.id)):
+        steps[(r.ticket_id, r.agent if r.agent == lead_review.AGENT else f"{FIX}:{r.agent_run_id}")] = r
+    rated = set(db.scalars(select(Feedback.agent_run_id).where(Feedback.ticket_id.in_(ids), Feedback.agent == FIX)))
 
     rows, people = [], {}
     for t in tickets:
@@ -64,6 +75,7 @@ def board(db: Session, person: str | None = None, at: datetime | None = None) ->
             "triage_reason": run.output.get("reason") if run else None, "reported_priority": t.reported_priority,
             "missing": answer.get("missing", []), "has_draft": bool(answer.get("chase_email")),
             "due_at": _utc(status.due_at) if status else None, "runbook": _runbook(run.output) if run else None,
+            **_progress(db, t, steps, rated),
         }
         rows.append(row)
         p = people.setdefault(t.assignee, {"name": t.assignee, "open": 0, "p1_p2": 0, "breached": 0, "waiting_review": 0})
@@ -86,6 +98,70 @@ def board(db: Session, person: str | None = None, at: datetime | None = None) ->
         "people": sorted(people.values(), key=lambda p: (p["name"] is None, -p["open"])),
         "tickets": rows,
     }
+
+
+def _progress(db: Session, t: Ticket, steps: dict, rated: set) -> dict:
+    """Where the agents and people are on one ticket: for the card, the next step and the viewer's tasks."""
+    dq, fix, check = last_run(t, DATA_QUALITY), last_run(t, FIX), last_run(t, "closure_quality")
+    answer = steps.get((t.id, f"{FIX}:{fix.id}")) if fix else None
+    lead = steps.get((t.id, lead_review.AGENT))
+    closing = t.pipeline_status in (PipelineStatus.FIX_CONFIRMED, PipelineStatus.IN_REVIEW, PipelineStatus.APPROVED)
+    return {
+        "dq_verdict": dq.verdict if dq else None,
+        "fix_verdict": fix.verdict if fix else None,  # resolved: a fix was suggested; no_match: none found
+        "fix_answer": answer.action if answer else None,  # worked, partly, wrong
+        "fix_rated": bool(fix and fix.id in rated),
+        "closure_verdict": check.verdict if check else None,
+        "closure_score": check.output.get("score") if check else None,
+        "lead_step": lead.action if lead else None,  # submitted, approved, sent_back
+        "lead_by": lead.reviewer if lead else None,
+        "review_required": closing and lead_review.required(db, t),
+    }
+
+
+def today(db: Session, since: datetime, person: str | None = None) -> dict:
+    """What each agent did since `since` (the viewer's midnight), and how many tickets were closed."""
+    since = _utc(since).astimezone(UTC)
+    mine = [Ticket.assignee == person] if person else []
+    runs = db.scalars(select(AgentRun).join(Ticket, Ticket.id == AgentRun.ticket_id)
+                      .where(AgentRun.created_at >= since, *mine).order_by(AgentRun.id)).all()
+    last: dict[tuple[str, str], AgentRun] = {}
+    for r in runs:
+        last[(r.agent, r.ticket_id)] = r
+
+    def latest(agent: str) -> list[AgentRun]:
+        return [r for (a, _), r in last.items() if a == agent]
+
+    reviews = db.scalars(select(Review).join(Ticket, Ticket.id == Review.ticket_id)
+                         .where(Review.created_at >= since, *mine)).all()
+    closed = db.scalar(select(func.count()).select_from(Ticket).where(
+        Ticket.closed_at >= since.replace(tzinfo=None), Ticket.pipeline_status != PipelineStatus.HISTORICAL, *mine))
+    return {
+        "data_quality": {"done": len(latest(DATA_QUALITY)),
+                         "flagged": sum(r.verdict == "needs_info" for r in latest(DATA_QUALITY))},
+        "triage": {"done": sum(bool(r.output.get("priority")) for r in latest(TRIAGE)),
+                   "flagged": sum(r.agent == TRIAGE and r.reviewer == AUTO for r in reviews)},
+        "resolution": {"done": sum(r.verdict == "resolved" for r in latest(FIX)),
+                       "flagged": sum(r.agent == FIX and r.action in ("worked", "partly") for r in reviews)},
+        "closure_quality": {"done": len(latest("closure_quality")),
+                            "flagged": sum(r.verdict == "good" for r in latest("closure_quality"))},
+        "knowledge_builder": {"done": len(latest("knowledge_builder")),
+                              "flagged": sum(r.verdict == "matched" for r in latest("knowledge_builder"))},
+        "closed": closed or 0,
+    }
+
+
+def closed_by(db: Session, person: str, days: int = 7) -> list[dict]:
+    """The tickets `person` closed with Send in the last `days` days, newest first, with what the knowledge base got."""
+    since = datetime.now(UTC) - timedelta(days=days)
+    sent = db.scalars(select(Review).where(Review.agent == lead_review.CLOSE, Review.reviewer == person,
+                                           Review.created_at >= since).order_by(Review.id.desc())).all()
+    rows = []
+    for r in sent:
+        ticket, case = db.get(Ticket, r.ticket_id), db.get(ResolvedCase, r.ticket_id)
+        kb = case.kb_article_id if case and case.match_status == "matched" else ("draft" if case and case.draft_id else None)
+        rows.append({"id": r.ticket_id, "summary": ticket.summary if ticket else "", "at": _utc(r.created_at), "kb": kb})
+    return rows
 
 
 def activity(db: Session, person: str | None = None, since: datetime | None = None, limit: int = 20) -> list[dict]:
@@ -128,9 +204,11 @@ def activity(db: Session, person: str | None = None, since: datetime | None = No
                        {} if c.author_email in bots else {"actor": c.author_email}))
     for m in recent(FirstMessage, FirstMessage.sent_at):
         events.append((m.sent_at, "first_message", m.ticket_id, {"actor": m.sent_by}))
+    kinds = {TRIAGE: "review", FIX: "fix_answer", lead_review.AGENT: "lead_review", lead_review.CLOSE: "closed",
+             "closure_quality": "closure_decision"}
     for r in recent(Review, Review.created_at):
-        events.append((r.created_at, "review", r.ticket_id,
-                       {"actor": r.reviewer, "action": r.action, "priority": r.final_priority}))
+        events.append((r.created_at, kinds.get(r.agent, "review"), r.ticket_id,
+                       {"actor": r.reviewer, "action": r.action, "priority": r.final_priority if r.agent == TRIAGE else None}))
     for s in db.scalars(select(JiraSync).where(JiraSync.started_at >= since, JiraSync.error.is_not(None))):
         events.append((s.started_at, "sync_failed", None, {"error": s.error}))
 

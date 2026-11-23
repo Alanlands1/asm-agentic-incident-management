@@ -49,6 +49,15 @@ class BoardTicket(BaseModel):
     has_draft: bool  # Data Quality drafted the message that asks the reporter for them
     due_at: datetime | None  # when the SLA target is reached; None below P2
     runbook: str | None  # knowledge base id of the rule Triage matched, e.g. KB-ORD-003
+    dq_verdict: str | None = None  # passed, needs_info, rejected
+    fix_verdict: str | None = None  # resolved (a fix was suggested), no_match
+    fix_answer: str | None = None  # the engineer's answer on the latest fix: worked, partly, wrong
+    fix_rated: bool = False  # the latest fix has a star rating
+    closure_verdict: str | None = None  # good, needs_work
+    closure_score: int | None = None  # out of 6
+    lead_step: str | None = None  # the latest lead review step: submitted, approved, sent_back
+    lead_by: str | None = None  # who took it
+    review_required: bool = False  # a lead approves this closure note before it is sent
 
 
 class BoardOut(BaseModel):
@@ -67,13 +76,53 @@ async def board(
     return await db.run_sync(service.board, person, at)
 
 
+class AgentDay(BaseModel):
+    done: int  # tickets the agent worked on (Triage: given a priority; Resolution: a fix suggested)
+    flagged: int  # DQ: need details; Triage: approved without a person; Resolution: fixes that worked;
+    # Closure Quality: notes good; Knowledge Builder: matched to an article
+
+
+class TodayOut(BaseModel):
+    data_quality: AgentDay
+    triage: AgentDay
+    resolution: AgentDay
+    closure_quality: AgentDay
+    knowledge_builder: AgentDay
+    closed: int  # tickets closed since `since`
+
+
+@router.get("/today", response_model=TodayOut, summary="What each agent did today, and tickets closed")
+async def today(
+    since: datetime = Query(..., description="The viewer's midnight."),
+    person: str | None = Query(None, description="Only this engineer's tickets."),
+    db: AsyncSession = Depends(get_db),
+) -> TodayOut:
+    return await db.run_sync(service.today, since, person)
+
+
+class ClosedItem(BaseModel):
+    id: str
+    summary: str | None
+    at: datetime
+    kb: str | None  # the article the case matched, "draft" when it drafted one, None when neither
+
+
+@router.get("/closed", response_model=list[ClosedItem], summary="Tickets a person closed with Send, newest first")
+async def closed(
+    person: str = Query(..., min_length=1), days: int = Query(7, ge=1, le=90), db: AsyncSession = Depends(get_db)
+) -> list[ClosedItem]:
+    return await db.run_sync(service.closed_by, person, days)
+
+
 class ActivityItem(BaseModel):
     at: datetime
-    # data_quality, triage, triage_rerun, summary_sent, command_answered, sla_warning, first_message, review, sync_failed
+    # data_quality, triage, triage_rerun, summary_sent, command_answered, sla_warning, first_message, review,
+    # fix_answer, lead_review, closure_decision, closed, sync_failed
     kind: str
     ticket_ids: list[str]
     actor: str | None = None  # who did it; None when the system did
-    action: str | None = None  # review: accepted, edited or rejected
+    action: str | None = None  # review: accepted, edited, rejected; fix_answer: worked, partly, wrong;
+    # lead_review: submitted, approved, sent_back
     priority: int | None = None  # triage_rerun: the new recommendation; review: the priority decided
     previous_priority: int | None = None  # triage_rerun: the recommendation before it
     error: str | None = None  # sync_failed
