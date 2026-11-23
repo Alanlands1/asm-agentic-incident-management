@@ -309,7 +309,11 @@ def _set_closure_note(db: Session, ticket_id: str, text: str) -> TicketSummary:
 async def chat(ticket_id: str, payload: ChatCreate, db: AsyncSession = Depends(get_db)) -> AgentRunOut:
     """One turn: the masked ticket, the runbook fix, the fixes tried and the chat so far go to the model; its reply,
     and a proposed fix once it has enough to go on, are stored with the ticket."""
-    text, masker = await db.run_sync(_chat_input, ticket_id, payload.message.strip())
+    ticket = await db.get(Ticket, ticket_id)
+    if ticket is None:
+        raise HTTPException(status_code=404, detail=f"Ticket {ticket_id} not found")
+    kb = await fix_chat.articles(db, ticket, payload.message.strip())
+    text, masker = await db.run_sync(_chat_input, ticket_id, payload.message.strip(), kb)
     await db.commit()  # no transaction open while the model thinks
     try:  # in a worker thread: a model call takes seconds and must not hold up other requests
         answer, audit = await asyncio.to_thread(lambda: call_model(fix_chat.chat_spec(), masker.mask(text), masker))
@@ -318,10 +322,10 @@ async def chat(ticket_id: str, payload: ChatCreate, db: AsyncSession = Depends(g
     return await db.run_sync(_chat_saved, ticket_id, payload, answer, asdict(audit))
 
 
-def _chat_input(db: Session, ticket_id: str, message: str):
+def _chat_input(db: Session, ticket_id: str, message: str, kb: str):
     ticket = _get_or_404(db, ticket_id)
     try:
-        return fix_chat.prepare(db, ticket, message)
+        return fix_chat.prepare(db, ticket, message, kb)
     except fix_chat.ChatError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 

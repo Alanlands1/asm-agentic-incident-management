@@ -64,3 +64,40 @@ async def test_a_model_failure_is_a_502_and_stores_nothing(client, monkeypatch):
     assert r.status_code == 502
     runs = (await client.get("/api/v1/tickets/AMS-1209")).json()["agent_runs"]
     assert not [x for x in runs if x["agent"] == "fix_chat"]
+
+
+async def test_each_turn_carries_team_notes_similar_closed_tickets_and_kb_articles(client, monkeypatch):
+    from app.db.session import get_db
+    from app.main import app
+    from app.models.knowledge import ResolvedCase
+    from app.models.ticket import Comment, Ticket
+    from app.services import fix_chat
+
+    await _seed(client)
+    async for session in app.dependency_overrides[get_db]():
+        ticket_summary = (await session.get(Ticket, "AMS-1209")).summary
+        session.add_all([
+            Comment(ticket_id="AMS-1209", author_email="ravi@contoso.com", body="Checked the batch log: trailer 412, file 411."),
+            Comment(ticket_id="AMS-1209", author_email="AMS agents", body="AMS agents · Priority decided: P3"),
+            ResolvedCase(ticket_id="AMS-900", application="PayrollPro", summary=ticket_summary,
+                         description="Same symptoms last month.",
+                         notes="Cause: <PERSON_1> sent a short file. Fix: regenerated it.",
+                         match_status="matched", kb_article_id="KB-PAY-004"),
+            Ticket(id="AMS-901", source="JIRA", summary="Profile photo upload fails", description="The photo will not save.",
+                   status="closed", pipeline_status="historical", resolution_notes="Cause: file too large. Fix: resized it."),
+        ])
+        await session.commit()
+
+    async def found(db, ticket, message):
+        return "KB-PAY-004 (PayrollPro): Salary bank transfer file not delivered to bank."
+
+    monkeypatch.setattr(fix_chat, "articles", found)
+    seen = _model(monkeypatch, [ChatAnswer(reply="Looks like AMS-900.", fix=None)])
+    r = await client.post("/api/v1/tickets/AMS-1209/chat", json={"message": "Any idea?", "author": "ravi@contoso.com"})
+    assert r.status_code == 200
+    prompt = seen[0]
+    assert "Checked the batch log: trailer 412, file 411." in prompt  # the team's note
+    assert "Priority decided" not in prompt  # the system's comments are not notes
+    assert "AMS-900 (PayrollPro, article KB-PAY-004)" in prompt and "[someone] sent a short file" in prompt
+    assert "KB-PAY-004 (PayrollPro): Salary bank transfer file" in prompt
+    assert "AMS-901" not in prompt  # a closed ticket about something else is not similar

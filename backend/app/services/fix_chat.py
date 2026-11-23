@@ -8,23 +8,43 @@ Turns are stored as agent runs (agent "fix_chat"): they stay with the ticket and
 usual loop follows: try it, say if it worked, closure note, lead review, Send; Knowledge Builder learns from it.
 """
 
+import logging
+import re
 from functools import lru_cache
 
 from pydantic import BaseModel, Field
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
+from app.agents.resolution.retrieval import retrieve
 from app.core.config import config_version
 from app.core.registry import load_registry, register_document
 from app.llm import CallSpec
+from app.models.knowledge import ResolvedCase
 from app.models.ticket import AgentRun, PipelineStatus, Ticket
 from app.privacy.masking import Masker
 from app.services.data_quality import last_run, reporter_text
 from app.services.fix import answers, tried
+from app.services.jira import AGENTS_BOT, COMMAND_BOT, SLA_BOT, SYSTEM
+
+logger = logging.getLogger("app.fix_chat")
 
 AGENT = "fix_chat"
 PROMPT = "fix_chat"  # the entry in data/registry/prompts.yaml
 MAX_TURNS = 20  # turns kept in the prompt; older ones drop off
 FIXING = (PipelineStatus.REVIEWED, PipelineStatus.NEEDS_LEAD)  # where a proposal can become the suggested fix
+SIMILAR = 3  # closed tickets shown to the model
+ARTICLES = 3  # knowledge-base articles from the search
+EXCERPT = 900  # characters of each article or close note
+BOTS = (AGENTS_BOT, SLA_BOT, COMMAND_BOT)
+PLACEHOLDER = re.compile(r"<[A-Z_]+_\d+>")  # a saved case is masked already; its placeholders are not this ticket's
+WORD = re.compile(r"[a-z0-9][a-z0-9_-]{2,}")
+# Words every ticket has; two tickets sharing them are not alike.
+COMMON = frozenset("""the and for are was were has have had not but with this that from they them their there into onto
+our your you all any can cannot since today yesterday please thanks thank regards hello dear team support issue problem
+still also only just when what which who how why been being does did done its out get got getting too very more most some
+same other others than then now new one two need needs needed working work works customer customers user users""".split())
 
 
 class ChatError(ValueError):
@@ -62,7 +82,63 @@ def turns(ticket: Ticket) -> list[AgentRun]:
     return [r for r in ticket.agent_runs if r.agent == AGENT]
 
 
-def prepare(db: Session, ticket: Ticket, message: str) -> tuple[str, Masker]:
+def team_notes(ticket: Ticket) -> str:
+    """What engineers wrote on the ticket (internal notes and replies), not the reporter's and not the system's."""
+    notes = [c for c in ticket.comments if not c.from_reporter and c.author_email not in BOTS and not c.body.startswith(SYSTEM)]
+    return "\n".join(f"- {c.author_email}: {c.body.strip()}" for c in notes)
+
+
+def _words(*texts: str | None) -> set[str]:
+    return set(WORD.findall(" ".join(t or "" for t in texts).casefold())) - COMMON
+
+
+def similar_cases(db: Session, ticket: Ticket) -> str:
+    """The closed tickets most like this one: Knowledge Builder's saved cases (masked already, so their placeholders
+    are replaced) and any other closed ticket with close notes (masked with the rest of this turn). Same application
+    first, then shared words. Each with its close notes and the article it matched."""
+    found = []  # (ticket id, application, article, summary, description, notes)
+    for c in db.scalars(select(ResolvedCase).where(ResolvedCase.ticket_id != ticket.id)):
+        found.append((c.ticket_id, c.application, c.kb_article_id, *(PLACEHOLDER.sub("[someone]", t or "")
+                                                                       for t in (c.summary, c.description, c.notes))))
+    saved = {f[0] for f in found}
+    for t in db.scalars(select(Ticket).where(Ticket.id != ticket.id, Ticket.status.in_(("closed", "resolved")),
+                                             Ticket.resolution_notes.is_not(None), Ticket.resolution_notes != "")):
+        if t.id not in saved:
+            found.append((t.id, t.application, None, t.summary, t.description, t.resolution_notes))
+    mine, title = _words(ticket.summary, ticket.description), _words(ticket.summary)
+    scored = []
+    for case in found:  # alike: titles share two words, or one and the texts three, or the texts five
+        shared, in_title = len(mine & _words(case[3], case[4])), len(title & _words(case[3]))
+        if in_title >= 2 or shared >= 5 or (in_title and shared >= 3):
+            scored.append((bool(ticket.application) and case[1] == ticket.application, in_title, shared, case))
+    scored.sort(key=lambda s: s[:3], reverse=True)
+    return "\n\n".join(
+        f"{tid} ({app or 'no application'}{', article ' + kb if kb else ''}): {summary}\nClose notes: {notes[:EXCERPT]}"
+        for *_, (tid, app, kb, summary, _, notes) in scored[:SIMILAR]
+    )
+
+
+async def articles(db: AsyncSession, ticket: Ticket, message: str) -> str:
+    """Knowledge-base articles the runbook search finds for the ticket and the engineer's message, same application
+    first. Empty when the search is not available (e.g. no Postgres)."""
+    try:
+        chunks = await retrieve(db, f"{ticket.summary} {message}", top_n=12)
+    except Exception:  # the chat still works without them
+        logger.warning("Knowledge-base search for the chat failed", exc_info=True)
+        await db.rollback()
+        return ""
+    chunks.sort(key=lambda c: c.app != ticket.application)  # stable: keeps the search's order within each group
+    seen, found = set(), []
+    for c in chunks:
+        if c.kb_id and c.kb_id not in seen:
+            seen.add(c.kb_id)
+            found.append(f"{c.kb_id} ({c.app}): {c.content.strip()[:EXCERPT]}")
+        if len(found) == ARTICLES:
+            break
+    return "\n\n".join(found)
+
+
+def prepare(db: Session, ticket: Ticket, message: str, kb: str = "") -> tuple[str, Masker]:
     """The text the model reads for this turn, and the masker that hides personal details in it. Not masked yet."""
     if ticket.closed_at is not None:
         raise ChatError(f"Ticket {ticket.id} is closed")
@@ -82,7 +158,8 @@ def prepare(db: Session, ticket: Ticket, message: str) -> tuple[str, Masker]:
     text = prompt["ticket_template"].format(
         summary=ticket.summary, application=ticket.application or none, body=reporter_text(ticket),
         runbook=runbook, tried=tried([r for r in ticket.agent_runs if r.agent == "resolution"], answers(db, ticket.id)) or none,
-        history=history, message=message,
+        history=history, message=message, notes=team_notes(ticket) or none, cases=similar_cases(db, ticket) or none,
+        kb=kb or none,
     )
     masker = Masker(known_names=[ticket.reporter_name, ticket.assignee], known_emails=[ticket.reporter_email])
     return text, masker
