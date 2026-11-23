@@ -403,7 +403,7 @@ const brief = (run?: AgentRun) => {
 let glide = 0;
 /** Scroll so `el` sits under the sticky top bar, eased by hand: Chrome makes `behavior: "smooth"` instant when the
  * computer asks for reduced motion. The target is read every frame, so a card that is still gliding is followed. */
-function glideTo(el: HTMLElement | null, offset = 96) {
+function glideTo(el: HTMLElement | null, offset = 172) {  // under the top bar and the sticky step bar
   if (!el) return;
   const from = window.scrollY;
   const id = ++glide;
@@ -1551,7 +1551,8 @@ function Ticket() {
           </Card>
 
           {/* The step bar: three groups, a popover per step (click or Enter; Esc or outside closes). */}
-          <Card className="scroll-thin flex-row flex-nowrap overflow-x-auto py-2" aria-label="Where the agents are" role="group">
+          {/* Stays under the top bar while the page scrolls, so where the ticket is stays in view. */}
+          <Card className="scroll-thin sticky top-[76px] z-20 flex-row flex-nowrap overflow-x-auto py-2 shadow-[0_6px_16px_rgba(25,29,56,0.08)]" aria-label="Where the agents are" role="group">
             {GROUPS.map((group) => {
               const steps = group.keys.flatMap((k) => flow.filter((s) => s.key === k));
               const done = steps.filter((s) => s.state === "done").length;
@@ -1749,7 +1750,7 @@ function Ticket() {
               />
             </div>
 
-            <div className="flex flex-col gap-4 *:shrink-0 lg:sticky lg:top-[76px] lg:max-h-[calc(100vh-92px)] lg:overflow-y-auto lg:overscroll-contain scroll-thin">
+            <div className="flex flex-col gap-4 *:shrink-0 lg:sticky lg:top-[160px] lg:max-h-[calc(100vh-176px)] lg:overflow-y-auto lg:overscroll-contain scroll-thin">
               <Card className="gap-0 py-0">
                 <SectionHead title="Details" />
                 <Facts
