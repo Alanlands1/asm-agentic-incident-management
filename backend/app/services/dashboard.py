@@ -69,7 +69,7 @@ def summary(db: Session, since: datetime, now: datetime | None = None) -> dict[s
         by_source["ServiceNow"] = servicenow
     by_stage = dict(db.execute(
         select(Ticket.pipeline_status, func.count())
-        .where(Ticket.pipeline_status != PipelineStatus.HISTORICAL)
+        .where(Ticket.pipeline_status != PipelineStatus.HISTORICAL, Ticket.closed_at.is_(None))  # open tickets only
         .group_by(Ticket.pipeline_status)
     ).all())
 

@@ -1,10 +1,13 @@
 import { apiClient } from "@/lib/api-client";
-import { AgentCheckResult, AgentRunResult, AgentSlug, ClosureQueueItem, Outcome, PipelineTicket, ReviewInput, ReviewQueueItem } from "@/types/pipeline";
+import { AgentCheckResult, AgentRunResult, AgentSlug, ClosureQueueItem, Outcome, PipelineTicket, ReviewInput, ReviewQueueItem, TicketListItem } from "@/types/pipeline";
 
 const id = encodeURIComponent;
 
 export const pipelineService = {
   getTicket: (ticketId: string) => apiClient<PipelineTicket>(`/tickets/${id(ticketId)}`),
+  /** Tickets at one stage of the agents' pipeline, e.g. in_review. */
+  listByStage: (stage: string, limit = 200) =>
+    apiClient<{ total: number; items: TicketListItem[] }>(`/tickets?pipeline_status=${id(stage)}&limit=${limit}`),
   reviewQueue: (limit = 200) => apiClient<ReviewQueueItem[]>(`/triage/review-queue?limit=${limit}`),
   review: (ticketId: string, body: ReviewInput) =>
     apiClient(`/triage/tickets/${id(ticketId)}/review`, { method: "POST", body: JSON.stringify(body) }),

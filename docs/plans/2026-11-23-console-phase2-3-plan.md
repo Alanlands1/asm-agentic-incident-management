@@ -25,7 +25,7 @@ this week.
 | 3 Lead review setting | Done | see log | `LEAD_REVIEW` (admin-editable), card on the Jira settings page; needs `ADMIN_API_KEY` in `frontend/.env.local` to save |
 | 4 Submit, approve, send back (backend) | Done | see log | `services/lead_review.py`, two endpoints, Send and note edits guarded; 330 tests |
 | 5 Lead review on the ticket page | Done | see log | Checked on MBX-00014 (P1, mailbox; text marked "TEST (Claude)"): submit, send back, resubmit, approve. Step list now in the bar order (Now was wrong); bar labels shortened to stay on one line |
-| 6 Work statuses and the lead's queue | To do | | |
+| 6 Work statuses and the lead's queue | Done | see log | Stage names Fixing, Closure note with the lead, Approved · ready to send; review queue lists notes to review (Lead, Admin); stage counts leave closed tickets out (they counted AMS-6, AMS-14) |
 | 7 Check end to end | To do | | |
 
 ---

@@ -66,6 +66,17 @@ export interface PipelineTicket {
   lead_reviews?: LeadReviewStep[];
 }
 
+/** A row of the ticket list (GET /tickets). */
+export interface TicketListItem {
+  id: string;
+  source: string;
+  application: string | null;
+  summary: string;
+  reported_priority: number | null;
+  pipeline_status: string;
+  opened_at: string | null;
+}
+
 export interface LeadReviewStep {
   action: "submitted" | "approved" | "sent_back";
   note: string | null;
