@@ -403,7 +403,7 @@ const brief = (run?: AgentRun) => {
 let glide = 0;
 /** Scroll so `el` sits under the sticky top bar, eased by hand: Chrome makes `behavior: "smooth"` instant when the
  * computer asks for reduced motion. The target is read every frame, so a card that is still gliding is followed. */
-function glideTo(el: HTMLElement | null, offset = 172) {  // under the top bar and the sticky step bar
+function glideTo(el: HTMLElement | null, offset = 148) {  // under the top bar and the pinned (compact) step bar
   if (!el) return;
   const from = window.scrollY;
   const id = ++glide;
@@ -1486,6 +1486,21 @@ function Ticket() {
     </StepCard>
   );
 
+  // Is the step bar pinned under the top bar (tablet width and up)? Then it shows in its compact form.
+  const barWrap = useRef<HTMLDivElement>(null);
+  const [pinned, setPinned] = useState(false);
+  const loaded = ticket !== null;
+  useEffect(() => {
+    const el = barWrap.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => setPinned(entry.intersectionRatio < 1 && entry.boundingClientRect.top < 80 && window.matchMedia("(min-width: 48rem)").matches),
+      { rootMargin: "-71px 0px 0px 0px", threshold: [1] }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [loaded]);
+
   // When a run moves the ticket on, bring the new step into view; not while someone is typing.
   const lastNow = useRef<string | null | undefined>(undefined);
   useEffect(() => {
@@ -1551,14 +1566,20 @@ function Ticket() {
           </Card>
 
           {/* The step bar: three groups, a popover per step (click or Enter; Esc or outside closes). */}
-          {/* Stays under the top bar while the page scrolls, so where the ticket is stays in view. */}
-          <Card className="scroll-thin sticky top-[76px] z-20 flex-row flex-nowrap overflow-x-auto py-2 shadow-[0_6px_16px_rgba(25,29,56,0.08)]" aria-label="Where the agents are" role="group">
+          {/* From tablet width up it stays under the top bar on a strip of page background, so nothing shows through;
+              pinned, it drops the group labels to take less height. On a phone it scrolls away with the page. */}
+          <div ref={barWrap} className="md:sticky md:top-[70px] md:z-10 md:-mx-2 md:bg-background md:px-2 md:pt-1 md:pb-2">
+          <Card
+            className={cn("scroll-thin flex-row flex-nowrap overflow-x-auto transition-[padding,box-shadow] duration-200", pinned ? "py-1 shadow-[0_6px_16px_rgba(25,29,56,0.10)]" : "py-2")}
+            aria-label="Where the agents are"
+            role="group"
+          >
             {GROUPS.map((group) => {
               const steps = group.keys.flatMap((k) => flow.filter((s) => s.key === k));
               const done = steps.filter((s) => s.state === "done").length;
               return (
                 <div key={group.label} className="flex shrink-0 flex-auto flex-col gap-1 px-1.5 [&+&]:border-l [&+&]:border-border">
-                  <p className="flex items-center gap-1.5 pl-1 font-mono text-[10.5px] font-medium tracking-[0.08em] text-muted-foreground uppercase">
+                  <p className={cn("flex items-center gap-1.5 pl-1 font-mono text-[10.5px] font-medium tracking-[0.08em] text-muted-foreground uppercase", pinned && "sr-only")}>
                     {group.label}
                     <span className={done === steps.length ? "text-p3" : undefined}>{done === steps.length ? "✓ done" : `${done}/${steps.length}`}</span>
                   </p>
@@ -1617,6 +1638,7 @@ function Ticket() {
               );
             })}
           </Card>
+          </div>
           {runFailed && (
             <p role="alert" className="text-xs font-medium text-destructive">
               {runFailed}
@@ -1750,7 +1772,7 @@ function Ticket() {
               />
             </div>
 
-            <div className="flex flex-col gap-4 *:shrink-0 lg:sticky lg:top-[160px] lg:max-h-[calc(100vh-176px)] lg:overflow-y-auto lg:overscroll-contain scroll-thin">
+            <div className="flex flex-col gap-4 *:shrink-0 lg:sticky lg:top-[140px] lg:max-h-[calc(100vh-156px)] lg:overflow-y-auto lg:overscroll-contain scroll-thin">
               <Card className="gap-0 py-0">
                 <SectionHead title="Details" />
                 <Facts
