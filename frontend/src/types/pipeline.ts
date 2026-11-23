@@ -56,6 +56,20 @@ export interface PipelineTicket {
   closure_decision?: { agent_run_id: number; action: "accepted" | "edited" | "rejected"; final_text: string | null; note: string | null } | null;
   /** Per agent that ran before: true when its input changed since its last run. Missing from an older backend. */
   changed?: Partial<Record<string, boolean>>;
+  /** True while the agents' pass after a Jira sync is running. Missing from an older backend. */
+  agents_running?: boolean;
+  /** The engineer's answers on the suggested fixes, oldest first; the latest on a fix counts. */
+  fix_outcomes?: FixOutcome[];
+}
+
+export type Outcome = "worked" | "partly" | "wrong";
+
+export interface FixOutcome {
+  agent_run_id: number;
+  action: Outcome;
+  note: string | null;
+  reviewer: string;
+  created_at: string;
 }
 
 export interface ReviewQueueItem {

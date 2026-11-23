@@ -21,6 +21,8 @@ export const STAGES: [string, string][] = [
   ["dq_passed", "Ready for Triage"],
   ["triaged", "Waiting for an engineer"],
   ["reviewed", "Reviewed"],
+  ["fix_confirmed", "Fix worked · closure note"],
+  ["needs_lead", "Needs the lead"],
   ["rejected", "Rejected"],
   ["error", "Error"],
 ];

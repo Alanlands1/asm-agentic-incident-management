@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { AppShell } from "@/components/console/app-shell";
@@ -20,6 +20,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableRow } from "@/components/ui/table";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Skeleton } from "@/components/ui/skeleton";
 import { ApiError } from "@/lib/api-client";
 import { usePerson } from "@/lib/view-as";
 import { incidentService } from "@/services/incident-service";
@@ -27,7 +28,7 @@ import { jiraService } from "@/services/jira-service";
 import { pipelineService } from "@/services/pipeline-service";
 import { ticketService } from "@/services/ticket-service";
 import { AttentionItem } from "@/types/incident";
-import { AgentRun, FLAGS, PipelineTicket } from "@/types/pipeline";
+import { AgentRun, FixOutcome, FLAGS, Outcome, PipelineTicket } from "@/types/pipeline";
 import { ServiceNowTicket } from "@/types/servicenow";
 import { Check, ChevronDown, LoaderCircle, Play, Send, Star, TriangleAlert } from "lucide-react";
 import { cn } from "cn";
@@ -61,7 +62,9 @@ const NEXT: Record<string, string> = {
   awaiting_info: "Ask the reporter for the missing details. The agent drafted the reply.",
   dq_passed: "Nothing yet. The Triage agent sets a priority next, or run it now.",
   triaged: "Review the recommended priority: agree with it or change it.",
-  reviewed: "The priority is decided. The Resolution agent looks for the fix on the next sync; then work the ticket in Jira.",
+  reviewed: "The priority is decided. The Resolution agent looks for the fix now.",
+  fix_confirmed: "The fix worked. Finish the closure note, then send it to Jira.",
+  needs_lead: "Three suggested fixes didn't work. Your lead looks at this ticket.",
   rejected: "Nothing. This is not an incident.",
   error: "An agent failed on this ticket. A person has to look.",
   historical: "Nothing. The ticket was closed before the agents started.",
@@ -87,20 +90,28 @@ const LATER_STEP: Record<string, ["done" | "attention", string]> = {
 // Stages where a person may start the agents; the server refuses the rest.
 const CAN_RUN = ["pending", "awaiting_info", "dq_passed", "triaged", "error"];
 type Agent = "data_quality" | "triage" | "resolution" | "closure_quality";
+/** What an agent is doing while it runs on this ticket. */
+const WORKING: Record<Agent | "knowledge_builder", string> = {
+  data_quality: "Data Quality is checking the ticket…",
+  triage: "Triage is setting the priority…",
+  resolution: "Resolution is looking for the fix in the runbooks…",
+  closure_quality: "Closure Quality is checking the close notes…",
+  knowledge_builder: "Knowledge Builder is learning from the close notes…",
+};
 
 const when = (iso?: string | null) => (iso ? new Date(iso).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—");
 const show = (v: unknown) => (Array.isArray(v) ? v.join(", ") || "none" : v === null || v === "" ? "—" : typeof v === "boolean" ? (v ? "yes" : "no") : String(v));
 
 function Facts({ rows }: { rows: [string, React.ReactNode][] }) {
   return (
-    <Table>
+    <Table className="table-fixed">
       <TableBody>
         {rows.map(([k, v]) => (
           <TableRow key={k}>
             <TableHead scope="row" className="w-36 whitespace-normal px-4 text-[13px] font-normal">
               {k}
             </TableHead>
-            <TableCell>{v}</TableCell>
+            <TableCell className="whitespace-normal">{v}</TableCell>
           </TableRow>
         ))}
       </TableBody>
@@ -358,18 +369,46 @@ const CARD_TITLES: Record<CardKey, string> = {
 };
 const WAITS: Record<string, string> = {
   resolution: "Runs once a person has decided the priority",
-  closure_quality: "Runs once the ticket is resolved",
+  closure_quality: "Opens once you say the fix worked",
   knowledge_builder: "Runs after Closure Quality",
 };
 
 /** The reason an agent gave, cut to one popover line. */
+/** The card a new read of the ticket brought a result for: an agent's new run, or the priority just decided. */
+function freshCard(before: PipelineTicket | null, after: PipelineTicket): CardKey | null {
+  if (!before || before.id !== after.id) return null;
+  const seen = new Set(before.agent_runs.map((r) => r.id));
+  const added = after.agent_runs.filter((r) => !seen.has(r.id)).at(-1);
+  if (added && (CARDS as string[]).includes(added.agent)) return added.agent as CardKey;
+  if (!before.decided?.final_priority && after.decided?.final_priority) return "triage";
+  return null;
+}
+
 const brief = (run?: AgentRun) => {
   const o = run?.output ?? {};
   const r = (o.reason as string | undefined) ?? ((o.answer ?? {}) as { reason?: string }).reason;
   return r ? [r.length > 140 ? `${r.slice(0, 139)}…` : r] : [];
 };
 
-const reducedMotion = () => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+let glide = 0;
+/** Scroll so `el` sits under the sticky top bar, eased by hand: Chrome makes `behavior: "smooth"` instant when the
+ * computer asks for reduced motion. The target is read every frame, so a card that is still gliding is followed. */
+function glideTo(el: HTMLElement | null, offset = 96) {
+  if (!el) return;
+  const from = window.scrollY;
+  const id = ++glide;
+  const start = performance.now();
+  const frame = (now: number) => {
+    if (id !== glide) return; // a newer glide took over
+    const max = document.documentElement.scrollHeight - window.innerHeight;
+    const to = Math.max(0, Math.min(el.getBoundingClientRect().top + window.scrollY - offset, max));
+    const t = Math.min(1, (now - start) / 550);
+    window.scrollTo(0, from + (to - from) * (1 - (1 - t) ** 3));
+    if (t < 1) requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
+}
 
 /** The circle in front of a step or card: done, needs a person, waiting, or the step to act on now. */
 function StateDot({ state, now, running, n }: { state: FlowState; now?: boolean; running?: boolean; n?: number }) {
@@ -378,13 +417,13 @@ function StateDot({ state, now, running, n }: { state: FlowState; now?: boolean;
     <span
       aria-hidden="true"
       className={cn(
-        "relative flex size-[22px] shrink-0 items-center justify-center rounded-full border text-[11px] font-semibold tabular-nums",
+        "relative flex size-[22px] shrink-0 items-center justify-center rounded-full border text-[11px] font-semibold tabular-nums transition-colors duration-300",
         running
           ? "border-primary text-primary"
           : now
             ? "border-primary bg-primary text-primary-foreground shadow-[0_0_0_3px_var(--selected)]"
             : state === "done"
-              ? "border-foreground bg-foreground text-background"
+              ? "border-p3 bg-p3 text-white"
               : state === "attention"
                 ? "border-primary bg-primary text-primary-foreground"
                 : "border-border-strong text-muted-foreground"
@@ -535,7 +574,7 @@ function Activity({ ticket }: { ticket: PipelineTicket }) {
       ) : (
         <ul role="list">
           {shown.map((i) => (
-            <li key={i.key} className="flex flex-col gap-0.5 border-b border-border px-4 py-2.5 text-[13px] last:border-b-0">
+            <li key={i.key} className="flex flex-col gap-0.5 border-b border-border px-4 py-2.5 text-[13px] last:border-b-0 animate-in fade-in duration-500">
               <span>
                 <span className="font-semibold">{i.who}</span> {i.what}
               </span>
@@ -623,6 +662,251 @@ function ClosureEdit({ ticketId, run, notes, onSaved }: { ticketId: string; run:
   );
 }
 
+const MAX_WRONG = 3; // suggested fixes that did not work before the lead looks (design D7)
+
+/** "Did it work?" on the latest suggested fix: worked or partly opens the closure note; wrong asks for another fix. */
+function FixAnswer({
+  ticketId,
+  run,
+  version,
+  answer,
+  wrong,
+  needsLead,
+  busy,
+  onDone,
+}: {
+  ticketId: string;
+  run: AgentRun;
+  version: number;
+  answer?: FixOutcome;
+  /** Fixes before this one that did not work. */
+  wrong: number;
+  needsLead: boolean;
+  busy: boolean;
+  onDone: () => unknown;
+}) {
+  const person = usePerson();
+  const found = run.verdict === "resolved";
+  const [mode, setMode] = useState<"partly" | "wrong" | null>(null); // writing the note that goes with the answer
+  const [changing, setChanging] = useState(false);
+  const [note, setNote] = useState("");
+  const [sending, setSending] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const send = (outcome: Outcome) => {
+    setSending(true);
+    setFailed(null);
+    pipelineService
+      .fixOutcome(ticketId, { agent_run_id: run.id, outcome, reviewer: person, ...(outcome === "worked" ? {} : { note: note.trim() }) })
+      .then(() => {
+        setMode(null);
+        setChanging(false);
+        setNote("");
+        return onDone();
+      })
+      .catch((e: unknown) => setFailed(e instanceof Error ? e.message : "Couldn't save your answer"))
+      .finally(() => setSending(false));
+  };
+  const left = MAX_WRONG - wrong - 1; // new suggestions after this one, if this one did not work either
+  const said = answer && answer.action !== "wrong" && !changing;
+  const waitingForNext = answer?.action === "wrong" && !needsLead;
+  return (
+    <div className="flex flex-col gap-2 border-t border-border px-4 py-3 text-[13px]">
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge variant="secondary">Fix v{version}</Badge>
+        {waitingForNext && <span className="text-muted-foreground">You said it didn&rsquo;t work. The Resolution agent looks for another fix with what you wrote.</span>}
+      </div>
+      {needsLead && !said && (
+        <Alert>
+          <AlertDescription>
+            {MAX_WRONG} suggested fixes didn&rsquo;t work. Ask your lead: they see every version and your notes. Add an internal note under Updates to bring them
+            in; if you fix it together, say so here.
+          </AlertDescription>
+        </Alert>
+      )}
+      {said ? (
+        <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <Check className="size-3.5 text-p3" aria-hidden="true" />
+          <span className="break-words">
+            {answer.action === "worked" ? "You said it worked." : found ? `You said it worked, with changes: ${answer.note}` : `You fixed it another way: ${answer.note}`}
+          </span>
+          <Button size="xs" variant="link" disabled={busy} onClick={() => setChanging(true)}>
+            Change answer
+          </Button>
+        </p>
+      ) : waitingForNext ? null : mode === null ? (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl bg-selected px-3 py-2.5">
+          <span className="font-semibold">{found ? "Did it work?" : "No runbook covers this. Fixed it another way?"}</span>
+          {found && (
+            <Button size="sm" disabled={busy || sending} onClick={() => send("worked")}>
+              {sending ? <LoaderCircle className="animate-spin" /> : <Check />}
+              {sending ? "Opening the closure note…" : "Yes, it worked"}
+            </Button>
+          )}
+          <Button size="sm" variant="secondary" disabled={busy || sending} onClick={() => setMode("partly")}>
+            {found ? "Partly, I changed steps" : "I fixed it another way"}
+          </Button>
+          {found && !needsLead && (
+            <Button size="sm" variant="secondary" disabled={busy || sending} onClick={() => setMode("wrong")}>
+              No, it didn&rsquo;t work
+            </Button>
+          )}
+          {changing && (
+            <Button size="sm" variant="ghost" disabled={sending} onClick={() => setChanging(false)}>
+              Cancel
+            </Button>
+          )}
+          <span className="basis-full text-xs text-muted-foreground">The closure note opens once you confirm the fix worked.</span>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-1.5 rounded-xl bg-muted px-3 py-2.5 animate-in fade-in duration-300">
+          <label htmlFor={`fix-note-${run.id}`} className="font-semibold">
+            {mode === "wrong" ? "What happened when you tried it?" : found ? "What did you change?" : "What did you do?"}
+          </label>
+          <p id={`fix-note-help-${run.id}`} className="text-xs text-muted-foreground">
+            {mode === "wrong"
+              ? "The Resolution agent reads this and suggests a different fix. Personal details are masked before it is kept."
+              : "It goes into the closure note, and the Knowledge Builder uses it to update the runbook."}
+          </p>
+          <Textarea
+            id={`fix-note-${run.id}`}
+            rows={3}
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            disabled={sending}
+            aria-describedby={`fix-note-help-${run.id}`}
+            placeholder={mode === "wrong" ? "For example: the re-run failed again with the same error" : "For example: step 3 needed the file re-generated, not just re-sent"}
+          />
+          <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm" disabled={busy || sending || !note.trim()} onClick={() => send(mode)}>
+              {sending && <LoaderCircle className="animate-spin" />}
+              {sending ? "Saving…" : mode === "partly" ? "Save and open the closure note" : left > 0 ? "Get a new suggestion" : "Ask your lead"}
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={sending}
+              onClick={() => {
+                setMode(null);
+                setNote("");
+              }}
+            >
+              Cancel
+            </Button>
+            {mode === "wrong" && (
+              <span className="text-xs text-muted-foreground">
+                {left > 0 ? `${left} new suggestion${left === 1 ? "" : "s"} left before asking your lead` : "This is the last suggestion: your lead looks next"}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+      {failed && (
+        <p role="alert" className="text-xs font-medium text-destructive">
+          {failed}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** The closure note once the fix worked: what Closure Quality says is missing, the note to edit, and sending it. */
+function ClosureNote({
+  ticket,
+  run,
+  toJira,
+  whyNotJira,
+  source,
+  busy,
+  onDone,
+}: {
+  ticket: PipelineTicket;
+  run?: AgentRun;
+  toJira: boolean;
+  whyNotJira: string;
+  source: string;
+  busy: boolean;
+  onDone: () => unknown;
+}) {
+  const person = usePerson();
+  const saved = ticket.resolution_notes ?? "";
+  const [value, setValue] = useState(saved);
+  const [doing, setDoing] = useState<"save" | "send" | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
+  const draft = typeof run?.output.draft_notes === "string" ? run.output.draft_notes : null;
+  const questions = Array.isArray(run?.output.questions) ? (run.output.questions as string[]) : [];
+  const edited = value.trim() !== saved.trim();
+  const gap = GAP.test(saved);
+  const call = (what: "save" | "send", request: () => Promise<unknown>) => {
+    setDoing(what);
+    setFailed(null);
+    request()
+      .then(onDone)
+      .catch((e: unknown) => setFailed(e instanceof Error ? e.message : what === "save" ? "Couldn't save the note" : "Couldn't send the note"))
+      .finally(() => setDoing(null));
+  };
+  return (
+    <div className="flex flex-col gap-2 border-t border-border px-4 py-3 text-[13px]">
+      {questions.length > 0 && (
+        <div className="flex flex-col gap-1">
+          <p className="font-semibold">What the note still needs</p>
+          <ul className="flex list-disc flex-col gap-0.5 pl-5">
+            {questions.map((q) => (
+              <li key={q}>{q}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      <label htmlFor="closure-note" className="font-semibold">
+        The note that goes back to {source}
+      </label>
+      <p id="closure-note-help" className="text-xs text-muted-foreground">
+        {GAP.test(value) ? "Fill in the parts marked [engineer to add: …]. " : ""}
+        Saving checks it again. It stays in the console until you send it.
+      </p>
+      <Textarea
+        id="closure-note"
+        rows={8}
+        className="font-mono text-[12px]"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        disabled={doing !== null}
+        aria-describedby="closure-note-help"
+      />
+      <div className="flex flex-wrap items-center gap-2">
+        <Button size="sm" variant={edited ? "default" : "secondary"} disabled={busy || doing !== null || !edited || !value.trim()} onClick={() => call("save", () => pipelineService.saveClosureNote(ticket.id, value.trim()))}>
+          {doing === "save" && <LoaderCircle className="animate-spin" />}
+          {doing === "save" ? "Checking…" : "Save and check again"}
+        </Button>
+        {draft && draft.trim() !== value.trim() && (
+          <Button size="sm" variant="secondary" disabled={doing !== null} onClick={() => setValue(draft)}>
+            Use the agent&rsquo;s draft
+          </Button>
+        )}
+      </div>
+      <div className="flex flex-wrap items-center gap-2 border-t border-border pt-2.5">
+        <Button size="sm" disabled={!toJira || busy || doing !== null || edited || gap || !saved.trim()} onClick={() => call("send", () => pipelineService.closeInJira(ticket.id, person))}>
+          {doing === "send" ? <LoaderCircle className="animate-spin" /> : <Send />}
+          {doing === "send" ? "Sending…" : `Send the closure note to ${source}`}
+        </Button>
+        <span className="text-xs text-muted-foreground">
+          {!toJira
+            ? whyNotJira
+            : edited
+              ? "Save your changes first."
+              : gap
+                ? "Fill in the marked parts first."
+                : `Posts this note on ${ticket.id} and moves the issue to Done. Nothing else goes to ${source}.`}
+        </span>
+      </div>
+      {failed && (
+        <p role="alert" className="text-xs font-medium text-destructive">
+          {failed}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function Text({ title, text }: { title: string; text?: string | null }) {
   return (
     <Card className="gap-0 py-0">
@@ -648,22 +932,46 @@ function Ticket() {
   const [openCards, setOpenCards] = useState<Set<CardKey>>(new Set());
   const [doneOpen, setDoneOpen] = useState(false);
 
+  // Every read of the ticket goes through here, so a result that arrives is shown as just finished.
+  const shown = useRef<PipelineTicket | null>(null);
+  const [fresh, setFresh] = useState<CardKey | null>(null);
+  const apply = useCallback((next: PipelineTicket) => {
+    const finished = freshCard(shown.current, next);
+    if (finished) setFresh(finished);
+    shown.current = next;
+    setTicket(next);
+  }, []);
+
   const load = useCallback(
     () =>
       pipelineService
         .getTicket(id)
-        .then(setTicket)
+        .then(apply)
         .catch((e: unknown) => {
           if (!(e instanceof ApiError) || e.status !== 404) throw e;
           return ticketService.getTicket(id).then(setSheet);
         })
         .catch((e: unknown) => setError(e instanceof Error ? e.message : `Couldn't load ${id}`)),
-    [id]
+    [id, apply]
   );
 
   useEffect(() => {
     load();
   }, [load]);
+
+  // Live results: read the ticket again while this tab is visible, every 3 s while agents work, every 5 s while the
+  // ticket is open (a Jira sync or another tab can start the agents at any time), else every 30 s.
+  // A failed read keeps what is shown; the next one tries again.
+  const live = ticket !== null;
+  const busy = running !== null || ticket?.agents_running === true;
+  const open = ticket !== null && ticket.status !== "closed" && ticket.pipeline_status !== "historical";
+  useEffect(() => {
+    if (!live) return;
+    const timer = setInterval(() => {
+      if (!document.hidden) pipelineService.getTicket(id).then(apply, () => {});
+    }, busy ? 3000 : open ? 5000 : 30000);
+    return () => clearInterval(timer);
+  }, [id, live, busy, open, apply]);
 
   const jira = ticket?.source === "JIRA";
   const closed = ticket?.status === "closed"; // the source decides this, not the agents' stage
@@ -711,8 +1019,8 @@ function Ticket() {
       <Button
         size="xs"
         variant="secondary"
-        disabled={running !== null || same}
-        title={same ? "Nothing changed since the last run: edit the ticket, add a note or a reply first" : undefined}
+        disabled={busy || same}
+        title={same ? "Nothing changed since the last run: edit the ticket, add a note or a reply first" : busy ? "The agents are working; wait for them to finish" : undefined}
         onClick={() => runAgent(agent)}
       >
         <Play />
@@ -743,7 +1051,40 @@ function Ticket() {
 
   // The step bar, from the steps the console really tracks (design D4).
   const runOf = (agent: string) => ticket?.agent_runs.findLast((r) => r.agent === agent);
-  const reviewed = ticket?.pipeline_status === "reviewed";
+  // The priority is decided from here on: the fix is worked on, confirmed, or waits for the lead.
+  const reviewed = ["reviewed", "fix_confirmed", "needs_lead"].includes(ticket?.pipeline_status ?? "");
+  const fixing = ticket?.pipeline_status === "reviewed"; // Resolution runs only here
+  const confirmed = !closed && ticket?.pipeline_status === "fix_confirmed"; // the closure note is open
+  const needsLead = !closed && ticket?.pipeline_status === "needs_lead";
+  const fixRuns = ticket?.agent_runs.filter((r) => r.agent === "resolution") ?? [];
+  const fixRun = fixRuns.at(-1);
+  const answerOf = (run?: AgentRun) => ticket?.fix_outcomes?.findLast((a) => a.agent_run_id === run?.id);
+  const fixAnswer = answerOf(fixRun);
+  const wrongBefore = fixRuns.slice(0, -1).filter((r) => answerOf(r)?.action === "wrong").length;
+  const asking = !closed && (fixing || needsLead) && fixRun !== undefined; // waiting for the engineer's answer
+  // A person reviews only a priority Triage lowered; the rest is approved by the agents.
+  const autoApproved = decided?.reviewer === "AMS agents (auto)";
+  const lowered = recommended !== null && ticket?.reported_priority != null && recommended > ticket.reported_priority;
+  const FIX_WORDS: Record<Outcome, string> = { worked: "Fix worked", partly: "Worked, with changes", wrong: "Didn't work" };
+  const fixStep = (): Partial<FlowStep> =>
+    fixAnswer && fixAnswer.action !== "wrong"
+      ? { state: "done", summary: FIX_WORDS[fixAnswer.action] }
+      : needsLead
+        ? { state: "attention", summary: "Ask your lead", lines: [`${MAX_WRONG} suggested fixes didn't work`] }
+        : asking
+          ? { state: "attention", summary: fixAnswer ? "Looking again" : fixRun!.verdict === "resolved" ? "Did it work?" : "No runbook covers it" }
+          : {};
+  const noteRun = runOf("closure_quality");
+  const noteStep = (): Partial<FlowStep> =>
+    confirmed
+      ? {
+          state: "attention",
+          summary: !noteRun ? "Not checked yet" : noteRun.verdict === "good" ? "Ready to send" : (LATER_STEP[noteRun.verdict]?.[1] ?? noteRun.verdict),
+          lines: [...brief(noteRun), `Goes to ${source} when you send it`],
+        }
+      : !["resolved", "closed"].includes(ticket?.status ?? "")
+        ? { state: "waiting", summary: "Not yet", lines: [WAITS.closure_quality] }
+        : {};
   const flow: FlowStep[] = ticket
     ? [
         {
@@ -776,16 +1117,24 @@ function Ticket() {
           key: "review",
           name: "Review by a person",
           state: reviewed || closed ? "done" : ticket.pipeline_status === "triaged" ? "attention" : "waiting",
-          summary: reviewed
-            ? decided?.final_priority
-              ? `P${decided.final_priority} by ${decided.reviewer}`
-              : "Priority decided"
-            : closed
-              ? "Not needed"
-              : ticket.pipeline_status === "triaged"
-                ? "Waiting for you"
-                : "Not yet",
-          lines: decided?.note ? [decided.note] : ["A person agrees with the recommended priority or changes it"],
+          summary: autoApproved
+            ? "Not needed"
+            : reviewed
+              ? decided?.final_priority
+                ? `P${decided.final_priority} by ${decided.reviewer}`
+                : "Priority decided"
+              : closed
+                ? "Not needed"
+                : ticket.pipeline_status === "triaged"
+                  ? "Waiting for you"
+                  : "Only if lowered",
+          lines: autoApproved
+            ? [`Triage didn't lower the priority, so P${decided!.final_priority} was approved without a person`]
+            : ticket.pipeline_status === "triaged" && lowered
+              ? [`Triage lowered the priority from P${ticket.reported_priority} to P${recommended}: agree or change it`]
+              : decided?.note
+                ? [decided.note]
+                : ["Needed only when Triage lowers the reporter's priority"],
           section: "triage",
         },
         ...(["resolution", "closure_quality", "knowledge_builder"] as const).map(
@@ -799,6 +1148,8 @@ function Ticket() {
               lines: run ? [...brief(run), when(run.created_at)] : [WAITS[agent]],
               run,
               section: agent,
+              // The fix loop and the closure note, for tickets worked in the console.
+              ...(agent === "resolution" ? fixStep() : agent === "closure_quality" ? noteStep() : {}),
             };
           }
         ),
@@ -816,6 +1167,16 @@ function Ticket() {
   // The step to act on: the first one not done, unless the ticket is closed.
   const nowStep = closed ? undefined : flow.find((s) => s.key !== "back" && s.state !== "done");
   const nowCard = nowStep && nowStep.section !== "jira" ? nowStep.section : null;
+  // The agent working on this ticket now: a run started here, or Resolution after a priority was decided.
+  // Knowledge Builder starts once the closure note is sent, when the notes passed Closure Quality.
+  const working: Agent | "knowledge_builder" | null =
+    running ??
+    (ticket?.agents_running && fixing && !closed && (!runOf("resolution") || inputChanged("resolution"))
+      ? "resolution"
+      : ticket?.agents_running && closed && runOf("closure_quality")?.verdict === "good" && !runOf("knowledge_builder")
+        ? "knowledge_builder"
+        : null);
+  const freshShown = fresh !== nowCard ? fresh : null;
   // A card's state; the Triage card covers both Triage and the person's review.
   const cardState = (key: CardKey): FlowState => {
     if (key !== "triage") return stepOf(key).state;
@@ -828,11 +1189,12 @@ function Ticket() {
     if (!ticket) return null;
     if (key === "data_quality" && canRun) return runButton("data_quality", dq !== undefined);
     if (key === "triage" && canRun && ["dq_passed", "triaged"].includes(ticket.pipeline_status)) return runButton("triage", triage !== undefined);
-    if (key === "resolution" && !closed && reviewed) return runButton("resolution", runOf("resolution") !== undefined);
-    if (key === "closure_quality" && ["resolved", "closed"].includes(ticket.status)) return runButton("closure_quality", runOf("closure_quality") !== undefined);
+    if (key === "resolution" && !closed && fixing) return runButton("resolution", runOf("resolution") !== undefined);
+    if (key === "closure_quality" && (confirmed || ["resolved", "closed"].includes(ticket.status)))
+      return runButton("closure_quality", runOf("closure_quality") !== undefined);
     return null;
   };
-  const isOpen = (key: CardKey) => key === nowCard || openCards.has(key);
+  const isOpen = (key: CardKey) => key === nowCard || key === freshShown || openCards.has(key);
   const setOpen = (key: CardKey, open: boolean) =>
     setOpenCards((prev) => {
       const next = new Set(prev);
@@ -840,6 +1202,9 @@ function Ticket() {
       else next.delete(key);
       return next;
     });
+  // After the card has opened (and moved, if it did), glide to it.
+  const scrollToCard = (key: CardKey | "jira") =>
+    setTimeout(() => glideTo(document.getElementById(`step-${key}`)), 60);
   const openSection = (section: FlowStep["section"]) => {
     setOpenStep(null);
     if (!section) return;
@@ -847,11 +1212,11 @@ function Ticket() {
       setOpen(section, true);
       if (section !== nowCard && cardState(section) === "done") setDoneOpen(true);
     }
-    setTimeout(() => document.getElementById(`step-${section}`)?.scrollIntoView({ behavior: reducedMotion() ? "auto" : "smooth", block: "start" }), 60);
+    scrollToCard(section);
   };
   // Only once the ticket is loaded: before that there are no steps to read.
-  const cardsDone = ticket ? CARDS.filter((k) => k !== nowCard && cardState(k) === "done").reverse() : []; // newest first
-  const cardsNext = ticket ? CARDS.filter((k) => k !== nowCard && cardState(k) !== "done") : [];
+  const cardsDone = ticket ? CARDS.filter((k) => k !== nowCard && k !== freshShown && cardState(k) === "done").reverse() : []; // newest first
+  const cardsNext = ticket ? CARDS.filter((k) => k !== nowCard && k !== freshShown && cardState(k) !== "done") : [];
 
   // One card's body: the latest result with its rating, earlier runs folded under it, and the step's own actions.
   const cardBody = (key: CardKey) => {
@@ -871,6 +1236,19 @@ function Ticket() {
         ) : (
           <p className="px-4 py-3 text-[13px] text-muted-foreground">{key === "triage" ? "Not triaged yet." : (WAITS[key] ?? "Not run yet.")}</p>
         )}
+        {key === "resolution" && latestRun && !closed && (asking || confirmed) && (
+          <FixAnswer
+            key={latestRun.id}
+            ticketId={ticket!.id}
+            run={latestRun}
+            version={runs.length}
+            answer={fixAnswer}
+            wrong={wrongBefore}
+            needsLead={needsLead}
+            busy={busy}
+            onDone={load}
+          />
+        )}
         {key === "resolution" && references.length > 0 && (
           <div className="flex flex-wrap items-center gap-2 border-t border-border px-4 py-3">
             <span className="font-mono text-[10.5px] font-medium tracking-[0.08em] text-muted-foreground uppercase">From the runbooks</span>
@@ -883,8 +1261,7 @@ function Ticket() {
           <div className="flex flex-col gap-2 border-t border-border px-4 py-3 text-[13px]">
             <p>
               <span className="font-semibold">Review by a person: </span>
-              {stepOf("review").summary}
-              {decided?.note ? ` · ${decided.note}` : ""}
+              {stepOf("review").summary} · {stepOf("review").lines[0]}
             </p>
             {!closed && ticket?.pipeline_status === "triaged" && recommended !== null && (
               <div className="flex flex-wrap items-center gap-2">
@@ -893,7 +1270,18 @@ function Ticket() {
             )}
           </div>
         )}
-        {key === "closure_quality" && latestRun && ticket?.closure_decision?.agent_run_id === latestRun.id ? (
+        {key === "closure_quality" && confirmed ? (
+          <ClosureNote
+            key={ticket!.resolution_notes ?? ""}
+            ticket={ticket!}
+            run={latestRun}
+            toJira={jira && writeBack}
+            whyNotJira={jira ? "Writing to Jira is switched off for this console." : `This ticket did not come from Jira: close it in ${source} with this note.`}
+            source={source}
+            busy={busy}
+            onDone={load}
+          />
+        ) : key === "closure_quality" && latestRun && ticket?.closure_decision?.agent_run_id === latestRun.id ? (
           <div className="flex flex-col gap-2 border-t border-border px-4 py-3 text-[13px]">
             <p className="font-semibold">
               {ticket.closure_decision.action === "accepted"
@@ -922,13 +1310,23 @@ function Ticket() {
         {older.length > 0 && (
           <Collapsible className="border-t border-border">
             <CollapsibleTrigger className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-xs font-semibold text-primary focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
-              Earlier checks ({older.length})
+              {key === "resolution" ? "Earlier fixes" : "Earlier checks"} ({older.length})
             </CollapsibleTrigger>
             <CollapsibleContent>
               <ul role="list" className="border-t border-border">
-                {older.map((r) => (
-                  <Run key={r.id} run={r} />
-                ))}
+                {older.map((r) => {
+                  const said = key === "resolution" ? answerOf(r) : undefined;
+                  return (
+                    <Run key={r.id} run={r}>
+                      {key === "resolution" && (
+                        <p className="flex flex-wrap items-center gap-2 break-words">
+                          <Badge variant="secondary">Fix v{runs.indexOf(r) + 1}</Badge>
+                          {said ? `${FIX_WORDS[said.action]}${said.note ? `: ${said.note}` : ""} · ${said.reviewer}` : "No answer given"}
+                        </p>
+                      )}
+                    </Run>
+                  );
+                })}
               </ul>
             </CollapsibleContent>
           </Collapsible>
@@ -946,20 +1344,48 @@ function Ticket() {
       badge={key === "triage" ? "Triage agent" : AGENTS[key] ? `${AGENTS[key]} agent` : undefined}
       now={key === nowCard}
       open={isOpen(key)}
-      onOpenChange={(open) => setOpen(key, open)}
+      onOpenChange={(open) => {
+        setOpen(key, open);
+        if (open) scrollToCard(key);
+      }}
     >
       {cardBody(key)}
     </StepCard>
   );
 
-  // When a run moves the ticket on, bring the new step into view.
+  // When a run moves the ticket on, bring the new step into view; not while someone is typing.
   const lastNow = useRef<string | null | undefined>(undefined);
   useEffect(() => {
     const key = nowStep?.key ?? null;
-    if (lastNow.current !== undefined && lastNow.current !== key && key)
-      document.getElementById("now")?.scrollIntoView({ behavior: reducedMotion() ? "auto" : "smooth", block: "start" });
+    const typing = document.activeElement instanceof HTMLTextAreaElement || document.activeElement instanceof HTMLInputElement;
+    if (lastNow.current !== undefined && lastNow.current !== key && key && !typing)
+      glideTo(document.getElementById("now"));
     if (ticket) lastNow.current = key;
   }, [nowStep?.key, ticket]);
+
+  // Cards glide to their new place when they move (Now → Just finished → Coming up / Done) instead of jumping; a card
+  // that appears fades up. Positions are page-relative, so scrolling doesn't count as moving.
+  const places = useRef(new Map<CardKey, number>());
+  const placed = useRef(false);
+  useLayoutEffect(() => {
+    if (!ticket) return;
+    const motion = placed.current;
+    for (const key of CARDS) {
+      const el = document.getElementById(`step-${key}`);
+      if (!el || el.offsetParent === null) continue; // not shown (e.g. folded under Done): keep where it was last seen
+      // A card still gliding continues from where it is on screen.
+      const moving = el.getAnimations();
+      const seenAt = moving.length ? el.getBoundingClientRect().top + window.scrollY : places.current.get(key);
+      moving.forEach((a) => a.cancel());
+      const top = el.getBoundingClientRect().top + window.scrollY;
+      places.current.set(key, top);
+      if (!motion) continue;
+      const ease = { duration: 550, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" };
+      if (seenAt === undefined) el.animate([{ opacity: 0, transform: "translateY(12px)" }, { opacity: 1, transform: "none" }], ease);
+      else if (Math.abs(seenAt - top) > 4) el.animate([{ transform: `translateY(${seenAt - top}px)` }, { transform: "none" }], ease);
+    }
+    placed.current = true;
+  });
 
   return (
     <>
@@ -992,17 +1418,17 @@ function Ticket() {
           </Card>
 
           {/* The step bar: three groups, a popover per step (click or Enter; Esc or outside closes). */}
-          <Card className="flex-row flex-wrap gap-y-2 py-2" aria-label="Where the agents are" role="group">
+          <Card className="scroll-thin flex-row flex-nowrap overflow-x-auto py-2" aria-label="Where the agents are" role="group">
             {GROUPS.map((group) => {
               const steps = group.keys.map(stepOf);
               const done = steps.filter((s) => s.state === "done").length;
               return (
-                <div key={group.label} className="flex min-w-0 flex-auto flex-col gap-1 px-3 [&+&]:border-l [&+&]:border-border">
+                <div key={group.label} className="flex shrink-0 flex-auto flex-col gap-1 px-2 [&+&]:border-l [&+&]:border-border">
                   <p className="flex items-center gap-1.5 pl-1 font-mono text-[10.5px] font-medium tracking-[0.08em] text-muted-foreground uppercase">
                     {group.label}
                     <span className={done === steps.length ? "text-p3" : undefined}>{done === steps.length ? "✓ done" : `${done}/${steps.length}`}</span>
                   </p>
-                  <ol role="list" className="flex flex-wrap gap-0.5">
+                  <ol role="list" className="flex flex-nowrap gap-0.5">
                     {steps.map((s) => {
                       const n = flow.indexOf(s) + 1;
                       const isNow = s === nowStep;
@@ -1011,8 +1437,8 @@ function Ticket() {
                       return (
                         <li key={s.key}>
                           <Popover open={openStep === s.key} onOpenChange={(o) => setOpenStep(o ? s.key : null)}>
-                            <PopoverTrigger className="flex items-center gap-1.5 rounded-[10px] py-1 pr-2 pl-1 text-left transition-colors duration-[80ms] hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-popup-open:bg-muted">
-                              <StateDot state={s.state} now={isNow} running={running === s.key} n={n} />
+                            <PopoverTrigger className="flex items-center gap-1.5 rounded-[10px] py-1 pr-1.5 pl-1 text-left transition-colors duration-[80ms] hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-popup-open:bg-muted">
+                              <StateDot state={s.state} now={isNow} running={working === s.key} n={n} />
                               <span className="flex flex-col">
                                 <span className={cn("text-xs font-semibold whitespace-nowrap", s.state === "waiting" && !isNow && "text-muted-foreground")}>{s.name}</span>
                                 {isNow && <span className="text-[11px] whitespace-nowrap text-critical">{s.summary}</span>}
@@ -1025,7 +1451,7 @@ function Ticket() {
                                   {isNow ? "Now" : s.state === "done" ? "Done" : s.state === "attention" ? "Needs a person" : "Waiting"}
                                 </Badge>
                               </div>
-                              <p className="text-sm font-semibold">{running === s.key ? "Running…" : s.summary}</p>
+                              <p className="text-sm font-semibold">{working === s.key ? "Running…" : s.summary}</p>
                               {s.lines.map((line, i) => (
                                 <p key={i} className="break-words text-muted-foreground">
                                   {line}
@@ -1068,21 +1494,81 @@ function Ticket() {
               {/* Now: the step to act on, open. */}
               <section id="now" aria-labelledby="now-h" className="flex scroll-mt-24 flex-col gap-2">
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge>Now</Badge>
-                  <h2 id="now-h" className="text-[13px] font-semibold">
+                  {closed ? (
+                    <Badge className="border-p3 bg-p3 text-white">
+                      <Check aria-hidden="true" />
+                      Complete
+                    </Badge>
+                  ) : (
+                    <Badge>Now</Badge>
+                  )}
+                  <h2 id="now-h" className={cn("text-[13px] font-semibold", closed && "text-p3")}>
                     {nowStep ? nowStep.name : closed ? `Closed in ${source}` : "Nothing to do"}
                   </h2>
                   <span className="text-[13px] text-muted-foreground">
                     {closed
                       ? `Nothing. This ticket is closed in ${source}.`
-                      : ticket.pipeline_status === "reviewed" && jira && writeBack
-                        ? NEXT.reviewed.replace("decided.", "decided and set on the Jira issue.")
-                        : (NEXT[ticket.pipeline_status] ?? ticket.pipeline_status)}
+                      : ticket.pipeline_status === "reviewed" && runOf("resolution")
+                        ? fixAnswer?.action === "wrong"
+                          ? "You said the fix didn't work. The Resolution agent looks for another one with what you wrote."
+                          : "Try the suggested fix, then tell us if it worked. The closure note opens once it did."
+                        : ticket.pipeline_status === "reviewed" && jira && writeBack
+                          ? NEXT.reviewed.replace("decided.", "decided and set on the Jira issue.")
+                          : (NEXT[ticket.pipeline_status] ?? ticket.pipeline_status)}
                   </span>
                   {nowStep && actionFor(nowStep.key) && <span className="ml-auto">{actionFor(nowStep.key)}</span>}
                 </div>
-                {nowCard && card(nowCard)}
+                {busy && (
+                  <p role="status" className="flex items-center gap-2 text-[13px] font-medium text-primary">
+                    <LoaderCircle className="size-3.5 animate-spin" />
+                    {working ? WORKING[working] : "The agents are working. This page updates by itself."}
+                  </p>
+                )}
+                {/* The placeholder slides in; a card glides here from where it was (see the layout effect above). */}
+                <div
+                  key={working ? `working-${working}` : `now-${nowCard}`}
+                  className={working ? "animate-in fade-in slide-in-from-bottom-2 duration-500" : undefined}
+                >
+                  {working ? (
+                    <Card className="gap-3 border-2 border-primary px-4 py-4" aria-hidden="true">
+                      <Skeleton className="h-3.5 w-1/3" />
+                      <Skeleton className="h-3 w-full" />
+                      <Skeleton className="h-3 w-5/6" />
+                      <Skeleton className="h-3 w-2/3" />
+                    </Card>
+                  ) : nowCard ? (
+                    card(nowCard)
+                  ) : (
+                    closed && (
+                      <Card className="flex-row items-center gap-3 border-2 border-p3 px-4 py-4 animate-in fade-in zoom-in-95 duration-500">
+                        <span aria-hidden="true" className="flex size-9 shrink-0 items-center justify-center rounded-full bg-p3 text-white animate-in zoom-in-50 spin-in-12 duration-700">
+                          <Check className="size-5" />
+                        </span>
+                        <span className="flex min-w-0 flex-col gap-0.5">
+                          <span className="text-sm font-semibold text-p3">Ticket complete</span>
+                          <span className="text-[13px] text-muted-foreground">
+                            {`Closed in ${source} ${when(ticket.closed_at)}.`}
+                            {runOf("knowledge_builder") ? ` Knowledge Builder: ${stepOf("knowledge_builder").summary.toLowerCase()}.` : ""}
+                          </span>
+                        </span>
+                      </Card>
+                    )
+                  )}
+                </div>
               </section>
+
+              {freshShown && (
+                <section
+                  key={`fresh-${freshShown}`}
+                  aria-labelledby="fresh-h"
+                  className="flex flex-col gap-2"
+                >
+                  <h2 id="fresh-h" className="pl-1 animate-in fade-in duration-500 font-mono text-[10.5px] font-medium tracking-[0.08em] text-muted-foreground uppercase">
+                    Just finished
+                  </h2>
+                  {card(freshShown)}
+                </section>
+              )}
 
               {cardsNext.length > 0 && (
                 <section aria-labelledby="next-h" className="flex flex-col gap-2">
@@ -1110,7 +1596,7 @@ function Ticket() {
               {!closed && (
                 <Card className="gap-0 py-0">
                   {/* Remounts when the stored note changes, so the box shows it as kept (personal details masked). */}
-                  <Note key={ticket.guidance ?? ""} ticketId={ticket.id} text={ticket.guidance ?? ""} busy={running !== null} rerun={rerun} inputChanged={rerunAgent !== null && inputChanged(rerunAgent)} onSaved={load} />
+                  <Note key={ticket.guidance ?? ""} ticketId={ticket.id} text={ticket.guidance ?? ""} busy={busy} rerun={rerun} inputChanged={rerunAgent !== null && inputChanged(rerunAgent)} onSaved={load} />
                 </Card>
               )}
 
@@ -1128,7 +1614,7 @@ function Ticket() {
               />
             </div>
 
-            <div className="flex flex-col gap-4 lg:sticky lg:top-[76px] lg:max-h-[calc(100vh-92px)] lg:overflow-y-auto lg:overscroll-contain">
+            <div className="flex flex-col gap-4 *:shrink-0 lg:sticky lg:top-[76px] lg:max-h-[calc(100vh-92px)] lg:overflow-y-auto lg:overscroll-contain scroll-thin">
               <Card className="gap-0 py-0">
                 <SectionHead title="Details" />
                 <Facts
@@ -1210,7 +1696,10 @@ export default function TicketPage() {
   return (
     <AppShell>
       <Suspense>
-        <Ticket />
+        {/* Moves even when the computer asks for reduced motion (see globals.css). */}
+        <div className="keep-motion contents">
+          <Ticket />
+        </div>
       </Suspense>
     </AppShell>
   );

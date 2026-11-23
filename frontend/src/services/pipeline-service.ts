@@ -1,5 +1,5 @@
 import { apiClient } from "@/lib/api-client";
-import { AgentCheckResult, AgentRunResult, AgentSlug, ClosureQueueItem, PipelineTicket, ReviewInput, ReviewQueueItem } from "@/types/pipeline";
+import { AgentCheckResult, AgentRunResult, AgentSlug, ClosureQueueItem, Outcome, PipelineTicket, ReviewInput, ReviewQueueItem } from "@/types/pipeline";
 
 const id = encodeURIComponent;
 
@@ -34,4 +34,13 @@ export const pipelineService = {
   /** A decision on the latest close-notes check: take the agent's draft, or keep the person's own version. */
   closureReview: (ticketId: string, body: { action: "accepted" | "edited"; reviewer: string; final_text?: string }) =>
     apiClient(`/closure/tickets/${id(ticketId)}/review`, { method: "POST", body: JSON.stringify(body) }),
+  /** The engineer's answer on the latest suggested fix: worked opens the closure note, wrong asks for another fix. */
+  fixOutcome: (ticketId: string, body: { agent_run_id: number; outcome: Outcome; note?: string; reviewer: string }) =>
+    apiClient(`/tickets/${id(ticketId)}/fix-outcome`, { method: "POST", body: JSON.stringify(body) }),
+  /** Keeps the closure note in the console; Closure Quality checks it again. */
+  saveClosureNote: (ticketId: string, text: string) =>
+    apiClient(`/tickets/${id(ticketId)}/closure-note`, { method: "PUT", body: JSON.stringify({ text }) }),
+  /** Posts the closure note on the Jira issue and moves the issue to done. */
+  closeInJira: (ticketId: string, author: string) =>
+    apiClient(`/tickets/${id(ticketId)}/close`, { method: "POST", body: JSON.stringify({ author_email: author }) }),
 };
