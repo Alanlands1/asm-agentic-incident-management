@@ -24,7 +24,8 @@ class ConnectionOut(BaseModel):
     account_name: str | None = None
     error: str | None = None
     sync_minutes: int
-    write_back: bool = False  # a person may post comments and reviewed priorities to Jira
+    write_back: bool = False  # what a person sends goes to Jira: replies and the closure note
+    agent_writes: bool = False  # the system also comments, labels, moves and sets priorities on its own (design D8: off)
 
 
 class ProjectOut(BaseModel):
@@ -64,6 +65,7 @@ async def connection() -> ConnectionOut:
         connected=False,
         sync_minutes=settings.JIRA_SYNC_MINUTES,
         write_back=settings.JIRA_WRITE_BACK,
+        agent_writes=jira.agent_writes(),
     )
     try:
         out.account_name = await jira.whoami()

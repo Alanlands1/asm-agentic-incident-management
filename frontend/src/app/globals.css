@@ -156,13 +156,20 @@
   }
 }
 
+/* The ticket page (.keep-motion) keeps its short movements: asked for by the user, 2026-11-23. */
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
+  :not(:where(.keep-motion, .keep-motion *)),
+  :not(:where(.keep-motion, .keep-motion *))::before,
+  :not(:where(.keep-motion, .keep-motion *))::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* The site's scrollbar on light surfaces: thin, like the left menu's, in the border colour. */
+@utility scroll-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
 }

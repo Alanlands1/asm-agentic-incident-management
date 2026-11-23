@@ -4,12 +4,14 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  BookOpen, CheckCheck, CheckCircle2, ClipboardList, Database, FileText, History, LayoutDashboard,
-  Library, ListChecks, Plug, ShieldCheck, SlidersHorizontal, Ticket, TrendingUp, TriangleAlert, Users, type LucideIcon,
+  BookOpen, CheckCheck, CheckCircle2, ClipboardList, Database, FileSearch, FileText, History, Layers, LayoutDashboard,
+  Library, ListChecks, MessageSquare, Plug, ShieldCheck, SlidersHorizontal, Ticket, TrendingUp, TriangleAlert, Users,
+  type LucideIcon,
 } from "lucide-react";
 import { cn } from "cn";
 import { ROLES, useViewAs } from "@/lib/view-as";
 import { REVIEW_EVENT } from "@/components/console/review-actions";
+import { SidebarFooter } from "@/components/console/sidebar-footer";
 import { pipelineService } from "@/services/pipeline-service";
 
 type NavItem = {
@@ -85,6 +87,13 @@ const ITEMS: NavItem[] = [
   { label: "My worklist", href: "/my-tickets", match: (p) => p.startsWith("/my-tickets") },
 ];
 
+// Planned tools from the 19 Nov review, shown as "Soon" for the demo; they are not pages yet.
+const SOON: { label: string; Icon: LucideIcon }[] = [
+  { label: "Ask a question", Icon: MessageSquare },
+  { label: "Log analyzer", Icon: FileSearch },
+  { label: "Problem records", Icon: Layers },
+];
+
 const itemBase =
   "relative flex h-10 items-center gap-2.5 rounded-lg px-3 text-sm font-medium text-sidebar-foreground transition-colors duration-[80ms] hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar focus-visible:outline-none";
 const itemActive =
@@ -117,8 +126,9 @@ export function AppSidebar({ onNavigate, className }: AppSidebarProps) {
   }, [pathname]);
 
   return (
-    <nav aria-label="Pages" className={cn("flex flex-col gap-3 rounded-[20px] bg-sidebar p-3 text-sidebar-foreground", className)}>
-      <div className="-m-1 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-1">
+    <nav aria-label="Pages" className={cn("flex h-full flex-col gap-3 rounded-[20px] bg-sidebar p-3 text-sidebar-foreground", className)}>
+      {/* Only the items scroll; the footer below stays in view. */}
+      <div className="-m-1 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain p-1 [scrollbar-color:rgb(255_255_255/0.35)_transparent] [scrollbar-width:thin]">
         {groups.map((group) => (
           <div key={group.label} className="flex flex-col gap-1">
             <p className="px-3 pb-1 pt-1 font-mono text-[10.5px] font-medium uppercase tracking-[0.08em] text-sidebar-foreground/75">{group.label}</p>
@@ -170,20 +180,25 @@ export function AppSidebar({ onNavigate, className }: AppSidebarProps) {
             </ul>
           </div>
         ))}
+        <div className="flex flex-col gap-1">
+          <p className="px-3 pb-1 pt-1 font-mono text-[10.5px] font-medium uppercase tracking-[0.08em] text-sidebar-foreground/75">Tools</p>
+          <ul className="flex flex-col gap-0.5">
+            {SOON.map(({ label, Icon }) => (
+              <li key={label}>
+                <span aria-disabled="true" className={cn(itemBase, "cursor-default text-sidebar-foreground/70 hover:bg-transparent")}>
+                  <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                    <Icon className="size-4 shrink-0" aria-hidden="true" />
+                    <span>{label}</span>
+                  </span>
+                  <span className="ml-auto rounded-full border border-sidebar-foreground/40 px-1.5 py-px font-mono text-[9.5px] tracking-[0.06em] uppercase">Soon</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
 
-      <div className="flex flex-col gap-0.5 border-t border-sidebar-border pt-3">
-        <a
-          href="/docs"
-          target="_blank"
-          rel="noopener noreferrer"
-          aria-label="API docs"
-          title="API docs"
-          className={itemBase}
-        >
-          <span>API docs</span>
-        </a>
-      </div>
+      <SidebarFooter onNavigate={onNavigate} />
     </nav>
   );
 }

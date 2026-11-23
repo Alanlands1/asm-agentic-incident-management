@@ -133,6 +133,7 @@ def test_filters_only_add_clauses_for_fields_that_are_set():
     assert params == {"f_app": "PayrollPro", "f_section_type": "issue"}
     assert "AND app = :f_app" in _dense_sql(where)
     assert "kb_chunks.fts @@ q.query AND app = :f_app" in _sparse_sql(where)
+    assert "replace(plainto_tsquery('english', :q)::text, '&', '|')" in _sparse_sql(where)  # any word, ranked
 
 
 class _FakeVector:

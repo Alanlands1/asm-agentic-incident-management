@@ -36,7 +36,7 @@ export function SlaClock({
   const urgent = state === "breach_likely" || state === "breached";
   const Icon = urgent ? TriangleAlert : Clock;
   return (
-    <div className="flex w-48 flex-col gap-1">
+    <div className="flex w-48 max-w-full flex-col gap-1">
       <span className={cn("inline-flex items-center gap-1.5 text-sm font-semibold whitespace-nowrap tabular-nums", urgent && "text-primary")}>
         <Icon className="size-4 shrink-0" aria-hidden="true" />
         {span(minutesLeft)} {minutesLeft < 0 ? "over" : "left"}

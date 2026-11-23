@@ -192,7 +192,7 @@ async def test_search_budget_ends_in_no_match(monkeypatch):
 
 def test_prompt_versions_name_every_resolution_prompt():
     versions = react.prompt_versions()
-    assert versions == "resolution_multiquery@1|resolution_hyde@1|resolution_react@1"
+    assert versions == "resolution_multiquery@1|resolution_hyde@1|resolution_react@2"
 
 
 # ---- run service ------------------------------------------------------------------------------------------------------
@@ -348,3 +348,33 @@ def test_unrated_ticket_keeps_its_input_hash():
     assert service._input_hash(case, None) == before
     assert service._input_hash(_case(kb_weights={"KB-PAY-001": 1.2}), None) != before
 
+
+
+async def test_the_engineers_note_reaches_resolution_and_a_new_note_runs_it_again(monkeypatch):
+    engine = create_async_engine("sqlite+aiosqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    maker = async_sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+    monkeypatch.setattr(service, "AsyncSessionLocal", maker)
+    async with maker() as db:
+        db.add(Ticket(id="INC1", source="servicenow", status="new", pipeline_status=PipelineStatus.REVIEWED,
+                      summary="Payslip PDF fails with 500", description="Error on payslip", application="PayrollPro"))
+        await db.commit()
+    seen = []
+
+    async def fake_resolve(case, embedder=None):
+        seen.append(case.body)
+        return react.Resolution(
+            answer=ResolutionAnswer(verdict="resolved", steps=["Restart"], references=["KB-PAY-001"], confidence="high"),
+            filters=Filters(app="PayrollPro"), queries=[case.summary], hypothetical=None, trace=[], audits=[],
+        )
+
+    monkeypatch.setattr(service, "resolve", fake_resolve)
+    assert (await service.run_resolution()).evaluated == 1
+    async with maker() as db:
+        (await db.get(Ticket, "INC1")).guidance = "Only the March payslips fail; the renderer was patched on 1 March."
+        await db.commit()
+    assert (await service.run_resolution()).evaluated == 1  # a new note: Resolution looks again, without a person pressing Run
+    assert "Note from the support engineer:\nOnly the March payslips fail" in seen[-1]
+    assert (await service.run_resolution()).skipped == 1  # the same note: nothing new to read
+    await engine.dispose()

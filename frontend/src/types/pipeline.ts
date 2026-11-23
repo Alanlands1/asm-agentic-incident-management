@@ -42,6 +42,8 @@ export interface PipelineTicket {
   description: string;
   assignment_group: string | null;
   assignee: string | null;
+  /** The close notes as they are in the source. */
+  resolution_notes?: string | null;
   agent_runs: AgentRun[];
   comments: TicketComment[];
   /** A person's note to the agents, read with the description on every run. */
@@ -49,9 +51,47 @@ export interface PipelineTicket {
   /** Oldest first. Missing from a backend that has not been restarted since ratings were added. */
   feedback?: AgentFeedback[];
   /** The last decision a person made on the priority, in the console or on the Jira issue. */
-  decided: { final_priority: number | null; reviewer: string; note: string | null } | null;
+  decided: { final_priority: number | null; reviewer: string; note: string | null; created_at: string } | null;
+  /** The last decision a person made on the close notes. Missing from an older backend. */
+  closure_decision?: { agent_run_id: number; action: "accepted" | "edited" | "rejected"; final_text: string | null; note: string | null } | null;
   /** Per agent that ran before: true when its input changed since its last run. Missing from an older backend. */
   changed?: Partial<Record<string, boolean>>;
+  /** True while the agents' pass after a Jira sync is running. Missing from an older backend. */
+  agents_running?: boolean;
+  /** The engineer's answers on the suggested fixes, oldest first; the latest on a fix counts. */
+  fix_outcomes?: FixOutcome[];
+  /** A lead approves the closure note before it is sent (LEAD_REVIEW). Missing from an older backend. */
+  lead_review_required?: boolean;
+  /** Submitted for review, approved, sent back (with the comment), oldest first. */
+  lead_reviews?: LeadReviewStep[];
+}
+
+/** A row of the ticket list (GET /tickets). */
+export interface TicketListItem {
+  id: string;
+  source: string;
+  application: string | null;
+  summary: string;
+  reported_priority: number | null;
+  pipeline_status: string;
+  opened_at: string | null;
+}
+
+export interface LeadReviewStep {
+  action: "submitted" | "approved" | "sent_back";
+  note: string | null;
+  reviewer: string;
+  created_at: string;
+}
+
+export type Outcome = "worked" | "partly" | "wrong";
+
+export interface FixOutcome {
+  agent_run_id: number;
+  action: Outcome;
+  note: string | null;
+  reviewer: string;
+  created_at: string;
 }
 
 export interface ReviewQueueItem {

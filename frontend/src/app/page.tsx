@@ -1,26 +1,8 @@
-import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import { AppShell } from "@/components/console/app-shell";
-import { PageHeader } from "@/components/console/page-header";
-import { Dashboard } from "@/components/console/dashboard";
-import { ResetDemoButton } from "@/components/console/reset-demo-button";
+"use client";
 
+import { PersonaOverview } from "@/components/console/persona-overview";
+
+/** The Admin's home is the same Overview as everyone's, with the demo reset and sync health added. */
 export default function Home() {
-  return (
-    <AppShell>
-      <PageHeader
-        title="Overview"
-        context="Tickets from Jira and ServiceNow, and what the agents did with them today."
-        actions={
-          <>
-            <ResetDemoButton />
-            <Button variant="secondary" render={<Link href="/incidents" />} nativeButton={false}>
-              Incidents
-            </Button>
-          </>
-        }
-      />
-      <Dashboard />
-    </AppShell>
-  );
+  return <PersonaOverview lead admin />;
 }

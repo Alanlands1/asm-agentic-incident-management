@@ -36,6 +36,7 @@ async def seeded(client):
             t(2, "triaged", 5, opened_at=datetime(2026, 11, 1, 8, 0)),
             t(3, "awaiting_info", 6),
             t(4, "historical", 7),
+            t(5, "fix_confirmed", -43200, closed_at=TODAY - timedelta(days=29)),  # closed with Send: no longer open
             ServiceNowTicket(ticket_id="INC1", created_at=TODAY + timedelta(minutes=8)),
             ServiceNowTicket(ticket_id="J-2", created_at=TODAY + timedelta(minutes=9)),  # a Jira issue's console row
         ])
@@ -60,7 +61,7 @@ async def seeded(client):
 async def test_summary_counts_today_only(seeded):
     body = (await seeded.get("/api/v1/dashboard/summary", params={"since": TODAY.isoformat()})).json()
     assert body["tickets"]["by_source_today"] == {"JIRA": 3, "ServiceNow": 1}
-    assert body["tickets"]["by_stage"] == {"pending": 1, "triaged": 1, "awaiting_info": 1}  # historical left out
+    assert body["tickets"]["by_stage"] == {"pending": 1, "triaged": 1, "awaiting_info": 1}  # historical and closed left out
 
 
 async def test_summary_agent_stats_queue_and_syncs(seeded, monkeypatch):

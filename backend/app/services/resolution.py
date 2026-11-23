@@ -15,8 +15,9 @@ from app.agents.resolution.react import Resolution, prompt_versions, resolve
 from app.core.config import settings
 from app.db.session import AsyncSessionLocal
 from app.llm import ModelError
-from app.models.ticket import AgentRun, Feedback, PipelineStatus, Ticket
+from app.models.ticket import AgentRun, Feedback, PipelineStatus, Review, Ticket
 from app.services.data_quality import fingerprint, last_run, reporter_text
+from app.services.fix import tried
 
 logger = logging.getLogger("app.resolution")
 
@@ -87,18 +88,36 @@ def _output(res: Resolution, embedder: Embedder | None) -> dict:
     }
 
 
+async def _case(db: AsyncSession, t: Ticket) -> CaseInput:
+    """What the agent reads: the ticket, the engineer's note, and the fixes the engineer said did not work."""
+    latest = {r.agent_run_id: r for r in await db.scalars(
+        select(Review).where(Review.ticket_id == t.id, Review.agent == AGENT).order_by(Review.id))}
+    failed = tried([r for r in t.agent_runs if r.agent == AGENT], latest)
+    return CaseInput(id=t.id, summary=t.summary, application=t.application,
+                     body="\n\n".join(p for p in (reporter_text(t), failed) if p),
+                     reporter_name=t.reporter_name, reporter_email=t.reporter_email, assignee=t.assignee,
+                     kb_weights=await _kb_weights(db, t))
+
+
+async def current_hash(db: AsyncSession, t: Ticket) -> str:
+    """What a run now would see, as its fingerprint (a manual run uses no embedder)."""
+    return _input_hash(await _case(db, t), None)
+
+
 async def input_changed(db: AsyncSession, t: Ticket) -> bool:
     """Whether a run now would see something other than the last one did (a manual run uses no embedder)."""
     last = last_run(t, AGENT)
     if last is None or last.input_hash is None:
         return True
-    case = CaseInput(id=t.id, summary=t.summary, application=t.application, body=reporter_text(t),
-                     reporter_name=t.reporter_name, reporter_email=t.reporter_email, assignee=t.assignee,
-                     kb_weights=await _kb_weights(db, t))
-    return last.input_hash != _input_hash(case, None)
+    return last.input_hash != _input_hash(await _case(db, t), None)
 
 
 _one_at_a_time = asyncio.Lock()  # the Run button and the scheduled sync must not resolve (and comment on) a ticket twice
+
+
+def busy() -> bool:
+    """True while a Resolution run holds the lock."""
+    return _one_at_a_time.locked()
 
 
 async def run_resolution(embedder: Embedder | None = None, ticket_id: str | None = None) -> RunResult:
@@ -122,11 +141,7 @@ async def _run_resolution(embedder: Embedder | None = None, ticket_id: str | Non
             )
         ).all()
         for t in tickets:
-            case = CaseInput(
-                id=t.id, summary=t.summary, application=t.application, body=reporter_text(t),
-                reporter_name=t.reporter_name, reporter_email=t.reporter_email, assignee=t.assignee,
-                kb_weights=await _kb_weights(db, t),
-            )
+            case = await _case(db, t)
             digest = _input_hash(case, embedder)
             last = last_run(t, AGENT)
             if ticket_id is None and last is not None and last.input_hash == digest:

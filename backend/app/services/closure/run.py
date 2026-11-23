@@ -40,10 +40,13 @@ ADOPTS = re.compile(r"\b(follow(ed|ing)?|appl(ied|y)|did|used|per|as)\b.{0,40}?"
                     r"\b(suggest(ed|ion)?|agent'?s?|recommend(ed|ation)?|proposed)\b", re.IGNORECASE)
 
 
+GAP = re.compile(r"\[engineer to add: \w+\]")  # the marks a draft leaves where only the engineer knows the answer
+
+
 def notes_for(ticket: Ticket) -> tuple[str, bool]:
     """The close notes to judge, and whether they adopt the Resolution agent's fix. Notes that say the engineer followed
     the suggested fix take its cause and steps as their own; how the fix was confirmed must still be in their words."""
-    notes = (ticket.resolution_notes or "").strip()
+    notes = GAP.sub("", ticket.resolution_notes or "").strip()  # a part left to fill in is missing, not written
     fix = last_run(ticket, "resolution")
     if not notes or fix is None or fix.verdict != "resolved" or not ADOPTS.search(notes):
         return notes, False

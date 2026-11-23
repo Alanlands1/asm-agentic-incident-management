@@ -105,7 +105,8 @@ def test_a_storm_makes_the_main_ticket_p1_and_the_others_follow_it(session):
     assert (runs["T-0"]["stage"], runs["T-0"]["must_follow"], runs["T-0"]["priority"]) == ("rules", "storm", 1)
     assert [(runs[f"T-{i}"]["stage"], runs[f"T-{i}"]["linked_to"], runs[f"T-{i}"]["ai"]) for i in range(1, 5)] == [
         ("storm", "T-0", "not_needed")] * 4
-    assert {t.pipeline_status for t in session.scalars(select(Ticket))} == {PipelineStatus.TRIAGED}
+    # raised to P1, so approved without a person
+    assert {t.pipeline_status for t in session.scalars(select(Ticket))} == {PipelineStatus.REVIEWED}
 
 
 def test_joining_a_storm_triages_a_ticket_again():
@@ -128,7 +129,8 @@ def test_open_p1_p2_with_sla_risk_and_first_message(db):  # noqa: F811
     run_triage(db)
     items = {i.ticket.id: i for i in open_p1_p2(db, datetime(2026, 10, 25, 21, 0))}
     salary = items["AMS-1215"]  # the salary file the bank has not received: P1, opened 18:32
-    assert (salary.priority, salary.priority_from, salary.sla.state) == (1, "recommended", "watch")
+    # P1 is as urgent as the reporter asked, or more: approved without a person, so it counts as reviewed
+    assert (salary.priority, salary.priority_from, salary.sla.state) == (1, "reviewed", "watch")
     assert salary.message.text.startswith("PayrollPro: Salary transfer file not delivered to the bank")
     assert "Ref AMS-1215. Next update 21:30 UTC." in salary.message.text
     assert salary.ticket.reporter_name not in salary.message.text  # never a name

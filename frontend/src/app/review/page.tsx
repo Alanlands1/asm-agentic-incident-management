@@ -11,13 +11,22 @@ import { StatTile } from "@/components/console/stat-tile";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { useViewAs } from "@/lib/view-as";
 import { pipelineService } from "@/services/pipeline-service";
-import { FLAGS, ReviewQueueItem } from "@/types/pipeline";
+import { FLAGS, ReviewQueueItem, TicketListItem } from "@/types/pipeline";
 
 /** Recommendations waiting for an engineer: flagged ones first, then the most urgent. */
 export default function ReviewPage() {
   const [items, setItems] = useState<ReviewQueueItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Closure notes an engineer submitted: the lead approves them or sends them back (LEAD_REVIEW).
+  const role = useViewAs();
+  const lead = role === "lead" || role === "admin";
+  const [notes, setNotes] = useState<TicketListItem[] | null>(null);
+  useEffect(() => {
+    if (lead) pipelineService.listByStage("in_review").then((r) => setNotes(r.items), () => setNotes([]));
+  }, [lead]);
 
   const load = useCallback(
     () =>
@@ -56,6 +65,27 @@ export default function ReviewPage() {
           <StatTile label="Flagged" value={items.filter((i) => i.flags.length > 0).length} window="shown first" />
           <StatTile label="Priority would change" value={items.filter((i) => i.reported_priority !== null && i.reported_priority !== i.recommended_priority).length} window="against the reported one" />
         </div>
+      )}
+      {lead && notes && notes.length > 0 && (
+        <Card className="gap-0 py-0">
+          <h2 className="border-b border-border px-4 py-3 text-sm font-semibold">Closure notes waiting for your review · {notes.length}</h2>
+          <ul role="list">
+            {notes.map((t) => (
+              <ListRow
+                key={t.id}
+                lead={t.reported_priority ? <PriorityChip priority={t.reported_priority} /> : undefined}
+                itemKey={t.id}
+                title={t.summary}
+                meta={[t.application, t.source].filter(Boolean).join(" · ")}
+                actions={
+                  <Button size="sm" nativeButton={false} render={<Link href={`/tickets/${encodeURIComponent(t.id)}`} />}>
+                    Review the note
+                  </Button>
+                }
+              />
+            ))}
+          </ul>
+        </Card>
       )}
       <Card className="gap-0 py-0">
         {!items ? (

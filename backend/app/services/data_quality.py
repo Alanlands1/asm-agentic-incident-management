@@ -15,6 +15,7 @@ from app.core.config import settings
 from app.llm import ModelError, ModelUnavailableError
 from app.llm.client import effort, model_id
 from app.models.ticket import AgentRun, PipelineStatus, Ticket
+from app.services import feedback
 
 logger = logging.getLogger("app.data_quality")
 
@@ -78,6 +79,7 @@ def check_ticket(db: Session, ticket: Ticket) -> AgentRun:
     """
     body = reporter_text(ticket)
     input_hash = _input_hash(ticket, body)
+    asked = last_run(ticket, AGENT)  # the check before this one
     outcome = evaluate(ticket.summary, body, ticket.attachments, ticket.application)
     final = AgentRun(
         ticket_id=ticket.id,
@@ -106,6 +108,11 @@ def check_ticket(db: Session, ticket: Ticket) -> AgentRun:
         db.add(final)
 
     ticket.pipeline_status = VERDICT_STATUS.get(final.verdict, ticket.pipeline_status)
+    if asked is not None and asked.verdict == Verdict.NEEDS_INFO and final.verdict == Verdict.PASSED and any(
+            c.from_reporter and c.created_at.replace(tzinfo=None) > asked.created_at.replace(tzinfo=None)  # both UTC
+            for c in ticket.comments):
+        # the reporter's reply supplied what Data Quality asked for: it was right to ask
+        feedback.from_use(db, asked, feedback.UP, "Reporter reply", "the reporter supplied what was missing")
     return final
 
 

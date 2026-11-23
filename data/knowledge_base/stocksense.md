@@ -112,6 +112,44 @@ Synchronous export is limited to 60 seconds; ranges over ~31 days exceed it.
 
 ---
 
+### KB-STK-006 — Pick list not generated for a wave
+
+**Symptoms**
+- Warehouse staff see no pick lists for the morning wave.
+- Orders show `RELEASED` in StockSense but no pick tasks.
+
+**Root cause**
+The wave release job `STK_WAVE_RELEASE` failed on a SQL Server deadlock or stopped on an order with an unknown bin location.
+
+**Resolution steps**
+1. Check the last `STK_WAVE_RELEASE` run and its error in StockSense Admin → *Jobs*.
+2. If a deadlock: re-run the job. If an unknown bin: fix the item's bin in *Item master* and re-run.
+3. Confirm pick tasks appear on the handheld scanners.
+4. Tell the site manager when the wave is released.
+
+**Escalation:** P1 if a whole site cannot pick; otherwise P2. WMS Dev team for repeated deadlocks.
+
+---
+
+### KB-STK-007 — Shipping label printed with the wrong address
+
+**Symptoms**
+- Parcels are labelled with an old or partial delivery address.
+- The address in OrderHub is correct.
+
+**Root cause**
+The customer changed the address after the order was exported to StockSense, and the export does not send address updates for orders already released.
+
+**Resolution steps**
+1. Compare the address in OrderHub and StockSense for the order.
+2. Correct it in StockSense → *Shipments → Edit address* (only before carrier pickup).
+3. Reprint the label and re-book the carrier if it was already booked.
+4. Raise a change for OrderHub order-export to send address updates.
+
+**Escalation:** P3; P2 when many parcels at one site are affected.
+
+---
+
 ## Escalation contacts
 
 | Level | Team | When |

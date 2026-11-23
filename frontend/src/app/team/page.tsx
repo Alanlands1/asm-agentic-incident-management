@@ -3,7 +3,7 @@
 import { PersonaOverview } from "@/components/console/persona-overview";
 import { useViewAs } from "@/lib/view-as";
 
-/** Overview, the home of the lead and the engineer: every open ticket for the lead, their own for the engineer. */
+/** Overview: open tickets by work status. An engineer sees their own; the lead sees all, runs the agents and sees the workload. */
 export default function TeamPage() {
-  return <PersonaOverview mine={useViewAs() === "engineer"} />;
+  return <PersonaOverview lead={useViewAs() !== "engineer"} />;
 }

@@ -111,6 +111,64 @@ Only JPG/PNG under 2 MB are supported; HEIC (iPhone) images are rejected.
 
 ---
 
+### KB-EMP-006 — Phishing email clicked / account suspected compromised
+
+**Symptoms**
+- Staff report an email linking to a fake portal login page.
+- Some entered their password; sign-ins from unusual places, or MFA prompts they did not start.
+
+**Root cause**
+Credential phishing: a look-alike login page captured passwords (sometimes MFA codes). A security incident, not an application fault.
+
+**Resolution steps**
+1. Inform the Security Operations Centre (SOC) at once; keep the email.
+2. Disable each affected account in Azure AD and revoke all sessions.
+3. Reset the password and re-register MFA after a verified call-back.
+4. Check sign-in logs since the email arrived for data or apps accessed.
+5. Ask the Messaging team to block the sender and purge the email.
+6. Re-enable the accounts when SOC agrees.
+
+**Escalation:** P2 for one account, P1 for several or an admin account. SOC and the Identity team lead; AMS-Workplace restores access.
+
+---
+
+### KB-EMP-007 — New joiner cannot sign in (account not provisioned)
+
+**Symptoms**
+- A new employee gets "User not found" at the portal login on their first day.
+- The employee exists in HR but not in Azure AD.
+
+**Root cause**
+The nightly HR-to-Azure AD provisioning job `HR_AAD_SYNC` skipped the record because a required field (manager or cost centre) was empty, or the start date was set in the future.
+
+**Resolution steps**
+1. Look up the employee in the `HR_AAD_SYNC` error report for last night's run.
+2. Ask HR to complete the missing field or correct the start date.
+3. Run the sync for one user: Identity admin console → *Provisioning → Provision on demand*.
+4. Confirm the user can sign in and has the default app access group.
+
+**Escalation:** P3; P2 when several joiners on the same start date are affected. Identity team for provisioning faults.
+
+---
+
+### KB-EMP-008 — Users cannot open PayrollPro or other apps from the portal tiles
+
+**Symptoms**
+- Clicking an application tile in the portal shows "Access denied" or loops back to the portal.
+- Sign-in to the portal itself works.
+
+**Root cause**
+The user is not in the Azure AD group assigned to the enterprise application, often after a role or department change.
+
+**Resolution steps**
+1. Check the user's groups in Azure AD against the app's assignment groups.
+2. Add the user to the right group after their manager approves the access request.
+3. Ask the user to sign out and in again so the new group claim reaches the app.
+
+**Escalation:** P3; single-user issue for the Service Desk (L1).
+
+---
+
 ## Escalation contacts
 
 | Level | Team | When |

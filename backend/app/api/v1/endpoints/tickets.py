@@ -1,5 +1,7 @@
 """Ticket ingestion and query endpoints."""
 
+import asyncio
+from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import Literal, Optional
 
@@ -10,19 +12,24 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import settings
 from app.db.session import get_db
-from app.llm import ModelError
+from app.llm import ModelError, call_model
 from app.models.ticket import AgentRun, Feedback, PipelineStatus, Review, Ticket
 from app.privacy.masking import Masker
 from app.schemas.ticket import (
-    CommentCreate, CommentOut, FeedbackCreate, FeedbackOut, IngestResponse, TicketDetail, TicketList, TicketSummary,
+    AgentRunOut, ChatCreate, ChatUse, CommentCreate, CommentOut, FeedbackCreate, FeedbackOut, FixOutcomeCreate,
+    IngestResponse, LeadReviewCreate, ReviewStepCreate, TicketDetail, TicketList, TicketSummary,
 )
+from app.schemas.closure import ClosureReviewOut
 from app.schemas.triage import ReviewOut
-from app.services import jira
+from app.services import fix, fix_chat, jira, lead_review
 from app.services.atlassian import AtlassianError
 from app.services.comments import add_comment
+from app.services.closure import check_ticket as check_closure
 from app.services.closure.run import _input_hash as closure_input_hash
 from app.services.data_quality import _input_hash as dq_input_hash
 from app.services.data_quality import check_ticket, last_run, reporter_text
+from app.services.resolution import busy as resolution_busy
+from app.services.resolution import current_hash as resolution_hash
 from app.services.resolution import input_changed as resolution_input_changed
 from app.services.triage.run import _input_hash as triage_input_hash
 from app.services.ingestion import ingest_workbook
@@ -81,11 +88,25 @@ async def get_ticket(ticket_id: str, db: AsyncSession = Depends(get_db)) -> Tick
     if ticket is None:
         raise HTTPException(status_code=404, detail=f"Ticket {ticket_id} not found")
     detail = TicketDetail.model_validate(ticket)
-    last = await db.scalar(select(Review).where(Review.ticket_id == ticket_id).order_by(Review.id.desc()).limit(1))
+    # Only Triage reviews decide the priority; Closure Quality and Knowledge Builder reviews are about other things.
+    last = await db.scalar(
+        select(Review).where(Review.ticket_id == ticket_id, Review.agent == "triage").order_by(Review.id.desc()).limit(1)
+    )
     detail.decided = ReviewOut.model_validate(last) if last else None
+    closing = await db.scalar(
+        select(Review).where(Review.ticket_id == ticket_id, Review.agent == "closure_quality").order_by(Review.id.desc()).limit(1)
+    )
+    detail.closure_decision = ClosureReviewOut.model_validate(closing) if closing else None
     rated = await db.scalars(select(Feedback).where(Feedback.ticket_id == ticket_id).order_by(Feedback.id))
     detail.feedback = [FeedbackOut.model_validate(f) for f in rated]
     detail.changed = await _changed(db, ticket)
+    detail.agents_running = jira.agents_lock.locked() or resolution_busy()
+    answers = await db.scalars(select(Review).where(Review.ticket_id == ticket_id, Review.agent == fix.AGENT).order_by(Review.id))
+    detail.fix_outcomes = [ReviewOut.model_validate(a) for a in answers]
+    steps = await db.scalars(
+        select(Review).where(Review.ticket_id == ticket_id, Review.agent == lead_review.AGENT).order_by(Review.id))
+    detail.lead_reviews = [ReviewOut.model_validate(s) for s in steps]
+    detail.lead_review_required = await db.run_sync(lambda s: lead_review.required(s, ticket))
     return detail
 
 
@@ -138,13 +159,13 @@ def _set_guidance(db: Session, ticket_id: str, text: str) -> TicketSummary:
 
 @router.post("/tickets/{ticket_id}/feedback", response_model=FeedbackOut, status_code=201, summary="Rate an agent's result")
 async def rate_agent_run(ticket_id: str, payload: FeedbackCreate, db: AsyncSession = Depends(get_db)):
-    """One to five stars on one agent's result, with the reason. Ratings of Resolution answers move the runbooks they
-    cite up or down for later tickets of the same kind."""
+    """Thumbs up (5) or down (1) on one agent's result, with optional reasons and a suggestion. Ratings of Resolution
+    answers move the runbooks they cite up or down for later tickets of the same kind."""
     run = await db.get(AgentRun, payload.agent_run_id)
     if run is None or run.ticket_id != ticket_id:
         raise HTTPException(status_code=404, detail=f"Ticket {ticket_id} has no agent result {payload.agent_run_id}")
     reason = payload.reason
-    if settings.PII_MASKING_ENABLED:  # stored masked, like the note
+    if reason and settings.PII_MASKING_ENABLED:  # stored masked, like the note
         ticket = await db.get(Ticket, ticket_id)
         await db.refresh(ticket, ["comments"])
         reason = str(_masker(ticket, reason).mask(reason))
@@ -202,6 +223,8 @@ async def run_agents_on_ticket(
     summary = await db.run_sync(_run_agents, ticket_id, agent)
     await jira.announce(db, started)
     await jira.move_triaged(db)
+    if summary.pipeline_status == PipelineStatus.REVIEWED:  # Triage approved it without a person
+        jira.start_resolution()
     return summary
 
 
@@ -221,5 +244,188 @@ def _run_agents(db: Session, ticket_id: str, agent: str) -> TicketSummary:
     if agent == "triage" or ticket.pipeline_status == PipelineStatus.DQ_PASSED:
         triage_ticket(db, ticket)
     db.commit()
+    db.refresh(ticket)
+    return TicketSummary.model_validate(ticket)
+
+
+@router.post("/tickets/{ticket_id}/fix-outcome", response_model=TicketSummary, summary="Say whether the suggested fix worked")
+async def fix_outcome(ticket_id: str, payload: FixOutcomeCreate, db: AsyncSession = Depends(get_db)) -> TicketSummary:
+    """worked, or partly with what you changed: the fix is confirmed and the closure note opens, drafted from the fix and
+    checked by Closure Quality. wrong, with what happened: Resolution looks for another fix; after three, the ticket
+    waits for the lead. Nothing is written to Jira."""
+    summary = await db.run_sync(_fix_outcome, ticket_id, payload)
+    if summary.pipeline_status == PipelineStatus.REVIEWED:  # the fix did not work: look again, with what happened
+        jira.start_resolution(ticket_id)
+    return summary
+
+
+def _fix_outcome(db: Session, ticket_id: str, payload: FixOutcomeCreate) -> TicketSummary:
+    ticket = _get_or_404(db, ticket_id)
+    note = (payload.note or "").strip()
+    if note and settings.PII_MASKING_ENABLED:  # stored masked, like the note to the agents
+        note = str(_masker(ticket, note).mask(note))
+    try:
+        fix.record(db, ticket, payload.agent_run_id, payload.outcome, payload.reviewer, note)
+    except fix.NotOpen as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except fix.OutcomeError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if ticket.pipeline_status == PipelineStatus.FIX_CONFIRMED:
+        check_closure(db, ticket)
+    db.commit()
+    db.refresh(ticket)
+    return TicketSummary.model_validate(ticket)
+
+
+@router.put("/tickets/{ticket_id}/closure-note", response_model=TicketSummary, summary="Save the closure note")
+async def set_closure_note(
+    ticket_id: str, text: str = Body(..., embed=True, max_length=8000), db: AsyncSession = Depends(get_db)
+) -> TicketSummary:
+    """Keep the engineer's closure note and let Closure Quality check it again. It stays in the console until the
+    engineer sends it to Jira."""
+    return await db.run_sync(_set_closure_note, ticket_id, text)
+
+
+def _set_closure_note(db: Session, ticket_id: str, text: str) -> TicketSummary:
+    ticket = _get_or_404(db, ticket_id)
+    if ticket.pipeline_status == PipelineStatus.IN_REVIEW:
+        raise HTTPException(status_code=409, detail=f"Ticket {ticket_id}: the lead is reviewing the closure note")
+    if ticket.closed_at is not None or ticket.pipeline_status not in (PipelineStatus.FIX_CONFIRMED, PipelineStatus.APPROVED):
+        raise HTTPException(status_code=409, detail=f"Ticket {ticket_id}: the closure note opens once the fix worked")
+    ticket.pipeline_status = PipelineStatus.FIX_CONFIRMED  # a changed note is not the one the lead approved
+    text = text.strip()
+    if not text:
+        raise HTTPException(status_code=422, detail="The closure note is empty")
+    if settings.PII_MASKING_ENABLED:  # stored masked, like the description
+        text = str(_masker(ticket, text).mask(text))
+    ticket.resolution_notes = text
+    check_closure(db, ticket)
+    db.commit()
+    db.refresh(ticket)
+    return TicketSummary.model_validate(ticket)
+
+
+@router.post("/tickets/{ticket_id}/chat", response_model=AgentRunOut, summary="Ask the AI assistant about the fix")
+async def chat(ticket_id: str, payload: ChatCreate, db: AsyncSession = Depends(get_db)) -> AgentRunOut:
+    """One turn: the masked ticket, the runbook fix, the fixes tried and the chat so far go to the model; its reply,
+    and a proposed fix once it has enough to go on, are stored with the ticket."""
+    ticket = await db.get(Ticket, ticket_id)
+    if ticket is None:
+        raise HTTPException(status_code=404, detail=f"Ticket {ticket_id} not found")
+    kb = await fix_chat.articles(db, ticket, payload.message.strip())
+    text, masker = await db.run_sync(_chat_input, ticket_id, payload.message.strip(), kb)
+    await db.commit()  # no transaction open while the model thinks
+    try:  # in a worker thread: a model call takes seconds and must not hold up other requests
+        answer, audit = await asyncio.to_thread(lambda: call_model(fix_chat.chat_spec(), masker.mask(text), masker))
+    except ModelError as exc:
+        raise HTTPException(status_code=502, detail=f"The assistant gave no answer ({type(exc).__name__}). Try again.") from exc
+    return await db.run_sync(_chat_saved, ticket_id, payload, answer, asdict(audit))
+
+
+def _chat_input(db: Session, ticket_id: str, message: str, kb: str):
+    ticket = _get_or_404(db, ticket_id)
+    try:
+        return fix_chat.prepare(db, ticket, message, kb)
+    except fix_chat.ChatError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+def _chat_saved(db: Session, ticket_id: str, payload: ChatCreate, answer, audit: dict) -> AgentRunOut:
+    ticket = _get_or_404(db, ticket_id)
+    run = fix_chat.save_turn(db, ticket, payload.message.strip(), payload.author.strip(), answer, audit)
+    db.commit()
+    db.refresh(run)
+    return AgentRunOut.model_validate(run)
+
+
+@router.post("/tickets/{ticket_id}/chat/use", response_model=TicketSummary, summary="Use the assistant's fix")
+async def use_chat_fix(ticket_id: str, payload: ChatUse, db: AsyncSession = Depends(get_db)) -> TicketSummary:
+    """The proposal becomes the ticket's suggested fix (not from a runbook); then the engineer tries it and says if it
+    worked, as for any fix."""
+    ticket = await db.get(Ticket, ticket_id, options=[selectinload(Ticket.agent_runs), selectinload(Ticket.comments)])
+    if ticket is None:
+        raise HTTPException(status_code=404, detail=f"Ticket {ticket_id} not found")
+    seen = await resolution_hash(db, ticket)
+    return await db.run_sync(_chat_used, ticket_id, payload, seen)
+
+
+def _chat_used(db: Session, ticket_id: str, payload: ChatUse, seen: str) -> TicketSummary:
+    ticket = _get_or_404(db, ticket_id)
+    try:
+        fix_chat.use(db, ticket, payload.run_id, payload.reviewer.strip(), seen)
+    except fix_chat.ChatError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    db.commit()
+    db.refresh(ticket)
+    return TicketSummary.model_validate(ticket)
+
+
+@router.post("/tickets/{ticket_id}/submit-review", response_model=TicketSummary, summary="Submit the closure note to the lead")
+async def submit_review(ticket_id: str, payload: ReviewStepCreate, db: AsyncSession = Depends(get_db)) -> TicketSummary:
+    """The engineer hands the checked closure note to the lead, when LEAD_REVIEW asks for it on this ticket."""
+    return await db.run_sync(_review_step, ticket_id, lambda s, t: lead_review.submit(s, t, payload.reviewer))
+
+
+@router.post("/tickets/{ticket_id}/lead-review", response_model=TicketSummary, summary="Approve the closure note or send it back")
+async def decide_review(ticket_id: str, payload: LeadReviewCreate, db: AsyncSession = Depends(get_db)) -> TicketSummary:
+    """The lead approves the closure note (then it may be sent) or sends it back to the engineer with what to change."""
+    return await db.run_sync(
+        _review_step, ticket_id, lambda s, t: lead_review.decide(s, t, payload.action, payload.reviewer, payload.note))
+
+
+def _review_step(db: Session, ticket_id: str, step) -> TicketSummary:
+    ticket = _get_or_404(db, ticket_id)
+    try:
+        step(db, ticket)
+    except lead_review.ReviewError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    db.commit()
+    db.refresh(ticket)
+    return TicketSummary.model_validate(ticket)
+
+
+@router.post("/tickets/{ticket_id}/close", response_model=TicketSummary, summary="Send the closure note to Jira")
+async def close_in_jira(
+    ticket_id: str, author_email: str = Body(..., embed=True, min_length=3), db: AsyncSession = Depends(get_db)
+) -> TicketSummary:
+    """Post the closure note on the Jira issue, move the issue to done and close the ticket here. The one write to Jira
+    at the end of the work, and only when the engineer asks (design D8)."""
+    ticket = await db.run_sync(_get_or_404, ticket_id)
+    notes = (ticket.resolution_notes or "").strip()
+    if ticket.source != "JIRA":
+        raise HTTPException(status_code=409, detail=f"Ticket {ticket_id} did not come from Jira")
+    needs_lead = await db.run_sync(lambda s: lead_review.required(s, ticket))
+    waiting = ticket.pipeline_status == PipelineStatus.FIX_CONFIRMED and needs_lead
+    if ticket.pipeline_status == PipelineStatus.IN_REVIEW or waiting:
+        raise HTTPException(status_code=409, detail=f"Ticket {ticket_id}: a lead approves the closure note before it is sent")
+    if ticket.closed_at is not None or not await db.run_sync(lambda s: lead_review.may_send(s, ticket)) or not notes:
+        raise HTTPException(status_code=409, detail=f"Ticket {ticket_id}: confirm the fix and write the closure note first")
+    if "[engineer to add:" in notes:
+        raise HTTPException(status_code=409, detail="Fill in the parts marked [engineer to add: …] first")
+    decided = await db.scalar(  # the decided priority goes back with the note when it changed (design D8)
+        select(Review.final_priority).where(Review.ticket_id == ticket_id, Review.agent == "triage")
+        .order_by(Review.id.desc()).limit(1)
+    )
+    changed = decided if decided and decided != ticket.reported_priority else None
+    await db.commit()  # no transaction open while Jira answers
+    try:
+        moved_to = await jira.close_issue(ticket_id, notes, priority=changed)
+    except AtlassianError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    closed = await db.run_sync(_closed, ticket_id, author_email, notes, moved_to)
+    jira.start_knowledge()  # the case is learned now, not on the next sync
+    return closed
+
+
+def _closed(db: Session, ticket_id: str, author_email: str, notes: str, moved_to: str) -> TicketSummary:
+    ticket = _get_or_404(db, ticket_id)
+    now = datetime.now(UTC).replace(tzinfo=None)  # naive UTC, as the sync stores it
+    ticket.status, ticket.source_status = "closed", moved_to  # what the next sync would bring
+    ticket.resolved_at, ticket.closed_at = ticket.resolved_at or now, now
+    check = last_run(ticket, "closure_quality") or (ticket.agent_runs[-1] if ticket.agent_runs else None)
+    if check is not None:  # who closed it, for "Closed by you" and the activity
+        db.add(Review(ticket_id=ticket.id, agent_run_id=check.id, agent=lead_review.CLOSE, action="sent",
+                      reviewer=author_email.strip()))
+    add_comment(db, ticket, author_email, notes)  # the copy under Updates; commits
     db.refresh(ticket)
     return TicketSummary.model_validate(ticket)

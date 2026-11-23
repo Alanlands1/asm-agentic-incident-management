@@ -40,6 +40,17 @@ const masked = (v?: string | null) => !!v && /^<[A-Z_]+_\d+>$/.test(v);
 
 const STAGE_WORDS = Object.fromEntries(STAGES);
 
+// A ticket from the common store (mailbox, for one) that has no rule-builder sheet record.
+type StoreTicket = {
+  id: string;
+  reporter_name: string | null;
+  application: string | null;
+  summary: string;
+  reported_priority_label: string | null;
+  status: string;
+  opened_at: string | null;
+};
+
 const selectClass =
   "h-8 w-full rounded-lg border border-input bg-background px-2.5 text-[13px] text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 
@@ -56,8 +67,11 @@ export default function TicketsPage() {
   const [dqFilter, setDqFilter] = useState<string>("all"); // 'all', 'flagged', 'clean'
   const [statusFilter, setStatusFilter] = useState<string>("all"); // 'all', 'open', 'closed'
   const [selectedTicket, setSelectedTicket] = useState<ServiceNowTicket | null>(null);
+  // Tickets with no sheet record: there is nothing to inspect, so their row opens the ticket.
+  const [storeOnly, setStoreOnly] = useState<Set<string>>(new Set());
   // What the agents made of each open ticket: its stage and the priority in force (decided, else recommended).
-  const [agents, setAgents] = useState<Record<string, { stage: string; priority: number | null }>>({});
+  const [agents, setAgents] = useState<Record<string, { stage: string; priority: number | null; fix_verdict?: string | null }>>({});
+  const [kbFilter, setKbFilter] = useState<string>("all"); // all, none (no runbook fix), found
 
   // Pagination
   const [page, setPage] = useState<number>(1);
@@ -70,9 +84,27 @@ export default function TicketsPage() {
       const data = await ticketService.getTickets({
         limit: 500, // the most the API returns; filtering is client-side
       });
-      setTickets(data.items);
-      setTotalCount(data.total);
-      apiClient<{ tickets: { id: string; stage: string; priority: number | null }[] }>("/personas/board")
+      // The sheet records leave out tickets that never went through the rule builder, so add those from the common store.
+      const store = await apiClient<{ items: StoreTicket[] }>("/tickets?limit=500").catch(() => ({ items: [] }));
+      const inSheet = new Set(data.items.map((t) => t.ticket_id));
+      const extra: ServiceNowTicket[] = store.items
+        .filter((t) => !inSheet.has(t.id))
+        .map((t) => ({
+          ticket_id: t.id,
+          caller: t.reporter_name,
+          short_description: t.summary,
+          priority: t.reported_priority_label,
+          service: t.application,
+          opened_at: t.opened_at,
+          // The store has no closed date; the list only needs to know open from closed.
+          closed_at: t.status === "closed" || t.status === "resolved" ? t.opened_at ?? t.status : null,
+          dq_flag: false,
+        }));
+      const all = [...data.items, ...extra].sort((a, b) => (b.opened_at ?? "").localeCompare(a.opened_at ?? ""));
+      setStoreOnly(new Set(extra.map((t) => t.ticket_id)));
+      setTickets(all);
+      setTotalCount(data.total + extra.length);
+      apiClient<{ tickets: { id: string; stage: string; priority: number | null; fix_verdict?: string | null }[] }>("/personas/board")
         .then((board) => setAgents(Object.fromEntries(board.tickets.map((t) => [t.id, t]))))
         .catch(() => setAgents({})); // the list still works without the agents' view
     } catch (err: unknown) {
@@ -117,13 +149,18 @@ export default function TicketsPage() {
       if (dqFilter === "flagged" && !t.dq_flag) return false;
       if (dqFilter === "clean" && t.dq_flag) return false;
 
+      // Runbook fix: what Resolution found for the ticket
+      const fix = agents[t.ticket_id]?.fix_verdict;
+      if (kbFilter === "none" && fix !== "no_match") return false;
+      if (kbFilter === "found" && fix !== "resolved") return false;
+
       // Status filter
       if (statusFilter === "open" && t.closed_at !== null) return false;
       if (statusFilter === "closed" && t.closed_at === null) return false;
 
       return true;
     });
-  }, [tickets, searchTerm, serviceFilter, dqFilter, statusFilter]);
+  }, [tickets, searchTerm, serviceFilter, dqFilter, statusFilter, kbFilter, agents]);
 
   // Paginated slice
   const paginatedTickets = useMemo(() => {
@@ -142,7 +179,7 @@ export default function TicketsPage() {
     <AppShell>
       <PageHeader
         title="All tickets"
-        context="Every ticket from ServiceNow sheets and Jira, with personal details masked on the way in."
+        context="Every ticket from ServiceNow sheets, Jira and the support mailbox."
         actions={
           <>
             <Button variant="secondary" onClick={fetchTickets} disabled={loading}>
@@ -227,6 +264,21 @@ export default function TicketsPage() {
           </div>
           <div className="flex-[1_1_9rem]">
             <select
+              aria-label="Runbook fix"
+              value={kbFilter}
+              onChange={(e) => {
+                setKbFilter(e.target.value);
+                setPage(1);
+              }}
+              className={selectClass}
+            >
+              <option value="all">Any runbook fix</option>
+              <option value="none">No runbook fix</option>
+              <option value="found">Runbook fix found</option>
+            </select>
+          </div>
+          <div className="flex-[1_1_9rem]">
+            <select
               aria-label="Lifecycle"
               value={statusFilter}
               onChange={(e) => {
@@ -278,7 +330,10 @@ export default function TicketsPage() {
                       Flagged
                     </span>
                   ) : agents[ticket.ticket_id] ? (
-                    <span>{STAGE_WORDS[agents[ticket.ticket_id].stage] ?? agents[ticket.ticket_id].stage}</span>
+                    <span>
+                      {STAGE_WORDS[agents[ticket.ticket_id].stage] ?? agents[ticket.ticket_id].stage}
+                      {agents[ticket.ticket_id].fix_verdict === "no_match" && <span className="font-semibold text-critical"> · no runbook fix</span>}
+                    </span>
                   ) : (
                     <span className="inline-flex items-center gap-1.5">
                       <CheckCircle2 className="size-4" aria-hidden="true" />
@@ -287,10 +342,17 @@ export default function TicketsPage() {
                   )
                 }
                 actions={
-                  <Button variant="secondary" onClick={() => setSelectedTicket(ticket)}>
-                    Inspect
-                    <span className="sr-only"> {ticket.ticket_id}</span>
-                  </Button>
+                  storeOnly.has(ticket.ticket_id) ? (
+                    <Button variant="secondary" render={<Link href={`/tickets/${encodeURIComponent(ticket.ticket_id)}`} />} nativeButton={false}>
+                      Open
+                      <span className="sr-only"> {ticket.ticket_id}</span>
+                    </Button>
+                  ) : (
+                    <Button variant="secondary" onClick={() => setSelectedTicket(ticket)}>
+                      Inspect
+                      <span className="sr-only"> {ticket.ticket_id}</span>
+                    </Button>
+                  )
                 }
               />
             ))

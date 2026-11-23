@@ -127,6 +127,66 @@ A new product was published in the catalogue before its SKU was created in the S
 
 ---
 
+### KB-ORD-007 — Promo code applies a wrong or excessive discount (e.g. 200%)
+
+**Symptoms**
+- Customers get a far bigger discount than advertised; some orders total zero.
+- order-api logs `PROMO_CALC` with `discount_pct` above 100.
+- Started after a promotion was created or edited.
+
+**Root cause**
+The promotion was saved with the wrong type or value (200 instead of 20, or a fixed amount as a percentage). There is no 0–100% limit on percentage discounts.
+
+**Resolution steps**
+1. Deactivate the promotion at once: OrderHub Admin → *Promotions*.
+2. Correct the type and value with Marketing, then re-activate it.
+3. List affected orders: *Reports → Orders by promo code*.
+4. Hold unshipped affected orders until the business decides to honour, cancel or re-price.
+5. Raise a defect to add a 0–100% limit.
+
+**Escalation:** P1 while wrong-discount orders are still placed; P2 once disabled. The E-Commerce Director decides on affected orders.
+
+---
+
+### KB-ORD-008 — Refund stuck in REFUND_PENDING
+
+**Symptoms**
+- Customer service refunded an order but the customer has not received the money after 5 working days.
+- Order status stays `REFUND_PENDING`; payment-service logs `refund.failed` or no Stripe refund id.
+
+**Root cause**
+The Stripe refund call failed (expired card, charge older than the refund window) or the `charge.refunded` webhook was not received, so OrderHub never moved the order on.
+
+**Resolution steps**
+1. Open the order in OrderHub Admin and note the Stripe charge id.
+2. Check the charge in the Stripe dashboard: refunded, failed or not attempted.
+3. If refunded in Stripe: OrderHub Admin → *Payments → Resync from Stripe* to update the order.
+4. If failed: refund manually in Stripe (or by bank transfer for charges past the window) and record it in OrderHub Admin.
+5. Tell customer service the refund reference so they can answer the customer.
+
+**Escalation:** P3; P2 if more than 20 refunds are stuck. Stripe support for failed refunds.
+
+---
+
+### KB-ORD-009 — Cart empties or checkout fails after a deployment (session lost)
+
+**Symptoms**
+- Customers report their cart empties when they go to checkout.
+- Spike of `401 SESSION_INVALID` in order-api right after a release.
+
+**Root cause**
+The release rotated the session signing key, or new pods did not get the shared session secret, so sessions created before the release are rejected.
+
+**Resolution steps**
+1. Confirm in the deployment log that the session secret changed or a pod has no `SESSION_SECRET`.
+2. Restore the previous secret (Kubernetes secret `order-api-session`) and restart order-api pods.
+3. Check that new checkouts succeed and the 401 rate falls back to normal.
+4. Ask the Commerce Dev team to keep the old key valid for 24 h on future rotations.
+
+**Escalation:** P1 during sale events or if more than 5% of checkouts fail; otherwise P2.
+
+---
+
 ## Escalation contacts
 
 | Level | Team | When |

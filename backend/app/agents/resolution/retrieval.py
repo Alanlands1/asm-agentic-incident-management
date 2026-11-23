@@ -92,8 +92,11 @@ def _dense_sql(where: str) -> str:
 
 
 def _sparse_sql(where: str) -> str:
+    # Any of the words, best match first: an engineer's sentence ("Daily sales report not refreshed since yesterday")
+    # rarely has every word in one runbook section, so AND matched almost nothing. ts_rank_cd still puts the sections
+    # that share the most words, closest together, on top.
     return (
-        "WITH q AS (SELECT websearch_to_tsquery('english', :q) AS query) "
+        "WITH q AS (SELECT replace(plainto_tsquery('english', :q)::text, '&', '|')::tsquery AS query) "
         f"SELECT {COLUMNS} FROM kb_chunks, q WHERE kb_chunks.fts @@ q.query{where} "
         "ORDER BY ts_rank_cd(kb_chunks.fts, q.query) DESC LIMIT :n"
     )
