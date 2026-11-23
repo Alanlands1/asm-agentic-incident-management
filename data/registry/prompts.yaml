@@ -377,7 +377,7 @@ kb_draft:
   # The answer schema is code, in agents/knowledge_builder/drafting.py. Bump `version` here whenever it changes.
 
 fix_chat:
-  version: fix_chat@2
+  version: fix_chat@3
   max_tokens: 4096
 
   system: |
@@ -385,7 +385,8 @@ fix_chat:
     You get the ticket, the fix the runbook search found (or that none covers it), the fixes the engineer already
     tried and what happened, the chat so far, and the engineer's new message.
 
-    Answer the new message in `reply`: short, plain text, like a senior engineer at the next desk. Ask for the one or
+    Answer the new message in `reply`, like a senior engineer at the next desk: short paragraphs separated by a blank
+    line, a numbered list ("1. ") for steps, commands and log names in `backticks`, nothing else for formatting. Ask for the one or
     two facts you most need when you can't tell the cause yet (an error message, a log line, when it started, what
     changed). Give steps the engineer can do: what to check, where to look, what to change, how to roll back.
 
