@@ -1,6 +1,6 @@
 # Overview and My worklist: plan
 
-**Date:** 2026-11-23 · **Status:** proposed, waiting for the user's go
+**Date:** 2026-11-23 · **Status:** done (user's choices: cards, assigning later, keep the Soon placeholders)
 **Sources:** `meetings/2026-11-19-takeaways.md` (19 Nov review), the design canvas
 (https://claude.ai/artifact/As1zg3Wnnm9pwHWy7HXCTy, boards Overview and My work), the console as it runs today.
 
@@ -75,3 +75,19 @@ ruff and `npm run build` pass; checked in Chrome as Engineer and Lead.
 1. Overview tickets as **cards** (canvas) or keep the **table**?
 2. Should assigning an engineer move into the console now (the last Jira jump), or stay in Jira?
 3. Keep the menu's "Soon" items (Ask a question, Log analyzer, Problem records) visible as placeholders for the demo?
+
+## Result (2026-11-23)
+
+Built as planned, with these choices: Overview tickets as cards; assigning stays in Jira; the menu shows Ask a question,
+Log analyzer and Problem records under Tools, marked Soon (not pages).
+- Overview (`persona-overview.tsx`) is the same for every role: status tiles, the five agents' day, a Needs details
+  banner, search, application and age filters, cards in P1–P2 / P3–P5 / Not triaged. The lead keeps Run agents and the
+  workload table.
+- My worklist (`my-worklist.tsx`): Work on this now with each agent's result in a row and the next action, my status
+  tiles, Up next with a Stage column, My tasks (the Lead also gets closure notes to review), Closed by you this week.
+- Shared parts in `persona-parts.tsx`. Backend: board progress fields, `/personas/today`, `/personas/closed`, Send
+  records who closed, activity names each step (the "rejected the recommendation" bug).
+- Checked in Chrome as Engineer and Lead at desktop width; 333 backend tests; `npm run build` passes. Phone width not
+  checked (the window would not resize). Activity from before today's change still says "The agents commented … in
+  Jira": those comments were really posted then.
+

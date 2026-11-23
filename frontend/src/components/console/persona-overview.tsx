@@ -1,293 +1,77 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useState, useSyncExternalStore } from "react";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, Play, Search } from "lucide-react";
+import { Play, Search } from "lucide-react";
 import { AppShell } from "@/components/console/app-shell";
-import { STAGES } from "@/components/console/dashboard";
-import { ListRow } from "@/components/console/list-row";
+import { CountUp } from "@/components/console/count-up";
 import { PageHeader } from "@/components/console/page-header";
 import { PriorityChip } from "@/components/console/priority-chip";
-import { RunbookButton } from "@/components/console/runbook-button";
-import { CountUp } from "@/components/console/count-up";
-import { StatTile } from "@/components/console/stat-tile";
-import { SectionHead, SlaClock, SlaGauge, Status, dueWords, span } from "@/components/console/sync-parts";
+import {
+  AGES, ActivityCard, AgentsToday, BoardTicket, NO_ENGINEER, STATUSES, StagePill, ageOf, and, appOf, count, ticketHref,
+  useBoard, useToday,
+} from "@/components/console/persona-parts";
+import { SectionHead, Status, dueWords, span } from "@/components/console/sync-parts";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { apiClient } from "@/lib/api-client";
-import { usePerson } from "@/lib/view-as";
-import { dashboardService } from "@/services/dashboard-service";
 import { pipelineService } from "@/services/pipeline-service";
-import { DashboardSummary } from "@/types/dashboard";
-import { PipelineTicket } from "@/types/pipeline";
 import { cn } from "cn";
 
-type Board = {
-  totals: { open: number; p1_p2: number; sla_breached: number; sla_at_risk: number; waiting_review: number; unassigned: number };
-  people: { name: string | null; open: number; p1_p2: number; breached: number; waiting_review: number }[];
-  tickets: {
-    id: string;
-    summary: string | null;
-    application: string | null;
-    priority: number | null;
-    sla_state: "ok" | "watch" | "breach_likely" | "breached" | null;
-    minutes_left: number | null;
-    used_percent: number | null;
-    assignee: string | null;
-    stage: string;
-    url: string | null;
-    priority_from: string | null;
-    // The ones below are missing from a backend that has not been restarted since they were added.
-    triage_reason?: string | null;
-    reported_priority?: number | null;
-    missing?: string[];
-    has_draft?: boolean;
-    due_at?: string | null;
-    runbook?: string | null;
-  }[];
-};
-type Ticket = Board["tickets"][number];
-
-const STAGE_WORDS: Record<string, string> = Object.fromEntries(STAGES);
-const NO_ENGINEER = "No engineer yet";
-const PAGE_SIZE = 10;
 const SELECT =
   "h-8 w-full rounded-lg border border-input bg-background px-2.5 text-[13px] text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
-const PRIORITY_LABELS: Record<number, string> = { 1: "Highest", 2: "High", 3: "Medium", 4: "Low" };
-const MISSING_WORDS: Record<string, string> = {
-  what_happened: "what happened",
-  application: "which application",
-  when: "when it happened",
-  who_affected: "who is affected",
-  error_message: "the error message",
-  steps_to_reproduce: "the steps to reproduce",
-};
-// The queue by priority, as the tiles over the table: P1 red, P2 amber, the rest green.
-const GROUPS: { key: string; label: string; has: (t: Ticket) => boolean; look: string }[] = [
-  { key: "p1", label: "P1", has: (t) => t.priority === 1, look: "border-primary bg-primary text-primary-foreground hover:bg-primary-hover" },
-  { key: "p2", label: "P2", has: (t) => t.priority === 2, look: "border-p2 bg-p2 text-p2-foreground hover:bg-p2/85" },
-  { key: "p3", label: "P3 to P5", has: (t) => (t.priority ?? 0) >= 3, look: "border-p3 bg-p3 text-white hover:bg-p3/85" },
-  { key: "none", label: "Not triaged yet", has: (t) => t.priority === null, look: "" },
+// The cards in priority groups, as on the design canvas.
+const SECTIONS: { title: string; has: (t: BoardTicket) => boolean }[] = [
+  { title: "P1 and P2", has: (t) => t.priority !== null && t.priority <= 2 },
+  { title: "P3 to P5", has: (t) => (t.priority ?? 0) >= 3 },
+  { title: "Not triaged yet", has: (t) => t.priority === null },
 ];
-const and = new Intl.ListFormat("en-GB", { type: "conjunction" });
-const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-const appOf = (t: Ticket) => t.application ?? "No application";
-const ticketHref = (t: Ticket) => `/tickets/${encodeURIComponent(t.id)}`;
-
-/** How the priority in force compares with the reported one; nothing when either is unknown. */
-function versusReported(t: Ticket) {
-  if (!t.priority || !t.reported_priority) return null;
-  if (t.priority === t.reported_priority) return "Same as reported";
-  const label = PRIORITY_LABELS[t.reported_priority] ?? `P${t.reported_priority}`;
-  return `${t.priority < t.reported_priority ? "Raised" : "Lowered"} from ${label}`;
-}
-
-/** What a ticket waits for. `toAssign`: the lead looks at a ticket with no engineer, and assigning it comes first. */
-function nextStep(t: Ticket, toAssign: boolean) {
-  if (toAssign) return "Assign an engineer in Jira";
-  if (t.stage === "triaged") return `Review the recommended P${t.priority}`;
-  if (t.priority_from === "reviewed") return "Priority decided. Work it in Jira";
-  return STAGE_WORDS[t.stage] ?? t.stage;
-}
-
-function Sla({ ticket }: { ticket: Ticket }) {
-  return ticket.sla_state && ticket.minutes_left !== null ? (
-    <SlaClock state={ticket.sla_state} minutesLeft={ticket.minutes_left} usedPercent={ticket.used_percent} dueAt={ticket.due_at} />
-  ) : (
-    <span className="text-muted-foreground">No SLA clock</span>
-  );
-}
-
-type Activity = {
-  at: string;
-  kind: string;
-  ticket_ids: string[];
-  actor?: string | null;
-  action?: string | null;
-  priority?: number | null;
-  previous_priority?: number | null;
-  error?: string | null;
-};
-
-/** One activity item in words; null for a kind this page does not know. */
-function sentence(a: Activity): string | null {
-  const on = a.ticket_ids.length > 4 ? `${a.ticket_ids.length} tickets` : and.format(a.ticket_ids);
-  const who = a.actor ?? "Someone";
-  switch (a.kind) {
-    case "data_quality":
-      return `Data Quality ran on ${on}.`;
-    case "triage":
-      return `Triage ran on ${on}.`;
-    case "triage_rerun":
-      return !a.priority
-        ? `Triage ran again on ${on}.`
-        : !a.previous_priority
-          ? `Triage ran again on ${on} and recommends P${a.priority}.`
-          : a.previous_priority === a.priority
-            ? `Triage ran again on ${on} and kept P${a.priority}.`
-            : `Triage ran again on ${on} and changed P${a.previous_priority} to P${a.priority}.`;
-    case "summary_sent":
-      // the agents' own comments are stored under AGENTS_BOT; a person who posts the summary is named
-      return a.actor && a.actor !== "AMS agents" ? `${a.actor} sent the agents' summary for ${on} to Jira.` : `The agents commented on ${on} in Jira.`;
-    case "command_answered":
-      return `Answered an "ams" command in Jira on ${on}.`;
-    case "sla_warning":
-      return `SLA warning posted in Jira on ${on}.`;
-    case "first_message":
-      return `${who} sent the first message for ${on}.`;
-    case "review": {
-      const priority = a.priority ? ` P${a.priority}` : " the priority";
-      return a.action === "accepted"
-        ? `${who} agreed with${priority} for ${on}.`
-        : a.action === "edited"
-          ? `${who} changed ${on} to${priority}.`
-          : `${who} rejected the recommendation for ${on}${a.priority ? `;${priority} stands` : ""}.`;
-    }
-    case "sync_failed":
-      return `Jira sync failed. ${(a.error ?? "").slice(0, 160)}`;
-    default:
-      return null;
-  }
-}
-
-/** Today's events, newest first; `person` keeps those on their tickets. Nothing is shown when there are none. */
-function ActivityCard({ title, person, asOf }: { title: string; person?: string; asOf: Board }) {
-  const [items, setItems] = useState<Activity[]>([]);
-
-  // `asOf` is the board: the activity is read again whenever the board is.
-  useEffect(() => {
-    const midnight = new Date();
-    midnight.setHours(0, 0, 0, 0);
-    const who = person ? `&person=${encodeURIComponent(person)}` : "";
-    let stale = false; // a slower answer for an earlier viewer must not replace this one
-    apiClient<Activity[]>(`/personas/activity?limit=8&since=${encodeURIComponent(midnight.toISOString())}${who}`)
-      .then((a) => !stale && setItems(a))
-      .catch(() => !stale && setItems([])); // also a backend from before this endpoint: the card stays away
-    return () => {
-      stale = true;
-    };
-  }, [person, asOf]);
-
-  const lines = items.flatMap((a) => {
-    const words = sentence(a);
-    return words ? [{ key: `${a.kind} ${a.at} ${a.ticket_ids.join(" ")}`, at: new Date(a.at), words }] : [];
-  });
-  if (lines.length === 0) return null;
-  return (
-    <Card className="gap-0 py-0">
-      <SectionHead title={title} />
-      <ul role="list">
-        {lines.map((line) => (
-          <ListRow
-            key={line.key}
-            lead={
-              <time dateTime={line.at.toISOString()} className="w-10 text-xs text-muted-foreground tabular-nums">
-                {line.at.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
-              </time>
-            }
-            title={<span className="font-normal">{line.words}</span>}
-          />
-        ))}
-      </ul>
-    </Card>
-  );
-}
-
-/** Today's agent numbers, as the admin dashboard counts them (GET /dashboard/summary); a figure with nothing behind it is left out. */
-function AgentsToday({ asOf }: { asOf: Board }) {
-  const [summary, setSummary] = useState<DashboardSummary | null>(null);
-  useEffect(() => {
-    dashboardService
-      .getSummary()
-      .then(setSummary)
-      .catch(() => setSummary(null));
-  }, [asOf]);
-  if (!summary) return null;
-
-  const { data_quality: dq, triage } = summary.agents;
-  const reviews = summary.agreement;
-  const prioritised = Object.entries(triage.by_verdict).reduce((n, [verdict, c]) => (verdict.startsWith("P") ? n + c : n), 0);
-  const figures = [
-    dq.checked > 0 && {
-      value: dq.checked,
-      label: "checked by Data Quality today",
-      detail: `${dq.by_verdict.passed ?? 0} complete · ${dq.by_verdict.needs_info ?? 0} need details`,
-    },
-    triage.checked > 0 && {
-      value: prioritised,
-      label: "given a priority by Triage today",
-      detail: `${triage.model_used} needed the model`,
-    },
-    reviews.reviewed > 0 && {
-      value: `${Math.round(reviews.agreement * reviews.reviewed)} of ${reviews.reviewed}`,
-      label: "recommendations agreed",
-      detail: `Reviewed by engineers, last ${reviews.days} days`,
-    },
-  ].filter((f) => !!f);
-  if (figures.length === 0) return null;
-  return (
-    <Card className="gap-0 py-0">
-      <SectionHead title="What the agents did" />
-      <dl className="grid sm:grid-cols-3">
-        {figures.map((f) => (
-          <div key={f.label} className="flex flex-col gap-0.5 px-4 py-3">
-            <dt className="text-[13px]">
-              <span className="text-xl font-semibold tabular-nums">{f.value}</span> {f.label}
-            </dt>
-            <dd className="text-xs text-muted-foreground">{f.detail}</dd>
-          </div>
-        ))}
-      </dl>
-    </Card>
-  );
-}
+const TILE = "h-auto min-w-32 flex-1 basis-32 flex-col items-start gap-0 whitespace-normal rounded-[14px] px-4 py-2.5 text-left";
 
 const never = () => () => {};
-const thisHour = () => new Date().setMinutes(0, 0, 0);
+const thisMinute = () => Math.floor(Date.now() / 60000) * 60000;
+
+/** One ticket as a card: id and priority, the summary, application, its work status, age and engineer. */
+function TicketCard({ ticket, now }: { ticket: BoardTicket; now: number | null }) {
+  const age = now === null ? null : ageOf(ticket, now);
+  return (
+    <Link href={ticketHref(ticket)} className="group block rounded-[20px] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none">
+      <Card className={cn("h-full gap-2 px-4 py-3 transition-colors duration-150 group-hover:border-border-strong group-hover:bg-muted/40", ticket.priority === 1 && "border-2 border-primary")}>
+        <div className="flex items-center justify-between gap-2">
+          <span className="font-mono text-xs text-muted-foreground">{ticket.id}</span>
+          <PriorityChip priority={ticket.priority} />
+        </div>
+        <p className="line-clamp-2 text-sm font-semibold">{ticket.summary || "No summary"}</p>
+        <p className="text-xs text-muted-foreground">{appOf(ticket)}</p>
+        <div className="mt-auto flex flex-wrap items-center gap-x-2 gap-y-1 pt-1">
+          <StagePill ticket={ticket} />
+          <span className="text-xs text-muted-foreground">
+            {[age?.words, ticket.assignee ?? "Unassigned"].filter(Boolean).join(" · ")}
+          </span>
+        </div>
+      </Card>
+    </Link>
+  );
+}
 
 /**
- * The home of everyone who works tickets, from one board. With `mine` it is the viewer's own tickets (engineer);
- * without, every open ticket (lead), who also sees who has what: every difference hangs on `lead` below.
- * With `worklist` it is the page after it: the viewer's own tickets as a list, without the summary.
+ * The Overview (19 Nov review, design canvas): every open ticket for every role, by work status. The lead also
+ * runs the agents and sees who has what. My worklist (my-worklist.tsx) is the viewer's own work.
  */
-export function PersonaOverview({ mine, worklist }: { mine?: boolean; worklist?: boolean }) {
-  const viewer = usePerson();
-  const person = mine ? viewer : undefined;
-  const lead = !mine;
-  const [board, setBoard] = useState<Board | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [detail, setDetail] = useState<PipelineTicket | null>(null);
+export function PersonaOverview({ lead }: { lead: boolean }) {
+  const { board, error, setError, load } = useBoard();
+  const today = useToday(board);
+  const [status, setStatus] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [app, setApp] = useState("");
-  const [group, setGroup] = useState<string | null>(null);
-  const [page, setPage] = useState(1);
+  const [age, setAge] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [ran, setRan] = useState<string | null>(null);
-  // The clock is read in the browser only: prerendered, the greeting and date would be the build's.
-  const hour = useSyncExternalStore(never, thisHour, () => null);
-  const now = hour === null ? null : new Date(hour);
-
-  // Only the newest request may fill the page: while the page hydrates the viewer is briefly the default
-  // persona, and that first answer can arrive after the real viewer's and show someone else's tickets.
-  const asked = useRef(0);
-  const load = useCallback(() => {
-    const request = ++asked.current;
-    apiClient<Board>(`/personas/board${person ? `?person=${encodeURIComponent(person)}` : ""}`)
-      .then((b) => {
-        if (request !== asked.current) return;
-        setBoard(b);
-        setError(null);
-      })
-      .catch((e: unknown) => {
-        if (request === asked.current) setError(e instanceof Error ? e.message : "Couldn't load the board");
-      });
-  }, [person]);
-  useEffect(load, [load]);
+  // The clock is read in the browser only: prerendered, the date and ages would be the build's.
+  const now = useSyncExternalStore(never, thisMinute, () => null);
 
   // The agents also run by themselves after each Jira sync; this is for a lead who does not want to wait.
   const runAgents = async () => {
@@ -300,8 +84,7 @@ export function PersonaOverview({ mine, worklist }: { mine?: boolean; worklist?:
       setRan(
         (dq.evaluated + triage.evaluated === 0
           ? "Nothing was waiting for the agents."
-          : `Data Quality checked ${dq.evaluated}, Triage set a priority on ${triage.evaluated}.`) +
-          (failed ? ` The model failed on ${failed}.` : "")
+          : `Data Quality checked ${dq.evaluated}, Triage set a priority on ${triage.evaluated}.`) + (failed ? ` The model failed on ${failed}.` : "")
       );
       load();
     } catch (e) {
@@ -313,96 +96,65 @@ export function PersonaOverview({ mine, worklist }: { mine?: boolean; worklist?:
 
   const t = board?.totals;
   const tickets = board?.tickets ?? [];
-  const toAssign = (ticket: Ticket) => lead && !ticket.assignee;
-  const ready = tickets.filter((ticket) => ticket.priority_from === "reviewed");
-  const hero = worklist ? undefined : ready.at(0);
-  const toReview = tickets.filter((ticket) => ticket.stage === "triaged");
-  const waiting = tickets.filter((ticket) => ticket.stage === "awaiting_info");
-  const upNext = tickets.filter((ticket) => ticket !== hero && ticket.stage !== "awaiting_info");
-
-  // The board has no description; without this call the card only lacks its description and badges.
-  const heroId = hero?.id;
-  useEffect(() => {
-    if (!heroId) return;
-    apiClient<PipelineTicket>(`/tickets/${encodeURIComponent(heroId)}`)
-      .then(setDetail)
-      .catch(() => setDetail(null));
-  }, [heroId, board]);
-  const shown = detail?.id === heroId ? detail : null;
-  // Everything from the "Reported by" line on is dropped: that line can carry an unmasked personal name.
-  const description = shown?.description.split(/^\s*reported by/im)[0].trim();
-  const found = (shown?.agent_runs.findLast((r) => r.agent === "triage")?.output ?? {}) as {
-    rule?: string | null;
-    signals?: { scope?: string | null; tier?: number | null } | null;
-  };
-
-  const onTime = !!t && t.sla_breached + t.sla_at_risk === 0;
+  const needDetails = tickets.filter((x) => x.stage === "awaiting_info");
+  const drafted = needDetails.filter((x) => x.has_draft).length;
   const wrong = [
     t?.sla_breached && `${count(t.sla_breached, "ticket has", "tickets have")} breached SLA`,
     t?.sla_at_risk && `${count(t.sla_at_risk, "ticket is", "tickets are")} close to breach`,
     lead && t?.unassigned && `${count(t.unassigned, "ticket has", "tickets have")} no engineer`,
   ].filter((part): part is string => !!part);
-  // The ticket whose SLA is due first, or is the most overdue.
-  const nearest = tickets.reduce<Ticket | null>(
-    (first, ticket) => (ticket.minutes_left !== null && (!first || ticket.minutes_left < first.minutes_left!) ? ticket : first),
+  const nearest = tickets.reduce<BoardTicket | null>(
+    (first, x) => (x.minutes_left !== null && (!first || x.minutes_left < first.minutes_left!) ? x : first),
     null
   );
-  const withClock = toReview.filter((ticket) => ticket.minutes_left !== null).length;
-  const drafted = waiting.filter((ticket) => ticket.has_draft).length;
-  const hasRunbooks = tickets.some((ticket) => ticket.runbook !== undefined); // false on a backend from before the field
-  const n = (v: number) => (board ? v : error ? "—" : <Skeleton className="h-7 w-10" />);
 
-  // A pressed priority tile lists every ticket it counts, also the one in the card above and those waiting on the reporter.
-  const chosen = GROUPS.find((g) => g.key === group && tickets.some(g.has)); // a tile that emptied is no longer pressed
-  const base = chosen ? tickets.filter(chosen.has) : upNext;
-  const apps = [...base.reduce((counts, ticket) => counts.set(appOf(ticket), (counts.get(appOf(ticket)) ?? 0) + 1), new Map<string, number>())].sort(
-    (a, b) => b[1] - a[1]
-  );
+  const chosen = STATUSES.find((s) => s.key === status);
+  const byStatus = chosen ? tickets.filter((x) => chosen.stages.includes(x.stage)) : tickets;
+  const apps = [...byStatus.reduce((c, x) => c.set(appOf(x), (c.get(appOf(x)) ?? 0) + 1), new Map<string, number>())].sort((a, b) => b[1] - a[1]);
+  const ageFilter = AGES.find((a) => a.key === age);
   const q = query.trim().toLowerCase();
   const last = Number.MAX_SAFE_INTEGER;
-  const listed = base
+  const listed = byStatus
     .filter(
-      (ticket) =>
-        (!app || appOf(ticket) === app) &&
-        (!q || [ticket.id, ticket.summary, ticket.application, ticket.assignee].some((v) => v?.toLowerCase().includes(q)))
+      (x) =>
+        (!app || appOf(x) === app) &&
+        (!ageFilter || (now !== null && ageFilter.has(ageOf(x, now)?.minutes ?? 0))) &&
+        (!q || [x.id, x.summary, x.application, x.assignee].some((v) => v?.toLowerCase().includes(q)))
     )
     .sort((a, b) => (a.priority ?? last) - (b.priority ?? last) || (a.minutes_left ?? last) - (b.minutes_left ?? last));
-  const pages = Math.ceil(listed.length / PAGE_SIZE) || 1;
-  const current = Math.min(page, pages); // a refresh can leave fewer pages than the one being looked at
+  const pick = (key: string | null) => {
+    setStatus(key);
+    setApp("");
+  };
 
   return (
     <AppShell>
       <PageHeader
-        title={
-          worklist
-            ? "My worklist"
-            : now
-            ? `Good ${now.getHours() < 12 ? "morning" : now.getHours() < 18 ? "afternoon" : "evening"}, ${viewer.split(" ")[0]}`
-            : " "
-        }
+        title="Overview"
         context={
-          !t || !now
-            ? error
-              ? undefined
-              : (
-                <>
-                  <span className="sr-only">Loading…</span>
-                  <Skeleton className="mt-1 h-3.5 w-72 max-w-full" />
-                </>
-              )
-            : `${now.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })} · ${count(t.open, "open ticket", "open tickets")}` +
-              (lead ? `${t.unassigned ? ` · ${t.unassigned} with no engineer` : ""} · engineers are assigned in Jira` : " assigned to you in Jira")
+          !t || now === null ? (
+            error ? undefined : (
+              <>
+                <span className="sr-only">Loading…</span>
+                <Skeleton className="mt-1 h-3.5 w-72 max-w-full" />
+              </>
+            )
+          ) : (
+            `${new Date(now).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })} · ` +
+            `${count(t.open, "open ticket", "open tickets")} from Jira and the mailbox${t.unassigned ? ` · ${t.unassigned} with no engineer` : ""}`
+          )
         }
         actions={
           <>
-            {/* `now`: not in the prerendered page, which every persona is served before the browser knows who they are. */}
-            {lead && now && (
+            {lead && now !== null && (
               <Button onClick={runAgents} disabled={running}>
                 <Play />
                 {running ? "Running…" : "Run agents"}
               </Button>
             )}
-            <Button variant="secondary" onClick={load}>Refresh</Button>
+            <Button variant="secondary" onClick={load}>
+              Refresh
+            </Button>
           </>
         }
       />
@@ -412,7 +164,6 @@ export function PersonaOverview({ mine, worklist }: { mine?: boolean; worklist?:
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
-
       {ran && (
         <Alert aria-live="polite">
           <AlertDescription>{ran}</AlertDescription>
@@ -424,10 +175,6 @@ export function PersonaOverview({ mine, worklist }: { mine?: boolean; worklist?:
           <Status ok={wrong.length === 0}>
             <span>
               <span className="font-semibold">{wrong.length ? `${and.format(wrong)}.` : "All clear on SLA."}</span>
-              {onTime &&
-                (lead
-                  ? ` No P1 or P2 is breached or close to breach${wrong.length ? "." : ", and every open ticket has an engineer."}`
-                  : t.p1_p2 > 1 && ` None of your ${t.p1_p2} P1 and P2 tickets is breached or close to breach.`)}
               {nearest &&
                 (nearest.minutes_left! < 0
                   ? ` The most overdue is ${span(nearest.minutes_left!)} over.`
@@ -437,311 +184,108 @@ export function PersonaOverview({ mine, worklist }: { mine?: boolean; worklist?:
         </p>
       )}
 
-      {tickets.length > 0 && (
-        <section aria-labelledby="queue" className="flex flex-col gap-2">
-          <h2 id="queue" className="text-xl font-semibold tabular-nums">
-            {count(tickets.length, "ticket", "tickets")} in {mine ? "your queue" : "the team's queue"}
-          </h2>
-          <div className="flex flex-wrap gap-2">
-            {GROUPS.map((g) => ({ ...g, n: tickets.filter(g.has).length }))
-              .filter((g) => g.n > 0)
-              .map((g) => (
-                <Button
-                  key={g.key}
-                  variant="secondary"
-                  aria-pressed={group === g.key}
-                  onClick={() => {
-                    setGroup(group === g.key ? null : g.key);
-                    setApp("");
-                    setPage(1);
-                  }}
-                  className={cn(
-                    "h-auto min-w-28 flex-col items-start gap-0 rounded-[14px] px-4 py-2.5",
-                    g.look,
-                    group === g.key && "ring-2 ring-foreground ring-offset-2 ring-offset-background"
-                  )}
-                >
-                  <span className="text-2xl leading-8 tabular-nums">
-                    <CountUp value={g.n} />
-                  </span>
-                  <span className="text-xs font-medium">{g.label}</span>
-                </Button>
-              ))}
-          </div>
-          <p className="text-xs text-muted-foreground">
-            {chosen ? `The table lists the ${chosen.label} tickets. Press the tile again for all of them.` : "Press a tile to list only those tickets."}
-          </p>
-        </section>
-      )}
+      <AgentsToday today={today} />
 
-      {hero && (
-        <Card className="gap-4 px-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="flex min-w-0 flex-1 flex-col gap-2">
-            <p className="text-xs font-medium text-muted-foreground">{mine ? "Work on this now" : "Most urgent ticket ready to work"}</p>
-            <h2 className="flex flex-wrap items-center gap-2 text-base font-semibold">
-              <PriorityChip priority={hero.priority} />
-              {hero.summary || "No summary"}
-            </h2>
-            <p className="text-xs text-muted-foreground">
-              <span className="font-mono">{hero.id}</span> · {appOf(hero)}
-              {lead && ` · ${hero.assignee ?? NO_ENGINEER}`} · P{hero.priority} confirmed in review
-              {toAssign(hero) && ` · ${nextStep(hero, true)}`}
-            </p>
-            {description && <p className="whitespace-pre-line">{description}</p>}
-            {(found.rule || found.signals) && (
-              <div className="flex flex-wrap gap-1.5">
-                {found.signals?.scope === "wide" && <Badge variant="secondary">Wide impact</Badge>}
-                {found.signals?.tier != null && <Badge variant="secondary">Tier {found.signals.tier} application</Badge>}
-                {found.rule && (
-                  <Badge variant="secondary">
-                    Rule <span className="font-mono">{found.rule}</span>
-                  </Badge>
-                )}
-              </div>
-            )}
-            <div className="flex flex-wrap gap-2 pt-1">
-              {/* The work happens in the console (19 Nov review): Jira only for assigning, which the console can't do yet. */}
-              <Button nativeButton={false} render={<Link href={ticketHref(hero)} />}>
-                Open the ticket
+      {/* Work statuses: pressing one lists only those tickets. */}
+      <section aria-label="Open tickets by status" className="flex flex-col gap-2">
+        <div className="flex flex-wrap gap-2">
+          <Button variant="secondary" aria-pressed={!chosen} onClick={() => pick(null)} className={cn(TILE, !chosen && "border-2 border-foreground")}>
+            <span className="font-mono text-[10.5px] font-medium tracking-[0.08em] uppercase">All open</span>
+            <span className="text-2xl leading-8 tabular-nums">{board ? <CountUp value={tickets.length} /> : "—"}</span>
+            <span className="text-xs font-normal text-muted-foreground">{t ? `${t.sla_breached} past SLA` : " "}</span>
+          </Button>
+          {STATUSES.map((s) => {
+            const n = tickets.filter((x) => s.stages.includes(x.stage)).length;
+            return (
+              <Button key={s.key} variant="secondary" aria-pressed={status === s.key} onClick={() => pick(status === s.key ? null : s.key)} className={cn(TILE, status === s.key && "border-2 border-foreground")}>
+                <span className="font-mono text-[10.5px] font-medium tracking-[0.08em] uppercase">{s.label}</span>
+                <span className="text-2xl leading-8 tabular-nums">{board ? <CountUp value={n} /> : "—"}</span>
+                <span className="text-xs font-normal text-muted-foreground">{s.sub}</span>
               </Button>
-              {hero.runbook && <RunbookButton id={hero.runbook} label={`Open runbook ${hero.runbook}`} />}
-              {toAssign(hero) && hero.url && (
-                <Button variant="secondary" nativeButton={false} render={<a href={hero.url} target="_blank" rel="noreferrer" />}>
-                  Assign in Jira
-                </Button>
-              )}
-            </div>
+            );
+          })}
+          <div className={cn(TILE, "flex rounded-[14px] border border-dashed border-border-strong")}>
+            <span className="font-mono text-[10.5px] font-medium tracking-[0.08em] uppercase">Closed today</span>
+            <span className="text-2xl leading-8 font-medium tabular-nums">{today ? today.closed : "—"}</span>
+            <span className="text-xs text-muted-foreground">closure notes sent</span>
           </div>
-          {hero.minutes_left !== null && hero.used_percent !== null ? (
-            <div className="flex shrink-0 flex-col items-center rounded-[14px] bg-primary p-4 text-primary-foreground">
-              <SlaGauge minutesLeft={hero.minutes_left} usedPercent={hero.used_percent} dueAt={hero.due_at} />
-            </div>
-          ) : (
-            <div className="flex shrink-0 flex-col gap-2 rounded-[14px] border border-border p-3">
-              <p className="text-xs font-medium text-muted-foreground">SLA</p>
-              <Sla ticket={hero} />
-            </div>
-          )}
-        </Card>
-      )}
-
-      {!worklist && (
-        <div className="grid gap-4 sm:grid-cols-3">
-          <StatTile
-            label="Ready to work"
-            href={mine ? "/my-tickets" : undefined}
-            value={n(ready.length)}
-            window={
-              !board
-                ? undefined
-                : ready.length === 0
-                  ? "No priority confirmed yet"
-                  : ready.length === 1
-                    ? "Priority confirmed. It is the ticket above."
-                    : "Priority confirmed. The most at risk is above."
-            }
-          />
-          <StatTile
-            label={mine ? "Waiting for your priority review" : "Waiting for a priority review"}
-            value={n(toReview.length)}
-            window={board ? `${withClock} ${withClock === 1 ? "has" : "have"} an SLA clock running` : undefined}
-            href="/review"
-          />
-          <StatTile
-            label="Waiting on the reporter"
-            href={mine ? "/my-tickets" : undefined}
-            value={n(waiting.length)}
-            window={!board ? undefined : drafted ? `Details are missing. ${count(drafted, "reply is", "replies are")} drafted.` : "Details are missing from the ticket"}
-          />
         </div>
+      </section>
+
+      {needDetails.length > 0 && status !== "needs" && (
+        <Alert>
+          <AlertDescription className="flex flex-wrap items-center justify-between gap-2">
+            <span>
+              <span className="font-semibold">{count(needDetails.length, "ticket needs", "tickets need")} details.</span>{" "}
+              {drafted ? `Data Quality drafted the question for ${drafted}; the engineer sends it.` : "The reporter has to say more."}
+            </span>
+            <Button size="sm" variant="secondary" onClick={() => pick("needs")}>
+              Show them
+            </Button>
+          </AlertDescription>
+        </Alert>
       )}
 
-      {lead && board && <AgentsToday asOf={board} />}
+      <Card className="gap-0 py-0">
+        <div className="flex flex-wrap items-center gap-2 px-4 py-3">
+          <div className="relative flex-[2_1_16rem]">
+            <Search className="pointer-events-none absolute top-2 left-2.5 size-4 text-muted-foreground" aria-hidden="true" />
+            <Input aria-label="Search the tickets" placeholder="Search by ticket ID, summary, application or engineer" value={query} onChange={(e) => setQuery(e.target.value)} className="pl-8" />
+          </div>
+          <div className="flex-[1_1_11rem]">
+            <select aria-label="Application" value={app} onChange={(e) => setApp(e.target.value)} className={SELECT}>
+              <option value="">All applications ({byStatus.length})</option>
+              {apps.map(([name, c]) => (
+                <option key={name} value={name}>
+                  {name} ({c})
+                </option>
+              ))}
+            </select>
+          </div>
+          <div role="group" aria-label="Age" className="flex flex-wrap items-center gap-1">
+            <span className="pr-1 text-xs text-muted-foreground">Age</span>
+            {[{ key: null, label: "Any" }, ...AGES].map((a) => (
+              <Button key={a.key ?? "any"} size="sm" variant={age === a.key ? "default" : "secondary"} aria-pressed={age === a.key} onClick={() => setAge(a.key)}>
+                {a.label}
+              </Button>
+            ))}
+          </div>
+        </div>
+      </Card>
 
       {!board ? (
         error ? null : (
-          <Card aria-busy="true">
-            <span className="sr-only">Loading tickets…</span>
-            <div className="flex flex-col gap-3 px-4">
-              {Array.from({ length: 6 }, (_, i) => (
-                <Skeleton key={i} className="h-5" />
-              ))}
-            </div>
-          </Card>
-        )
-      ) : tickets.length === 0 ? (
-        <Card>
-          <p className="px-4 text-muted-foreground">{mine ? `Nothing open is assigned to ${viewer} in Jira.` : "No open tickets."}</p>
-        </Card>
-      ) : null}
-
-      {base.length > 0 && (
-        <Card className="gap-0 py-0">
-          <SectionHead title={`${chosen ? `${chosen.label} tickets` : worklist ? "Tickets with a priority" : "Up next"} · ${base.length}`}>
-            <span className="text-xs text-muted-foreground">
-              Agree with the priority or change it, then work the ticket in Jira · highest priority first, then the nearest deadline
-            </span>
-          </SectionHead>
-          <div className="flex flex-wrap gap-2 border-b border-border px-4 py-3">
-            <div className="relative flex-[2_1_18rem]">
-              <Search className="pointer-events-none absolute top-2 left-2.5 size-4 text-muted-foreground" aria-hidden="true" />
-              <Input
-                aria-label="Search the tickets up next"
-                placeholder={`Search by ticket ID, summary${lead ? ", application or engineer" : " or application"}`}
-                value={query}
-                onChange={(e) => {
-                  setQuery(e.target.value);
-                  setPage(1);
-                }}
-                className="pl-8"
-              />
-            </div>
-            <div className="flex-[1_1_12rem]">
-              <select
-                aria-label="Application"
-                value={app}
-                onChange={(e) => {
-                  setApp(e.target.value);
-                  setPage(1);
-                }}
-                className={SELECT}
-              >
-                <option value="">All applications ({base.length})</option>
-                {apps.map(([name, c]) => (
-                  <option key={name} value={name}>
-                    {name} ({c})
-                  </option>
-                ))}
-              </select>
-            </div>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3" aria-busy="true">
+            {Array.from({ length: 6 }, (_, i) => (
+              <Skeleton key={i} className="h-32 rounded-[20px]" />
+            ))}
           </div>
-          {listed.length === 0 ? (
-            <p className="px-4 py-6 text-muted-foreground">No tickets match the search and filter.</p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="pl-4">Priority</TableHead>
-                  <TableHead>Ticket</TableHead>
-                  {lead && <TableHead className="hidden sm:table-cell">Engineer</TableHead>}
-                  <TableHead className="hidden md:table-cell">What Triage found</TableHead>
-                  {hasRunbooks && <TableHead className="hidden lg:table-cell">Runbook</TableHead>}
-                  <TableHead>SLA</TableHead>
-                  <TableHead className="pr-4 text-right">Next step</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {listed.slice((current - 1) * PAGE_SIZE, current * PAGE_SIZE).map((ticket) => (
-                  <TableRow key={ticket.id}>
-                    <TableCell className="pl-4">
-                      <PriorityChip priority={ticket.priority} />
-                    </TableCell>
-                    <TableCell>
-                      <Link href={ticketHref(ticket)} className="font-medium underline-offset-4 hover:underline">
-                        {ticket.summary || "No summary"}
-                      </Link>
-                      <span className="block text-xs text-muted-foreground">
-                        <span className="font-mono">{ticket.id}</span> · {appOf(ticket)}
-                      </span>
-                    </TableCell>
-                    {lead && (
-                      <TableCell className={ticket.assignee ? "hidden sm:table-cell" : "hidden text-muted-foreground sm:table-cell"}>
-                        {ticket.assignee ?? NO_ENGINEER}
-                      </TableCell>
-                    )}
-                    <TableCell className="hidden md:table-cell">
-                      {ticket.triage_reason ?? <span className="text-muted-foreground">—</span>}
-                      <span className="block text-xs text-muted-foreground">{versusReported(ticket)}</span>
-                    </TableCell>
-                    {hasRunbooks && (
-                      <TableCell className="hidden lg:table-cell">
-                        {ticket.runbook ? <RunbookButton id={ticket.runbook} /> : <span className="text-muted-foreground">None matched</span>}
-                      </TableCell>
-                    )}
-                    <TableCell>
-                      <Sla ticket={ticket} />
-                    </TableCell>
-                    <TableCell className="pr-4">
-                      <div className="flex items-center justify-end gap-3">
-                        <span className="hidden text-right text-xs text-muted-foreground xl:inline">{nextStep(ticket, toAssign(ticket))}</span>
-                        {toAssign(ticket) && ticket.url ? (
-                          <Button variant="secondary" size="sm" nativeButton={false} render={<a href={ticket.url} target="_blank" rel="noreferrer" />}>
-                            Assign
-                          </Button>
-                        ) : (
-                          <Button variant="secondary" size="sm" nativeButton={false} render={<Link href={ticketHref(ticket)} />}>
-                            {ticket.stage === "triaged" ? "Review" : "Open"}
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-          {listed.length > PAGE_SIZE && (
-            <div className="flex flex-col items-center justify-between gap-3 border-t border-border px-4 py-3 sm:flex-row">
-              <span className="text-xs text-muted-foreground tabular-nums">
-                Showing {(current - 1) * PAGE_SIZE + 1} to {Math.min(current * PAGE_SIZE, listed.length)} of {listed.length} tickets
-                {listed.length !== base.length && ` (filtered from ${base.length})`}
-              </span>
-              <div className="flex items-center gap-2">
-                <Button variant="secondary" size="sm" disabled={current <= 1} onClick={() => setPage(current - 1)}>
-                  <ChevronLeft />
-                  Previous
-                </Button>
-                <span className="px-2 text-xs font-medium tabular-nums">
-                  Page {current} of {pages}
-                </span>
-                <Button variant="secondary" size="sm" disabled={current >= pages} onClick={() => setPage(current + 1)}>
-                  Next
-                  <ChevronRight />
-                </Button>
-              </div>
-            </div>
-          )}
+        )
+      ) : listed.length === 0 ? (
+        <Card>
+          <p className="px-4 text-muted-foreground">{tickets.length ? "No tickets match the filters." : "No open tickets."}</p>
         </Card>
+      ) : (
+        SECTIONS.map((section) => {
+          const cards = listed.filter(section.has);
+          return (
+            cards.length > 0 && (
+              <section key={section.title} aria-label={section.title} className="flex flex-col gap-2">
+                <h2 className="pl-1 text-sm font-semibold">
+                  {section.title} <span className="font-normal text-muted-foreground tabular-nums">{cards.length}</span>
+                </h2>
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  {cards.map((x) => (
+                    <TicketCard key={x.id} ticket={x} now={now} />
+                  ))}
+                </div>
+              </section>
+            )
+          );
+        })
       )}
 
-      {/* One card fills the row, two sit side by side, and of three the first fills the row. */}
       <div className="grid items-start gap-4 lg:grid-cols-2 lg:[&>*:first-child:nth-last-child(odd)]:col-span-full">
-        {waiting.length > 0 && (
-          <Card className="gap-0 py-0">
-            <SectionHead title={`Waiting on the reporter · ${waiting.length}`} />
-            <ul role="list">
-              {waiting.map((ticket) => (
-                <ListRow
-                  key={ticket.id}
-                  title={
-                    <Link href={ticketHref(ticket)} className="underline-offset-4 hover:underline">
-                      {ticket.summary || "No summary"}
-                    </Link>
-                  }
-                  meta={
-                    <span>
-                      <span className="font-mono">{ticket.id}</span>
-                      {lead && ` · ${ticket.assignee ?? nextStep(ticket, true)}`}
-                      {!!ticket.missing?.length &&
-                        ` · missing ${and.format(ticket.missing.map((m) => MISSING_WORDS[m] ?? m.replaceAll("_", " ")))}`}
-                    </span>
-                  }
-                  actions={
-                    ticket.has_draft && (
-                      <Button variant="secondary" size="sm" nativeButton={false} render={<Link href={ticketHref(ticket)} />}>
-                        See the draft
-                      </Button>
-                    )
-                  }
-                />
-              ))}
-            </ul>
-            <p className="border-t border-border px-4 py-3 text-xs text-muted-foreground">
-              These get a priority and an SLA clock once the reporter answers.
-            </p>
-          </Card>
-        )}
-
         {lead && board && board.people.length > 0 && (
           <Card className="gap-0 py-0">
             <SectionHead title="Workload by engineer" />
@@ -752,7 +296,7 @@ export function PersonaOverview({ mine, worklist }: { mine?: boolean; worklist?:
                   <TableHead className="text-right">Open</TableHead>
                   <TableHead className="text-right">P1 and P2</TableHead>
                   <TableHead className="text-right">SLA breached</TableHead>
-                  <TableHead className="pr-4 text-right">Waiting for review</TableHead>
+                  <TableHead className="pr-4 text-right">Priority to review</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -769,8 +313,7 @@ export function PersonaOverview({ mine, worklist }: { mine?: boolean; worklist?:
             </Table>
           </Card>
         )}
-
-        {board && !worklist && <ActivityCard title={mine ? "Activity on your tickets · today" : "Recent activity · today"} person={person} asOf={board} />}
+        {board && <ActivityCard title="Recent activity · today" asOf={board} />}
       </div>
     </AppShell>
   );

@@ -4,8 +4,9 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  BookOpen, CheckCheck, CheckCircle2, ClipboardList, Database, FileText, History, LayoutDashboard,
-  Library, ListChecks, Plug, ShieldCheck, SlidersHorizontal, Ticket, TrendingUp, TriangleAlert, Users, type LucideIcon,
+  BookOpen, CheckCheck, CheckCircle2, ClipboardList, Database, FileSearch, FileText, History, Layers, LayoutDashboard,
+  Library, ListChecks, MessageSquare, Plug, ShieldCheck, SlidersHorizontal, Ticket, TrendingUp, TriangleAlert, Users,
+  type LucideIcon,
 } from "lucide-react";
 import { cn } from "cn";
 import { ROLES, useViewAs } from "@/lib/view-as";
@@ -84,6 +85,13 @@ const ITEMS: NavItem[] = [
   ...ADMIN_GROUPS.flatMap((g) => g.items),
   { label: "Overview", href: "/team", match: (p) => p.startsWith("/team") },
   { label: "My worklist", href: "/my-tickets", match: (p) => p.startsWith("/my-tickets") },
+];
+
+// Planned tools from the 19 Nov review, shown as "Soon" for the demo; they are not pages yet.
+const SOON: { label: string; Icon: LucideIcon }[] = [
+  { label: "Ask a question", Icon: MessageSquare },
+  { label: "Log analyzer", Icon: FileSearch },
+  { label: "Problem records", Icon: Layers },
 ];
 
 const itemBase =
@@ -172,6 +180,22 @@ export function AppSidebar({ onNavigate, className }: AppSidebarProps) {
             </ul>
           </div>
         ))}
+        <div className="flex flex-col gap-1">
+          <p className="px-3 pb-1 pt-1 font-mono text-[10.5px] font-medium uppercase tracking-[0.08em] text-sidebar-foreground/75">Tools</p>
+          <ul className="flex flex-col gap-0.5">
+            {SOON.map(({ label, Icon }) => (
+              <li key={label}>
+                <span aria-disabled="true" className={cn(itemBase, "cursor-default text-sidebar-foreground/70 hover:bg-transparent")}>
+                  <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                    <Icon className="size-4 shrink-0" aria-hidden="true" />
+                    <span>{label}</span>
+                  </span>
+                  <span className="ml-auto rounded-full border border-sidebar-foreground/40 px-1.5 py-px font-mono text-[9.5px] tracking-[0.06em] uppercase">Soon</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
 
       <SidebarFooter onNavigate={onNavigate} />

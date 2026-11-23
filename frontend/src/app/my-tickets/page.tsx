@@ -1,6 +1,6 @@
-import { PersonaOverview } from "@/components/console/persona-overview";
+import { MyWorklist } from "@/components/console/my-worklist";
 
-/** The page after the Overview: the tickets assigned to the viewer in Jira, as a list. */
+/** My worklist: the viewer's tickets, what to do now, their tasks and what they closed this week. */
 export default function MyTicketsPage() {
-  return <PersonaOverview mine worklist />;
+  return <MyWorklist />;
 }
