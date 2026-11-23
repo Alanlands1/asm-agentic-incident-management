@@ -60,6 +60,17 @@ export interface PipelineTicket {
   agents_running?: boolean;
   /** The engineer's answers on the suggested fixes, oldest first; the latest on a fix counts. */
   fix_outcomes?: FixOutcome[];
+  /** A lead approves the closure note before it is sent (LEAD_REVIEW). Missing from an older backend. */
+  lead_review_required?: boolean;
+  /** Submitted for review, approved, sent back (with the comment), oldest first. */
+  lead_reviews?: LeadReviewStep[];
+}
+
+export interface LeadReviewStep {
+  action: "submitted" | "approved" | "sent_back";
+  note: string | null;
+  reviewer: string;
+  created_at: string;
 }
 
 export type Outcome = "worked" | "partly" | "wrong";

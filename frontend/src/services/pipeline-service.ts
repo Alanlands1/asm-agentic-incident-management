@@ -41,6 +41,12 @@ export const pipelineService = {
   saveClosureNote: (ticketId: string, text: string) =>
     apiClient(`/tickets/${id(ticketId)}/closure-note`, { method: "PUT", body: JSON.stringify({ text }) }),
   /** Posts the closure note on the Jira issue and moves the issue to done. */
+  /** Hands the checked closure note to the lead (when LEAD_REVIEW asks for it). */
+  submitReview: (ticketId: string, reviewer: string) =>
+    apiClient(`/tickets/${id(ticketId)}/submit-review`, { method: "POST", body: JSON.stringify({ reviewer }) }),
+  /** The lead approves the closure note, or sends it back with what to change. */
+  leadReview: (ticketId: string, body: { action: "approved" | "sent_back"; note?: string; reviewer: string }) =>
+    apiClient(`/tickets/${id(ticketId)}/lead-review`, { method: "POST", body: JSON.stringify(body) }),
   closeInJira: (ticketId: string, author: string) =>
     apiClient(`/tickets/${id(ticketId)}/close`, { method: "POST", body: JSON.stringify({ author_email: author }) }),
 };
