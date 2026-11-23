@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { BookOpen, CheckCheck, Library, ShieldCheck, SlidersHorizontal, type LucideIcon } from "lucide-react";
+import { CountUp } from "@/components/console/count-up";
 import { ListRow } from "@/components/console/list-row";
 import { STAGES } from "@/components/console/dashboard";
 import { SectionHead, SlaClock } from "@/components/console/sync-parts";
@@ -193,32 +195,69 @@ export function useToday(asOf: unknown, person?: string) {
   return today;
 }
 
-const AGENT_LINES: { key: keyof Omit<Today, "closed">; name: string; done: string; flagged: (n: number) => string }[] = [
-  { key: "data_quality", name: "Data Quality", done: "tickets checked", flagged: (n) => `${n} need details from the reporter` },
-  { key: "triage", name: "Triage", done: "given a priority", flagged: (n) => `${n} approved without a person` },
-  { key: "resolution", name: "Resolution", done: "fixes suggested", flagged: (n) => `${n} worked for the engineer` },
-  { key: "closure_quality", name: "Closure Quality", done: "closure notes checked", flagged: (n) => `${n} good to send` },
-  { key: "knowledge_builder", name: "Knowledge Builder", done: "closed tickets learned from", flagged: (n) => `${n} matched to an article` },
+// Each agent with its menu icon and pipeline step; `tone` colours the bar of its second figure.
+const AGENT_LINES: {
+  key: keyof Omit<Today, "closed">;
+  name: string;
+  Icon: LucideIcon;
+  done: string;
+  flagged: (n: number) => string;
+  tone: string;
+}[] = [
+  { key: "data_quality", name: "Data Quality", Icon: ShieldCheck, done: "tickets checked", flagged: (n) => `${n} need details from the reporter`, tone: "bg-p2" },
+  { key: "triage", name: "Triage", Icon: SlidersHorizontal, done: "given a priority", flagged: (n) => `${n} approved without a person`, tone: "bg-primary" },
+  { key: "resolution", name: "Resolution", Icon: BookOpen, done: "fixes suggested", flagged: (n) => `${n} worked for the engineer`, tone: "bg-p3" },
+  { key: "closure_quality", name: "Closure Quality", Icon: CheckCheck, done: "closure notes checked", flagged: (n) => `${n} good to send`, tone: "bg-p3" },
+  { key: "knowledge_builder", name: "Knowledge Builder", Icon: Library, done: "cases learned", flagged: (n) => `${n} matched to an article`, tone: "bg-p3" },
 ];
 
-/** The five agents' day, one number and one line each (design canvas). */
+/** The five agents' day, in pipeline order: a big number each, and a bar for the share behind the second line. */
 export function AgentsToday({ today }: { today: Today | null }) {
   if (!today) return null;
   return (
-    <Card className="gap-0 py-0">
+    <Card className="gap-0 border-2 border-primary/30 py-0">
       <SectionHead title="What the agents did today">
-        <span className="text-xs text-muted-foreground">Personal details are masked before every model call</span>
+        <span className="flex items-center gap-3 text-xs text-muted-foreground">
+          <span className="hidden sm:inline">Personal details are masked before every model call</span>
+          <Badge variant="outline" className="gap-1.5 border-primary/40 text-primary">
+            <span aria-hidden="true" className="relative flex size-2">
+              <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary opacity-60" />
+              <span className="relative inline-flex size-2 rounded-full bg-primary" />
+            </span>
+            Live today
+          </Badge>
+        </span>
       </SectionHead>
       <dl className="grid sm:grid-cols-2 lg:grid-cols-5">
-        {AGENT_LINES.map((a) => (
-          <div key={a.key} className="flex flex-col gap-0.5 border-border px-4 py-3 lg:[&+&]:border-l">
-            <dt className="font-mono text-[10.5px] font-medium tracking-[0.08em] text-muted-foreground uppercase">{a.name}</dt>
-            <dd className="text-[13px]">
-              <span className="text-xl font-semibold tabular-nums">{today[a.key].done}</span> {a.done}
-            </dd>
-            <dd className="text-xs text-muted-foreground">{a.flagged(today[a.key].flagged)}</dd>
-          </div>
-        ))}
+        {AGENT_LINES.map(({ key, name, Icon, done, flagged, tone }, i) => {
+          const day = today[key];
+          const share = day.done ? Math.min(100, Math.round((day.flagged / day.done) * 100)) : 0;
+          return (
+            <div key={key} className="flex flex-col gap-1.5 border-t border-border px-4 py-4 transition-colors duration-150 hover:bg-selected/50 sm:border-t-0 lg:[&+&]:border-l">
+              <dt className="flex items-center gap-2">
+                <span aria-hidden="true" className="flex size-8 shrink-0 items-center justify-center rounded-full bg-selected text-primary">
+                  <Icon className="size-4" />
+                </span>
+                <span className="flex flex-col leading-tight">
+                  <span className="font-mono text-[10px] font-medium tracking-[0.08em] text-muted-foreground uppercase">Step {i + 1}</span>
+                  <span className="text-[13px] font-semibold">{name}</span>
+                </span>
+              </dt>
+              <dd className="flex items-baseline gap-1.5">
+                <span className="text-3xl font-semibold text-primary tabular-nums">
+                  <CountUp value={day.done} />
+                </span>
+                <span className="text-[13px]">{done}</span>
+              </dd>
+              <dd className="flex flex-col gap-1">
+                <span className="h-1.5 overflow-hidden rounded-full bg-muted" aria-hidden="true">
+                  <span className={cn("block h-full rounded-full transition-[width] duration-700", tone)} style={{ width: `${share}%` }} />
+                </span>
+                <span className="text-xs text-muted-foreground">{flagged(day.flagged)}</span>
+              </dd>
+            </div>
+          );
+        })}
       </dl>
     </Card>
   );
