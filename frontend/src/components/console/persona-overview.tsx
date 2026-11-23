@@ -500,15 +500,16 @@ export function PersonaOverview({ mine, worklist }: { mine?: boolean; worklist?:
               </div>
             )}
             <div className="flex flex-wrap gap-2 pt-1">
-              {hero.url && (
-                <Button nativeButton={false} render={<a href={hero.url} target="_blank" rel="noreferrer" />}>
-                  {toAssign(hero) ? "Assign in Jira" : "Open in Jira"}
+              {/* The work happens in the console (19 Nov review): Jira only for assigning, which the console can't do yet. */}
+              <Button nativeButton={false} render={<Link href={ticketHref(hero)} />}>
+                Open the ticket
+              </Button>
+              {hero.runbook && <RunbookButton id={hero.runbook} label={`Open runbook ${hero.runbook}`} />}
+              {toAssign(hero) && hero.url && (
+                <Button variant="secondary" nativeButton={false} render={<a href={hero.url} target="_blank" rel="noreferrer" />}>
+                  Assign in Jira
                 </Button>
               )}
-              {hero.runbook && <RunbookButton id={hero.runbook} label={`Open runbook ${hero.runbook}`} />}
-              <Button variant="secondary" nativeButton={false} render={<Link href={ticketHref(hero)} />}>
-                See the ticket
-              </Button>
             </div>
           </div>
           {hero.minutes_left !== null && hero.used_percent !== null ? (
