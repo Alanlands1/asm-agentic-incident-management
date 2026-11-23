@@ -93,8 +93,15 @@ export function StagePill({ ticket }: { ticket: BoardTicket }) {
     ticket.stage === "needs_lead" ? "Needs the lead" : ticket.stage === "approved" ? "Ready to send" : (status?.label ?? STAGE_WORDS[ticket.stage] ?? ticket.stage);
   return (
     <Badge
-      variant={status?.key === "needs" || ticket.stage === "needs_lead" ? "destructive" : status?.key === "triage" ? "outline" : "secondary"}
-      className={cn((status?.key === "review" || ticket.stage === "approved") && "border-p3 text-p3")}
+      variant="secondary"
+      className={cn(
+        "text-[11px] font-semibold",
+        status?.key === "needs" || ticket.stage === "needs_lead"
+          ? "bg-selected text-critical"
+          : status?.key === "triage"
+            ? "bg-p2/20"
+            : (status?.key === "review" || ticket.stage === "approved") && "bg-p3/15 text-p3"
+      )}
     >
       {words}
     </Badge>
@@ -177,7 +184,7 @@ export function Sla({ ticket }: { ticket: BoardTicket }) {
 }
 
 type AgentDay = { done: number; flagged: number; rated?: number; right?: number }; // rated, right: last 7 days
-type Today = Record<"data_quality" | "triage" | "resolution" | "closure_quality" | "knowledge_builder", AgentDay> & { closed: number };
+type Today = Record<"data_quality" | "triage" | "resolution" | "closure_quality" | "knowledge_builder", AgentDay> & { closed: number; opened?: number }; // opened: missing from a backend from before it
 
 const midnight = () => {
   const d = new Date();
@@ -197,7 +204,7 @@ export function useToday(asOf: unknown, person?: string) {
 
 // Each agent with its menu icon and pipeline step; `tone` colours the bar of its second figure.
 const AGENT_LINES: {
-  key: keyof Omit<Today, "closed">;
+  key: keyof Omit<Today, "closed" | "opened">;
   name: string;
   Icon: LucideIcon;
   done: string;
@@ -215,21 +222,12 @@ const AGENT_LINES: {
 export function AgentsToday({ today }: { today: Today | null }) {
   if (!today) return null;
   return (
-    <Card className="gap-0 border-2 border-primary/30 py-0">
+    <Card className="gap-0 py-0">
       <SectionHead title="What the agents did today">
-        <span className="flex items-center gap-3 text-xs text-muted-foreground">
-          <span className="hidden sm:inline">Personal details are masked before every model call</span>
-          <Badge variant="outline" className="gap-1.5 border-primary/40 text-primary">
-            <span aria-hidden="true" className="relative flex size-2">
-              <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary opacity-60" />
-              <span className="relative inline-flex size-2 rounded-full bg-primary" />
-            </span>
-            Live today
-          </Badge>
-        </span>
+        <span className="hidden text-xs text-muted-foreground sm:inline">Personal details are masked before every model call</span>
       </SectionHead>
       <dl className="grid sm:grid-cols-2 lg:grid-cols-5">
-        {AGENT_LINES.map(({ key, name, Icon, done, flagged, tone }, i) => {
+        {AGENT_LINES.map(({ key, name, Icon, done, flagged, tone }) => {
           const day = today[key];
           const share = day.done ? Math.min(100, Math.round((day.flagged / day.done) * 100)) : 0;
           return (
@@ -238,27 +236,26 @@ export function AgentsToday({ today }: { today: Today | null }) {
                 <span aria-hidden="true" className="flex size-8 shrink-0 items-center justify-center rounded-full bg-selected text-primary">
                   <Icon className="size-4" />
                 </span>
-                <span className="flex flex-col leading-tight">
-                  <span className="font-mono text-[10px] font-medium tracking-[0.08em] text-muted-foreground uppercase">Step {i + 1}</span>
-                  <span className="text-[13px] font-semibold">{name}</span>
-                </span>
+                <span className="text-[13px] font-semibold">{name}</span>
               </dt>
               <dd className="flex items-baseline gap-1.5">
-                <span className="text-3xl font-semibold text-primary tabular-nums">
+                <span className={cn("text-3xl font-semibold tabular-nums", !day.done && "text-muted-foreground")}>
                   <CountUp value={day.done} />
                 </span>
                 <span className="text-[13px]">{done}</span>
               </dd>
               <dd className="flex flex-col gap-1">
-                <span className="h-1.5 overflow-hidden rounded-full bg-muted" aria-hidden="true">
-                  <span className={cn("block h-full rounded-full transition-[width] duration-700", tone)} style={{ width: `${share}%` }} />
-                </span>
+                {day.done > 0 && (
+                  <span className="h-1.5 overflow-hidden rounded-full bg-muted" aria-hidden="true">
+                    <span className={cn("block h-full rounded-full transition-[width] duration-700", tone)} style={{ width: `${share}%` }} />
+                  </span>
+                )}
                 <span className="text-xs text-muted-foreground">{flagged(day.flagged)}</span>
               </dd>
-              {key !== "knowledge_builder" && (
+              {!!day.rated && (
                 <dd className="flex items-center gap-1 text-xs text-muted-foreground">
                   <ThumbsUp className="size-3 text-p3" aria-hidden="true" />
-                  {day.rated ? `${day.right} of ${day.rated} rated right this week` : "Not rated this week"}
+                  {`${day.right} of ${day.rated} rated right this week`}
                 </dd>
               )}
             </div>

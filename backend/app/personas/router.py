@@ -91,6 +91,7 @@ class TodayOut(BaseModel):
     closure_quality: AgentDay
     knowledge_builder: AgentDay
     closed: int  # tickets closed since `since`
+    opened: int  # tickets opened since `since`
 
 
 @router.get("/today", response_model=TodayOut, summary="What each agent did today, and tickets closed")

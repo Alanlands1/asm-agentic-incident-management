@@ -126,7 +126,7 @@ def _progress(db: Session, t: Ticket, steps: dict, rated: set) -> dict:
 
 
 def today(db: Session, since: datetime, person: str | None = None) -> dict:
-    """What each agent did since `since` (the viewer's midnight), and how many tickets were closed."""
+    """What each agent did since `since` (the viewer's midnight), and how many tickets were opened and closed."""
     since = _utc(since).astimezone(UTC)
     mine = [Ticket.assignee == person] if person else []
     runs = db.scalars(select(AgentRun).join(Ticket, Ticket.id == AgentRun.ticket_id)
@@ -152,6 +152,8 @@ def today(db: Session, since: datetime, person: str | None = None) -> dict:
 
     closed = db.scalar(select(func.count()).select_from(Ticket).where(
         Ticket.closed_at >= since.replace(tzinfo=None), Ticket.pipeline_status != PipelineStatus.HISTORICAL, *mine))
+    opened = db.scalar(select(func.count()).select_from(Ticket).where(
+        Ticket.opened_at >= since.replace(tzinfo=None), Ticket.pipeline_status != PipelineStatus.HISTORICAL, *mine))
     return {
         "data_quality": {"done": len(latest(DATA_QUALITY)), **thumbs(DATA_QUALITY),
                          "flagged": sum(r.verdict == "needs_info" for r in latest(DATA_QUALITY))},
@@ -164,6 +166,7 @@ def today(db: Session, since: datetime, person: str | None = None) -> dict:
         "knowledge_builder": {"done": len(latest("knowledge_builder")), **thumbs("knowledge_builder"),
                               "flagged": sum(r.verdict == "matched" for r in latest("knowledge_builder"))},
         "closed": closed or 0,
+        "opened": opened or 0,
     }
 
 

@@ -205,7 +205,8 @@ def test_today_counts_each_agent_and_closed_by_names_the_closer(session):  # noq
     day = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
     session.add_all([Ticket(id="AMS-1", source="JIRA", summary="Paid orders stuck", status="closed",
                             pipeline_status="fix_confirmed", closed_at=datetime.now(UTC).replace(tzinfo=None)),
-                     Ticket(id="AMS-2", source="JIRA", summary="s", status="new", pipeline_status="awaiting_info")])
+                     Ticket(id="AMS-2", source="JIRA", summary="s", status="new", pipeline_status="awaiting_info",
+                            opened_at=datetime.now(UTC).replace(tzinfo=None))])
     session.flush()
     runs = [AgentRun(ticket_id="AMS-1", agent=a, verdict=v, output={"priority": 2} if a == "triage" else {})
             for a, v in (("data_quality", "passed"), ("triage", "P2"), ("resolution", "resolved"),
@@ -218,6 +219,7 @@ def test_today_counts_each_agent_and_closed_by_names_the_closer(session):  # noq
     got = service.today(session, day)
     assert (got["data_quality"]["done"], got["data_quality"]["flagged"], got["resolution"]["done"]) == (2, 1, 1)
     assert (got["knowledge_builder"]["done"], got["knowledge_builder"]["flagged"], got["closed"]) == (1, 1, 1)
+    assert got["opened"] == 1  # AMS-1 has no opened date
     closed = service.closed_by(session, "Ravi")
     assert [(c["id"], c["summary"], c["kb"]) for c in closed] == [("AMS-1", "Paid orders stuck", None)]
     assert service.closed_by(session, "Priya") == []

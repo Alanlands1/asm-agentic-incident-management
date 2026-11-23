@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
-import { Play, Search, Siren } from "lucide-react";
+import { BookX, Clock, Play, Search, TriangleAlert } from "lucide-react";
 import { AppShell } from "@/components/console/app-shell";
 import { CountUp } from "@/components/console/count-up";
 import { SyncsCard } from "@/components/console/dashboard";
@@ -21,6 +21,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { usePerson } from "@/lib/view-as";
 import { incidentService } from "@/services/incident-service";
 import { pipelineService } from "@/services/pipeline-service";
 import { Attention } from "@/types/incident";
@@ -34,7 +35,10 @@ const SECTIONS: { title: string; has: (t: BoardTicket) => boolean }[] = [
   { title: "P3 to P5", has: (t) => (t.priority ?? 0) >= 3 },
   { title: "Not triaged yet", has: (t) => t.priority === null },
 ];
-const TILE = "h-auto min-w-32 flex-1 basis-32 flex-col items-start gap-0 whitespace-normal rounded-[14px] px-4 py-2.5 text-left";
+const TILE = "h-auto min-w-0 flex-col items-start justify-start gap-0 whitespace-normal rounded-[14px] px-3 py-2.5 text-left";
+
+// Close to breaching the SLA, or past it: the tickets to act on first.
+const atRisk = (t: BoardTicket) => t.sla_state === "breach_likely" || t.sla_state === "breached";
 
 const never = () => () => {};
 const thisMinute = () => Math.floor(Date.now() / 60000) * 60000;
@@ -44,21 +48,30 @@ function TicketCard({ ticket, now }: { ticket: BoardTicket; now: number | null }
   const age = now === null ? null : ageOf(ticket, now);
   return (
     <Link href={ticketHref(ticket)} className="group block rounded-[20px] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none">
-      <Card className={cn("h-full gap-2 px-4 py-3 transition-colors duration-150 group-hover:border-border-strong group-hover:bg-muted/40", ticket.priority === 1 && "border-2 border-primary")}>
+      <Card className={cn("h-full gap-2 px-4 py-3 transition-colors duration-150 group-hover:border-border-strong group-hover:bg-muted/40", ticket.priority === 1 && "border-2 border-primary bg-selected/50")}>
         <div className="flex items-center justify-between gap-2">
           <span className="font-mono text-xs text-muted-foreground">{ticket.id}</span>
           <PriorityChip priority={ticket.priority} />
         </div>
         <p className="line-clamp-2 text-sm font-semibold">{ticket.summary || "No summary"}</p>
-        <p className="text-xs text-muted-foreground">{appOf(ticket)}</p>
+        <p className="flex flex-wrap items-center justify-between gap-x-2 text-xs text-muted-foreground">
+          {appOf(ticket)}
+          {ticket.sla_state && ticket.minutes_left !== null && (
+            <span className={cn("inline-flex items-center gap-1 whitespace-nowrap tabular-nums", atRisk(ticket) ? "font-semibold text-critical" : ticket.sla_state === "watch" && "font-medium text-foreground")}>
+              {atRisk(ticket) ? <TriangleAlert className="size-3.5" aria-hidden="true" /> : <Clock className="size-3.5" aria-hidden="true" />}
+              {`SLA ${span(Math.abs(ticket.minutes_left))} ${ticket.minutes_left < 0 ? "over" : "left"}`}
+            </span>
+          )}
+        </p>
         <div className="mt-auto flex flex-wrap items-center gap-x-2 gap-y-1 pt-1">
           <StagePill ticket={ticket} />
           {ticket.fix_verdict === "no_match" && (
-            <Badge variant="destructive" title="Resolution found no runbook article for this ticket">
-              No KB
+            <Badge variant="destructive" className="border-dashed text-[11px] font-semibold" title="Resolution found no knowledge article for this ticket. Work the fix out with AI on the ticket page.">
+              <BookX aria-hidden="true" />
+              No knowledge article
             </Badge>
           )}
-          <span className="text-xs text-muted-foreground">
+          <span className="ml-auto text-xs text-muted-foreground">
             {[age?.words, ticket.assignee ?? "Unassigned"].filter(Boolean).join(" · ")}
           </span>
         </div>
@@ -73,7 +86,7 @@ const clock = (iso: string) => new Date(iso).toLocaleTimeString("en-GB", { hour:
  * A major incident on top of the Overview (19 Nov canvas): declared storms in red with who declared it and the last
  * update to stakeholders; a storm nobody declared yet in amber, with a way to the Incidents page to decide.
  */
-function MajorIncidents({ attention, tickets }: { attention: Attention | null; tickets: BoardTicket[] }) {
+function MajorIncidents({ attention, tickets, now }: { attention: Attention | null; tickets: BoardTicket[]; now: number | null }) {
   if (!attention) return null;
   const summary = (id: string) => tickets.find((t) => t.id === id)?.summary ?? attention.p1_p2.find((i) => i.ticket_id === id)?.summary ?? id;
   const declared = attention.storms.filter((s) => s.status === "declared");
@@ -82,34 +95,40 @@ function MajorIncidents({ attention, tickets }: { attention: Attention | null; t
     <>
       {declared.map((s) => {
         const main = attention.p1_p2.find((i) => i.ticket_id === s.main_ticket_id);
+        const age = now === null ? null : ageOf({ opened_at: s.opened_at } as BoardTicket, now)?.words;
         return (
-          <Card key={s.id} className="gap-3 border-0 bg-primary px-4 py-4 text-primary-foreground lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex min-w-0 flex-col gap-1.5">
-              <p className="flex flex-wrap items-center gap-2 text-xs font-medium">
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-foreground/15 px-2.5 py-0.5 font-semibold">
-                  <Siren className="size-3.5 animate-pulse" aria-hidden="true" />
-                  P1 · Major incident
+          <Card key={s.id} className="flex-row flex-wrap items-center gap-4 border-0 bg-primary px-5 py-[18px] text-primary-foreground">
+            <div className="flex min-w-0 flex-[999_1_380px] flex-col gap-1.5">
+              <p className="flex flex-wrap items-center gap-2">
+                <span className="rounded-full bg-primary-foreground px-2.5 py-[3px] text-xs font-semibold whitespace-nowrap text-primary">P1 · Major incident</span>
+                <span className="font-mono text-[13px] opacity-85">
+                  {[s.main_ticket_id, s.application, age ? `${age} open` : `open since ${clock(s.opened_at)}`].filter(Boolean).join(" · ")}
                 </span>
-                <span className="opacity-85">{[s.application, s.main_ticket_id, `open since ${clock(s.opened_at)}`].filter(Boolean).join(" · ")}</span>
               </p>
-              <h2 className="text-base font-semibold">{summary(s.main_ticket_id)}</h2>
+              <h2 className="text-[19px] leading-snug font-bold">
+                {summary(s.main_ticket_id)}
+                {s.ticket_count > 1 && ` and ${count(s.ticket_count - 1, "other", "others")}`}
+              </h2>
               <p className="text-[13px] opacity-90">
-                {`${count(s.ticket_count, "ticket", "tickets")} · ${count(s.people, "person", "people")} reporting`}
-                {s.declared_by && ` · declared by ${s.declared_by}${s.declared_at ? ` at ${clock(s.declared_at)}` : ""}`}
-                {main?.last_sent
-                  ? ` · last update to stakeholders ${clock(main.last_sent.sent_at)} by ${main.last_sent.sent_by}`
-                  : main
-                    ? ` · first stakeholder message ${main.first_message.minutes_left >= 0 ? `due in ${main.first_message.minutes_left} min` : "overdue"}`
-                    : ""}
+                {[
+                  s.declared_by && `Declared by ${s.declared_by}${s.declared_at ? ` at ${clock(s.declared_at)}` : ""}`,
+                  `${count(s.people, "person", "people")} reporting`,
+                  main?.last_sent
+                    ? `last update to stakeholders ${clock(main.last_sent.sent_at)} by ${main.last_sent.sent_by}`
+                    : main && `first stakeholder message ${main.first_message.minutes_left >= 0 ? `due in ${main.first_message.minutes_left} min` : "overdue"}`,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
               </p>
             </div>
             <div className="flex shrink-0 flex-wrap gap-2">
-              <Button variant="secondary" nativeButton={false} render={<Link href="/incidents" />}>
+              <Button variant="secondary" size="lg" className="border-primary-foreground text-primary" nativeButton={false} render={<Link href="/incidents" />}>
                 Open incident
               </Button>
               <Button
                 variant="ghost"
-                className="text-primary-foreground hover:bg-primary-foreground/15 hover:text-primary-foreground"
+                size="lg"
+                className="border border-primary-foreground text-primary-foreground hover:bg-primary-foreground/15 hover:text-primary-foreground"
                 nativeButton={false}
                 render={<Link href={ticketHref({ id: s.main_ticket_id })} />}
               >
@@ -141,8 +160,11 @@ function MajorIncidents({ attention, tickets }: { attention: Attention | null; t
  * runs the agents and sees who has what. My worklist (my-worklist.tsx) is the viewer's own work.
  */
 export function PersonaOverview({ lead, admin = false }: { lead: boolean; admin?: boolean }) {
-  const { board, error, setError, load } = useBoard();
-  const today = useToday(board);
+  // An engineer sees only the tickets assigned to them, and the figures for those; a lead and the admin see all.
+  const viewer = usePerson();
+  const mine = lead ? undefined : viewer;
+  const { board, error, setError, load } = useBoard(mine);
+  const today = useToday(board, mine);
   const [attention, setAttention] = useState<Attention | null>(null);
   useEffect(() => {
     incidentService.getAttention().then(setAttention, () => setAttention(null));
@@ -152,6 +174,7 @@ export function PersonaOverview({ lead, admin = false }: { lead: boolean; admin?
   const [app, setApp] = useState("");
   const [age, setAge] = useState<string | null>(null);
   const [noKb, setNoKb] = useState(false); // only tickets Resolution found no runbook fix for
+  const [risk, setRisk] = useState(false); // only tickets close to breaching the SLA or past it
   const [running, setRunning] = useState(false);
   const [ran, setRan] = useState<string | null>(null);
   // The clock is read in the browser only: prerendered, the date and ages would be the build's.
@@ -194,7 +217,7 @@ export function PersonaOverview({ lead, admin = false }: { lead: boolean; admin?
   );
 
   const chosen = STATUSES.find((s) => s.key === status);
-  const byStatus = (chosen ? tickets.filter((x) => chosen.stages.includes(x.stage)) : tickets).filter((x) => !noKb || noRunbook.includes(x));
+  const byStatus = (chosen ? tickets.filter((x) => chosen.stages.includes(x.stage)) : tickets).filter((x) => (!noKb || noRunbook.includes(x)) && (!risk || atRisk(x)));
   const apps = [...byStatus.reduce((c, x) => c.set(appOf(x), (c.get(appOf(x)) ?? 0) + 1), new Map<string, number>())].sort((a, b) => b[1] - a[1]);
   const ageFilter = AGES.find((a) => a.key === age);
   const q = query.trim().toLowerCase();
@@ -211,6 +234,7 @@ export function PersonaOverview({ lead, admin = false }: { lead: boolean; admin?
     setStatus(key);
     setApp("");
     setNoKb(false);
+    setRisk(false);
   };
 
   return (
@@ -227,7 +251,9 @@ export function PersonaOverview({ lead, admin = false }: { lead: boolean; admin?
             )
           ) : (
             `${new Date(now).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })} · ` +
-            `${count(t.open, "open ticket", "open tickets")} from Jira and the mailbox${t.unassigned ? ` · ${t.unassigned} with no engineer` : ""}`
+            (mine
+              ? `${count(t.open, "open ticket", "open tickets")} assigned to you`
+              : `${count(t.open, "open ticket", "open tickets")} from Jira and the mailbox${t.unassigned ? ` · ${t.unassigned} with no engineer` : ""}`)
           )
         }
         actions={
@@ -262,7 +288,7 @@ export function PersonaOverview({ lead, admin = false }: { lead: boolean; admin?
         </Alert>
       )}
 
-      <MajorIncidents attention={attention} tickets={tickets} />
+      <MajorIncidents attention={attention} tickets={tickets} now={now} />
 
       {t && (
         <p role="status" className="text-[13px]">
@@ -282,16 +308,29 @@ export function PersonaOverview({ lead, admin = false }: { lead: boolean; admin?
 
       {/* Work statuses: pressing one lists only those tickets. */}
       <section aria-label="Open tickets by status" className="flex flex-col gap-2">
-        <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" aria-pressed={!chosen} onClick={() => pick(null)} className={cn(TILE, !chosen && "border-2 border-foreground")}>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-8">
+          <Button variant="secondary" aria-pressed={!chosen && !risk} onClick={() => pick(null)} className={cn(TILE, !chosen && !risk && "border-2 border-foreground")}>
             <span className="font-mono text-[10.5px] font-medium tracking-[0.08em] uppercase">All open</span>
             <span className="text-2xl leading-8 tabular-nums">{board ? <CountUp value={tickets.length} /> : "—"}</span>
             <span className="text-xs font-normal text-muted-foreground">{t ? `${t.sla_breached} past SLA` : " "}</span>
           </Button>
+          <Button
+            variant="secondary"
+            aria-pressed={risk}
+            onClick={() => {
+              pick(null);
+              setRisk(!risk);
+            }}
+            className={cn(TILE, risk && "border-2 border-foreground")}
+          >
+            <span className="font-mono text-[10.5px] font-medium tracking-[0.08em] uppercase">SLA at risk</span>
+            <span className={cn("text-2xl leading-8 tabular-nums", tickets.some(atRisk) && "text-critical")}>{board ? <CountUp value={tickets.filter(atRisk).length} /> : "—"}</span>
+            <span className="text-xs font-normal text-muted-foreground">near breach or past it</span>
+          </Button>
           {STATUSES.map((s) => {
             const n = tickets.filter((x) => s.stages.includes(x.stage)).length;
             return (
-              <Button key={s.key} variant="secondary" aria-pressed={status === s.key} onClick={() => pick(status === s.key ? null : s.key)} className={cn(TILE, status === s.key && "border-2 border-foreground")}>
+              <Button key={s.key} variant="secondary" aria-pressed={status === s.key && !risk} onClick={() => pick(status === s.key && !risk ? null : s.key)} className={cn(TILE, status === s.key && !risk && "border-2 border-foreground")}>
                 <span className="font-mono text-[10.5px] font-medium tracking-[0.08em] uppercase">{s.label}</span>
                 <span className="text-2xl leading-8 tabular-nums">{board ? <CountUp value={n} /> : "—"}</span>
                 <span className="text-xs font-normal text-muted-foreground">{s.sub}</span>
@@ -299,12 +338,52 @@ export function PersonaOverview({ lead, admin = false }: { lead: boolean; admin?
             );
           })}
           <div className={cn(TILE, "flex rounded-[14px] border border-dashed border-border-strong")}>
-            <span className="font-mono text-[10.5px] font-medium tracking-[0.08em] uppercase">Closed today</span>
-            <span className="text-2xl leading-8 font-medium tabular-nums">{today ? today.closed : "—"}</span>
-            <span className="text-xs text-muted-foreground">closure notes sent</span>
+            <span className="font-mono text-[10.5px] font-medium tracking-[0.08em] uppercase">Today</span>
+            <span className="flex items-baseline gap-1 text-2xl leading-8 font-medium tabular-nums">
+              {today?.opened ?? (today ? today.closed : "—")}
+              <span className="text-xs font-normal text-muted-foreground">{today?.opened === undefined ? "closed" : "new"}</span>
+            </span>
+            <span className="text-xs text-muted-foreground">
+              {today?.opened === undefined
+                ? "closure notes sent"
+                : `${today.closed} closed, backlog ${today.opened === today.closed ? "unchanged" : `${today.opened > today.closed ? "up" : "down"} ${Math.abs(today.opened - today.closed)}`}`}
+            </span>
           </div>
         </div>
       </section>
+
+      <Card className="gap-0 py-0">
+        <div className="flex flex-wrap items-end gap-x-4 gap-y-3 px-4 py-3">
+          <label className="flex flex-[2_1_16rem] flex-col gap-1.5">
+            <span className="font-mono text-[10.5px] font-medium tracking-[0.08em] text-muted-foreground uppercase">Search</span>
+            <span className="relative">
+              <Search className="pointer-events-none absolute top-2 left-2.5 size-4 text-muted-foreground" aria-hidden="true" />
+              <Input placeholder="Ticket ID, summary, application or engineer" value={query} onChange={(e) => setQuery(e.target.value)} className="pl-8" />
+            </span>
+          </label>
+          <label className="flex flex-[1_1_11rem] flex-col gap-1.5">
+            <span className="font-mono text-[10.5px] font-medium tracking-[0.08em] text-muted-foreground uppercase">Application</span>
+            <select value={app} onChange={(e) => setApp(e.target.value)} className={SELECT}>
+              <option value="">All applications ({byStatus.length})</option>
+              {apps.map(([name, c]) => (
+                <option key={name} value={name}>
+                  {name} ({c})
+                </option>
+              ))}
+            </select>
+          </label>
+          <div role="group" aria-labelledby="age-label" className="flex flex-col gap-1.5">
+            <span id="age-label" className="font-mono text-[10.5px] font-medium tracking-[0.08em] text-muted-foreground uppercase">Age</span>
+            <div className="flex flex-wrap items-center gap-1">
+              {[{ key: null, label: "Any" }, ...AGES].map((a) => (
+                <Button key={a.key ?? "any"} size="sm" variant={age === a.key ? "default" : "secondary"} aria-pressed={age === a.key} onClick={() => setAge(a.key)}>
+                  {a.label}
+                </Button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </Card>
 
       {needDetails.length > 0 && status !== "needs" && (
         <Alert>
@@ -336,36 +415,9 @@ export function PersonaOverview({ lead, admin = false }: { lead: boolean; admin?
         </Alert>
       )}
 
-      <Card className="gap-0 py-0">
-        <div className="flex flex-wrap items-center gap-2 px-4 py-3">
-          <div className="relative flex-[2_1_16rem]">
-            <Search className="pointer-events-none absolute top-2 left-2.5 size-4 text-muted-foreground" aria-hidden="true" />
-            <Input aria-label="Search the tickets" placeholder="Search by ticket ID, summary, application or engineer" value={query} onChange={(e) => setQuery(e.target.value)} className="pl-8" />
-          </div>
-          <div className="flex-[1_1_11rem]">
-            <select aria-label="Application" value={app} onChange={(e) => setApp(e.target.value)} className={SELECT}>
-              <option value="">All applications ({byStatus.length})</option>
-              {apps.map(([name, c]) => (
-                <option key={name} value={name}>
-                  {name} ({c})
-                </option>
-              ))}
-            </select>
-          </div>
-          <div role="group" aria-label="Age" className="flex flex-wrap items-center gap-1">
-            <span className="pr-1 text-xs text-muted-foreground">Age</span>
-            {[{ key: null, label: "Any" }, ...AGES].map((a) => (
-              <Button key={a.key ?? "any"} size="sm" variant={age === a.key ? "default" : "secondary"} aria-pressed={age === a.key} onClick={() => setAge(a.key)}>
-                {a.label}
-              </Button>
-            ))}
-          </div>
-        </div>
-      </Card>
-
       {!board ? (
         error ? null : (
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3" aria-busy="true">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" aria-busy="true">
             {Array.from({ length: 6 }, (_, i) => (
               <Skeleton key={i} className="h-32 rounded-[20px]" />
             ))}
@@ -373,7 +425,7 @@ export function PersonaOverview({ lead, admin = false }: { lead: boolean; admin?
         )
       ) : listed.length === 0 ? (
         <Card>
-          <p className="px-4 text-muted-foreground">{tickets.length ? "No tickets match the filters." : "No open tickets."}</p>
+          <p className="px-4 text-muted-foreground">{tickets.length ? "No tickets match the filters." : mine ? "No open tickets are assigned to you." : "No open tickets."}</p>
         </Card>
       ) : (
         SECTIONS.map((section) => {
@@ -384,7 +436,7 @@ export function PersonaOverview({ lead, admin = false }: { lead: boolean; admin?
                 <h2 className="pl-1 text-sm font-semibold">
                   {section.title} <span className="font-normal text-muted-foreground tabular-nums">{cards.length}</span>
                 </h2>
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                   {cards.map((x) => (
                     <TicketCard key={x.id} ticket={x} now={now} />
                   ))}
