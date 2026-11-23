@@ -71,6 +71,18 @@ class FeedbackOut(BaseModel):
     created_at: datetime
 
 
+class ChatCreate(BaseModel):
+    """A message to the AI assistant about one ticket."""
+    message: str = Field(..., min_length=1, max_length=4000, examples=["The job log says ORA-01555 at 02:10. What now?"])
+    author: str = Field(..., min_length=3, examples=["priya.raman@contoso.com"])
+
+
+class ChatUse(BaseModel):
+    """Make the assistant's proposed fix the ticket's suggested fix."""
+    run_id: int
+    reviewer: str = Field(..., min_length=3)
+
+
 class ReviewStepCreate(BaseModel):
     """The engineer submits the closure note for the lead's review."""
     reviewer: str = Field(..., min_length=3, examples=["priya.raman@contoso.com"])

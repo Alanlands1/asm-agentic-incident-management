@@ -60,7 +60,7 @@ def session():
 
 def test_the_articles_are_read_with_their_title_symptoms_and_codes():
     found = articles()
-    assert len(found) == 35 and {a.app for a in found.values()} >= {"PayrollPro", "OrderHub", "SalesConnect CRM"}
+    assert len(found) == 51 and {a.app for a in found.values()} >= {"PayrollPro", "OrderHub", "SalesConnect CRM"}
     batch = found["KB-PAY-002"]
     assert batch.title == "Monthly payroll batch PAY_CALC_MONTHLY fails" and "ORA-01555" in batch.codes
     assert "Control-M" in batch.symptoms and articles_version() == articles_version()
@@ -95,7 +95,7 @@ def test_rules_never_say_no_article_and_do_not_force_an_unrelated_case_onto_one(
     result = evaluate(*VPN, VPN_FIX, None)  # no application: every article is a candidate
     assert (result.status, result.article, result.method) == ("uncertain", None, None)
     scores = [score for _, score in result.ranking]
-    assert len(result.ranking) == 35 and scores == sorted(scores, reverse=True)  # every article, best first
+    assert len(result.ranking) == 51 and scores == sorted(scores, reverse=True)  # every article, best first
     payslip_link = evaluate("Payslip link on homepage gives 404", "The My Payslips link returns 404 Page Not Found.",
                             "Updated the link to the new payslip route.", "EmployeePortal")
     assert payslip_link.article != "KB-PAY-001"  # a broken link is not a blank payslip PDF
@@ -204,8 +204,8 @@ def test_coverage_counts_matched_and_gap_cases_and_unused_articles(session, prov
 
     payroll = next(r for r in coverage.coverage(session) if r.application == "PayrollPro")
     assert (payroll.drafts_waiting, payroll.outside_kb) == (1, 0)
-    assert (payroll.articles, payroll.cases, payroll.matched, payroll.gap, payroll.covered_share) == (5, 2, 1, 1, 0.5)
-    assert "KB-PAY-002" not in payroll.unused_articles and len(payroll.unused_articles) == 4
+    assert (payroll.articles, payroll.cases, payroll.matched, payroll.gap, payroll.covered_share) == (7, 2, 1, 1, 0.5)
+    assert "KB-PAY-002" not in payroll.unused_articles and len(payroll.unused_articles) == 6
     assert next(r for r in coverage.coverage(session) if r.application == "OrderHub").cases == 0  # every application is listed
 
 
@@ -219,7 +219,7 @@ async def test_knowledge_endpoints(client):
     assert (await client.get("/api/v1/knowledge/cases")).json() == []
     assert (await client.get("/api/v1/knowledge/cases", params={"match_status": "nope"})).status_code == 422
     rows = (await client.get("/api/v1/knowledge/coverage")).json()
-    assert len(rows) == 7 and all(r["articles"] == 5 and r["cases"] == 0 for r in rows)
+    assert len(rows) == 7 and all(r["articles"] >= 7 and r["cases"] == 0 for r in rows)
 
 
 async def test_knowledge_settings_are_edited_and_checked_through_the_admin_api(client, monkeypatch):

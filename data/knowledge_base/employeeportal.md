@@ -114,22 +114,21 @@ Only JPG/PNG under 2 MB are supported; HEIC (iPhone) images are rejected.
 ### KB-EMP-006 — Phishing email clicked / account suspected compromised
 
 **Symptoms**
-- Staff report a suspicious email with a link to a fake portal login page.
-- One or more users entered their password on it; sign-ins from unusual countries or new devices.
-- Users get MFA prompts they did not start.
+- Staff report an email linking to a fake portal login page.
+- Some entered their password; sign-ins from unusual places, or MFA prompts they did not start.
 
 **Root cause**
-Credential phishing: the attacker captured passwords (and sometimes MFA codes) through a look-alike login page. This is a security incident, not an application fault.
+Credential phishing: a look-alike login page captured passwords (sometimes MFA codes). A security incident, not an application fault.
 
 **Resolution steps**
-1. Treat it as a security incident: inform the Security Operations Centre (SOC) at once and keep the email.
-2. For each affected account: disable sign-in in Azure AD, revoke all sessions and refresh tokens.
-3. Reset the password and re-register MFA with the user in person or by verified call-back.
-4. Check the sign-in logs for the accounts since the email arrived; list any data or apps accessed.
-5. Ask the Messaging team to block the sender and purge the email from all mailboxes.
-6. Re-enable the accounts once SOC agrees; send staff the phishing awareness reminder.
+1. Inform the Security Operations Centre (SOC) at once; keep the email.
+2. Disable each affected account in Azure AD and revoke all sessions.
+3. Reset the password and re-register MFA after a verified call-back.
+4. Check sign-in logs since the email arrived for data or apps accessed.
+5. Ask the Messaging team to block the sender and purge the email.
+6. Re-enable the accounts when SOC agrees.
 
-**Escalation:** P2 for one account, P1 if several accounts or an admin account are compromised. SOC and the Identity team own the investigation; AMS-Workplace restores access.
+**Escalation:** P2 for one account, P1 for several or an admin account. SOC and the Identity team lead; AMS-Workplace restores access.
 
 ---
 

@@ -1,5 +1,7 @@
 """Ticket ingestion and query endpoints."""
 
+import asyncio
+from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import Literal, Optional
 
@@ -10,16 +12,16 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import settings
 from app.db.session import get_db
-from app.llm import ModelError
+from app.llm import ModelError, call_model
 from app.models.ticket import AgentRun, Feedback, PipelineStatus, Review, Ticket
 from app.privacy.masking import Masker
 from app.schemas.ticket import (
-    CommentCreate, CommentOut, FeedbackCreate, FeedbackOut, FixOutcomeCreate, IngestResponse, LeadReviewCreate, ReviewStepCreate,
-    TicketDetail, TicketList, TicketSummary,
+    AgentRunOut, ChatCreate, ChatUse, CommentCreate, CommentOut, FeedbackCreate, FeedbackOut, FixOutcomeCreate,
+    IngestResponse, LeadReviewCreate, ReviewStepCreate, TicketDetail, TicketList, TicketSummary,
 )
 from app.schemas.closure import ClosureReviewOut
 from app.schemas.triage import ReviewOut
-from app.services import fix, jira, lead_review
+from app.services import fix, fix_chat, jira, lead_review
 from app.services.atlassian import AtlassianError
 from app.services.comments import add_comment
 from app.services.closure import check_ticket as check_closure
@@ -27,6 +29,7 @@ from app.services.closure.run import _input_hash as closure_input_hash
 from app.services.data_quality import _input_hash as dq_input_hash
 from app.services.data_quality import check_ticket, last_run, reporter_text
 from app.services.resolution import busy as resolution_busy
+from app.services.resolution import current_hash as resolution_hash
 from app.services.resolution import input_changed as resolution_input_changed
 from app.services.triage.run import _input_hash as triage_input_hash
 from app.services.ingestion import ingest_workbook
@@ -297,6 +300,57 @@ def _set_closure_note(db: Session, ticket_id: str, text: str) -> TicketSummary:
         text = str(_masker(ticket, text).mask(text))
     ticket.resolution_notes = text
     check_closure(db, ticket)
+    db.commit()
+    db.refresh(ticket)
+    return TicketSummary.model_validate(ticket)
+
+
+@router.post("/tickets/{ticket_id}/chat", response_model=AgentRunOut, summary="Ask the AI assistant about the fix")
+async def chat(ticket_id: str, payload: ChatCreate, db: AsyncSession = Depends(get_db)) -> AgentRunOut:
+    """One turn: the masked ticket, the runbook fix, the fixes tried and the chat so far go to the model; its reply,
+    and a proposed fix once it has enough to go on, are stored with the ticket."""
+    text, masker = await db.run_sync(_chat_input, ticket_id, payload.message.strip())
+    await db.commit()  # no transaction open while the model thinks
+    try:  # in a worker thread: a model call takes seconds and must not hold up other requests
+        answer, audit = await asyncio.to_thread(lambda: call_model(fix_chat.chat_spec(), masker.mask(text), masker))
+    except ModelError as exc:
+        raise HTTPException(status_code=502, detail=f"The assistant gave no answer ({type(exc).__name__}). Try again.") from exc
+    return await db.run_sync(_chat_saved, ticket_id, payload, answer, asdict(audit))
+
+
+def _chat_input(db: Session, ticket_id: str, message: str):
+    ticket = _get_or_404(db, ticket_id)
+    try:
+        return fix_chat.prepare(db, ticket, message)
+    except fix_chat.ChatError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+def _chat_saved(db: Session, ticket_id: str, payload: ChatCreate, answer, audit: dict) -> AgentRunOut:
+    ticket = _get_or_404(db, ticket_id)
+    run = fix_chat.save_turn(db, ticket, payload.message.strip(), payload.author.strip(), answer, audit)
+    db.commit()
+    db.refresh(run)
+    return AgentRunOut.model_validate(run)
+
+
+@router.post("/tickets/{ticket_id}/chat/use", response_model=TicketSummary, summary="Use the assistant's fix")
+async def use_chat_fix(ticket_id: str, payload: ChatUse, db: AsyncSession = Depends(get_db)) -> TicketSummary:
+    """The proposal becomes the ticket's suggested fix (not from a runbook); then the engineer tries it and says if it
+    worked, as for any fix."""
+    ticket = await db.get(Ticket, ticket_id, options=[selectinload(Ticket.agent_runs), selectinload(Ticket.comments)])
+    if ticket is None:
+        raise HTTPException(status_code=404, detail=f"Ticket {ticket_id} not found")
+    seen = await resolution_hash(db, ticket)
+    return await db.run_sync(_chat_used, ticket_id, payload, seen)
+
+
+def _chat_used(db: Session, ticket_id: str, payload: ChatUse, seen: str) -> TicketSummary:
+    ticket = _get_or_404(db, ticket_id)
+    try:
+        fix_chat.use(db, ticket, payload.run_id, payload.reviewer.strip(), seen)
+    except fix_chat.ChatError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     db.commit()
     db.refresh(ticket)
     return TicketSummary.model_validate(ticket)

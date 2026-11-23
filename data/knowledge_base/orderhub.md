@@ -130,21 +130,21 @@ A new product was published in the catalogue before its SKU was created in the S
 ### KB-ORD-007 — Promo code applies a wrong or excessive discount (e.g. 200%)
 
 **Symptoms**
-- Customers get a far bigger discount than advertised; some orders total zero or negative.
-- order-api logs: `PROMO_CALC` with `discount_pct` above 100 or a fixed amount larger than the basket.
-- Started right after a promotion was created or edited in OrderHub Admin.
+- Customers get a far bigger discount than advertised; some orders total zero.
+- order-api logs `PROMO_CALC` with `discount_pct` above 100.
+- Started after a promotion was created or edited.
 
 **Root cause**
-The promotion was saved with the wrong discount type or value (for example 200 entered as a percentage instead of 20, or a fixed amount entered as a percentage). The promotion service applies it as stored; there is no upper limit check on percentage discounts.
+The promotion was saved with the wrong type or value (200 instead of 20, or a fixed amount as a percentage). There is no 0–100% limit on percentage discounts.
 
 **Resolution steps**
-1. Disable the promotion at once: OrderHub Admin → *Promotions* → select the code → *Deactivate*.
-2. Correct the discount type and value with Marketing, then re-activate it.
-3. List affected orders: OrderHub Admin → *Reports → Orders by promo code*, from the promotion's start time.
-4. Hold unshipped affected orders (*Fulfilment hold*) until the business decides to honour, cancel or re-price them.
-5. Raise a defect for the Commerce Dev team to add a 0–100% limit on percentage promotions.
+1. Deactivate the promotion at once: OrderHub Admin → *Promotions*.
+2. Correct the type and value with Marketing, then re-activate it.
+3. List affected orders: *Reports → Orders by promo code*.
+4. Hold unshipped affected orders until the business decides to honour, cancel or re-price.
+5. Raise a defect to add a 0–100% limit.
 
-**Escalation:** P1 if orders keep being placed with the wrong discount; P2 once the promotion is disabled. Involve the E-Commerce Director for the decision on affected orders.
+**Escalation:** P1 while wrong-discount orders are still placed; P2 once disabled. The E-Commerce Director decides on affected orders.
 
 ---
 

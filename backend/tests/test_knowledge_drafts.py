@@ -116,10 +116,10 @@ def test_approval_needs_every_gap_filled_and_gives_the_next_article_id(session, 
         drafts.review_draft(session, draft, "approved", "expert@contoso.com")
     edited = drafts.review_draft(session, draft, "edited", "expert@contoso.com",
                                  {"escalation": "Payroll Dev team if the manual sync fails again."})
-    assert (edited.status, edited.kb_id) == ("approved", "KB-PAY-006")
+    assert (edited.status, edited.kb_id) == ("approved", "KB-PAY-008")
     assert edited.escalation == "Payroll Dev team if the manual sync fails again."
-    assert drafts.export(edited).startswith("### KB-PAY-006 — New joiner missing from the payroll register")
-    assert drafts.next_kb_id(session, "PayrollPro") == "KB-PAY-007"
+    assert drafts.export(edited).startswith("### KB-PAY-008 — New joiner missing from the payroll register")
+    assert drafts.next_kb_id(session, "PayrollPro") == "KB-PAY-009"
     with pytest.raises(drafts.AlreadyDecided):
         drafts.review_draft(session, edited, "rejected", "expert@contoso.com", reason_code="other")
 

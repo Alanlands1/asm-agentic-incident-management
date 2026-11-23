@@ -99,6 +99,11 @@ async def _case(db: AsyncSession, t: Ticket) -> CaseInput:
                      kb_weights=await _kb_weights(db, t))
 
 
+async def current_hash(db: AsyncSession, t: Ticket) -> str:
+    """What a run now would see, as its fingerprint (a manual run uses no embedder)."""
+    return _input_hash(await _case(db, t), None)
+
+
 async def input_changed(db: AsyncSession, t: Ticket) -> bool:
     """Whether a run now would see something other than the last one did (a manual run uses no embedder)."""
     last = last_run(t, AGENT)
