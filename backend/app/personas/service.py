@@ -66,7 +66,7 @@ def board(db: Session, person: str | None = None, at: datetime | None = None) ->
         answer = (asked.output.get("answer") or {}) if asked else {}
         status = urgent.get(t.id)
         row = {
-            "id": t.id, "summary": t.summary, "application": t.application, "priority": priority,
+            "id": t.id, "summary": t.summary, "application": _application(t), "priority": priority,
             "priority_from": source, "sla_state": status.state if status else None,
             "minutes_left": status.minutes_left if status else None,
             "used_percent": round(status.used * 100) if status else None, "assignee": t.assignee,
@@ -98,6 +98,12 @@ def board(db: Session, person: str | None = None, at: datetime | None = None) ->
         "people": sorted(people.values(), key=lambda p: (p["name"] is None, -p["open"])),
         "tickets": rows,
     }
+
+
+def _application(t: Ticket) -> str | None:
+    """The ticket's application, else the one Triage worked out (a mailbox ticket arrives without one)."""
+    triage = last_run(t, TRIAGE)
+    return t.application or (triage.output.get("application") if triage else None)
 
 
 def _progress(db: Session, t: Ticket, steps: dict, rated: set) -> dict:

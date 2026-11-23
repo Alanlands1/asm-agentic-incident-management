@@ -1,10 +1,12 @@
 "use client";
 
-import { useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
-import { Play, Search } from "lucide-react";
+import { Play, Search, Siren } from "lucide-react";
 import { AppShell } from "@/components/console/app-shell";
 import { CountUp } from "@/components/console/count-up";
+import { SyncsCard } from "@/components/console/dashboard";
+import { ResetDemoButton } from "@/components/console/reset-demo-button";
 import { PageHeader } from "@/components/console/page-header";
 import { PriorityChip } from "@/components/console/priority-chip";
 import {
@@ -19,7 +21,9 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { incidentService } from "@/services/incident-service";
 import { pipelineService } from "@/services/pipeline-service";
+import { Attention } from "@/types/incident";
 import { cn } from "cn";
 
 const SELECT =
@@ -63,13 +67,86 @@ function TicketCard({ ticket, now }: { ticket: BoardTicket; now: number | null }
   );
 }
 
+const clock = (iso: string) => new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+
+/**
+ * A major incident on top of the Overview (19 Nov canvas): declared storms in red with who declared it and the last
+ * update to stakeholders; a storm nobody declared yet in amber, with a way to the Incidents page to decide.
+ */
+function MajorIncidents({ attention, tickets }: { attention: Attention | null; tickets: BoardTicket[] }) {
+  if (!attention) return null;
+  const summary = (id: string) => tickets.find((t) => t.id === id)?.summary ?? attention.p1_p2.find((i) => i.ticket_id === id)?.summary ?? id;
+  const declared = attention.storms.filter((s) => s.status === "declared");
+  const suspected = attention.storms.filter((s) => s.status === "open");
+  return (
+    <>
+      {declared.map((s) => {
+        const main = attention.p1_p2.find((i) => i.ticket_id === s.main_ticket_id);
+        return (
+          <Card key={s.id} className="gap-3 border-0 bg-primary px-4 py-4 text-primary-foreground lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex min-w-0 flex-col gap-1.5">
+              <p className="flex flex-wrap items-center gap-2 text-xs font-medium">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-foreground/15 px-2.5 py-0.5 font-semibold">
+                  <Siren className="size-3.5 animate-pulse" aria-hidden="true" />
+                  P1 · Major incident
+                </span>
+                <span className="opacity-85">{[s.application, s.main_ticket_id, `open since ${clock(s.opened_at)}`].filter(Boolean).join(" · ")}</span>
+              </p>
+              <h2 className="text-base font-semibold">{summary(s.main_ticket_id)}</h2>
+              <p className="text-[13px] opacity-90">
+                {`${count(s.ticket_count, "ticket", "tickets")} · ${count(s.people, "person", "people")} reporting`}
+                {s.declared_by && ` · declared by ${s.declared_by}${s.declared_at ? ` at ${clock(s.declared_at)}` : ""}`}
+                {main?.last_sent
+                  ? ` · last update to stakeholders ${clock(main.last_sent.sent_at)} by ${main.last_sent.sent_by}`
+                  : main
+                    ? ` · first stakeholder message ${main.first_message.minutes_left >= 0 ? `due in ${main.first_message.minutes_left} min` : "overdue"}`
+                    : ""}
+              </p>
+            </div>
+            <div className="flex shrink-0 flex-wrap gap-2">
+              <Button variant="secondary" nativeButton={false} render={<Link href="/incidents" />}>
+                Open incident
+              </Button>
+              <Button
+                variant="ghost"
+                className="text-primary-foreground hover:bg-primary-foreground/15 hover:text-primary-foreground"
+                nativeButton={false}
+                render={<Link href={ticketHref({ id: s.main_ticket_id })} />}
+              >
+                Open the ticket
+              </Button>
+            </div>
+          </Card>
+        );
+      })}
+      {suspected.map((s) => (
+        <Alert key={s.id} className="border-p2 bg-p2/15">
+          <AlertDescription className="flex flex-wrap items-center justify-between gap-2">
+            <span>
+              <span className="font-semibold">Possible major incident: </span>
+              {`${count(s.ticket_count, "ticket", "tickets")} about ${s.application ?? "the same problem"} since ${clock(s.opened_at)}, like ${s.main_ticket_id} “${summary(s.main_ticket_id)}”. Nobody has declared it yet.`}
+            </span>
+            <Button size="sm" variant="secondary" nativeButton={false} render={<Link href="/incidents" />}>
+              Decide on Incidents
+            </Button>
+          </AlertDescription>
+        </Alert>
+      ))}
+    </>
+  );
+}
+
 /**
  * The Overview (19 Nov review, design canvas): every open ticket for every role, by work status. The lead also
  * runs the agents and sees who has what. My worklist (my-worklist.tsx) is the viewer's own work.
  */
-export function PersonaOverview({ lead }: { lead: boolean }) {
+export function PersonaOverview({ lead, admin = false }: { lead: boolean; admin?: boolean }) {
   const { board, error, setError, load } = useBoard();
   const today = useToday(board);
+  const [attention, setAttention] = useState<Attention | null>(null);
+  useEffect(() => {
+    incidentService.getAttention().then(setAttention, () => setAttention(null));
+  }, [board]);
   const [status, setStatus] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [app, setApp] = useState("");
@@ -155,6 +232,12 @@ export function PersonaOverview({ lead }: { lead: boolean }) {
         }
         actions={
           <>
+            {admin && <ResetDemoButton />}
+            {admin && (
+              <Button variant="secondary" nativeButton={false} render={<Link href="/incidents" />}>
+                Incidents
+              </Button>
+            )}
             {lead && now !== null && (
               <Button onClick={runAgents} disabled={running}>
                 <Play />
@@ -178,6 +261,8 @@ export function PersonaOverview({ lead }: { lead: boolean }) {
           <AlertDescription>{ran}</AlertDescription>
         </Alert>
       )}
+
+      <MajorIncidents attention={attention} tickets={tickets} />
 
       {t && (
         <p role="status" className="text-[13px]">
@@ -340,6 +425,7 @@ export function PersonaOverview({ lead }: { lead: boolean }) {
         )}
         {board && <ActivityCard title="Recent activity · today" asOf={board} />}
       </div>
+      {admin && <SyncsCard />}
     </AppShell>
   );
 }

@@ -221,3 +221,12 @@ def test_today_counts_each_agent_and_closed_by_names_the_closer(session):  # noq
     closed = service.closed_by(session, "Ravi")
     assert [(c["id"], c["summary"], c["kb"]) for c in closed] == [("AMS-1", "Paid orders stuck", None)]
     assert service.closed_by(session, "Priya") == []
+
+
+def test_a_ticket_without_an_application_shows_the_one_triage_found(session):  # noqa: F811
+    session.add(Ticket(id="MBX-1", source="Mailbox", summary="Invoice run failed", status="new", pipeline_status="triaged"))
+    session.flush()
+    session.add(AgentRun(ticket_id="MBX-1", agent="triage", verdict="P2",
+                         output={"priority": 2, "application": "BillingEngine", "reason": "x", "rule": "r"}))
+    session.commit()
+    assert service.board(session, at=AT)["tickets"][0]["application"] == "BillingEngine"
