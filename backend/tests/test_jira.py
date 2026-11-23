@@ -248,6 +248,8 @@ async def test_agents_run_off_the_event_loop_thread(monkeypatch):
     monkeypatch.setattr(jira.settings, "DATABASE_URL", "sqlite+aiosqlite://")
     monkeypatch.setattr(jira, "run_data_quality", lambda db: seen.append(("dq", threading.current_thread().name)))
     monkeypatch.setattr(jira, "run_triage", lambda db: seen.append(("triage", threading.current_thread().name)))
+    monkeypatch.setattr(jira, "run_closure", lambda db: seen.append(("closure", threading.current_thread().name)))
+    monkeypatch.setattr(jira, "run_knowledge", lambda db: seen.append(("knowledge", threading.current_thread().name)))
     await jira.run_agents()
-    assert [s[0] for s in seen] == ["dq", "triage"]
+    assert [s[0] for s in seen] == ["dq", "triage", "closure", "knowledge"]  # a resolved ticket's notes, then learning
     assert all(name != threading.current_thread().name for _, name in seen)  # the API's loop stays free

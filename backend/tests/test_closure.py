@@ -240,6 +240,7 @@ async def test_closure_endpoints(client):
     assert (await client.post("/api/v1/closure/run")).json()["evaluated"] == 0  # everything closed arrived closed: history
     history = (await client.post("/api/v1/closure/run", params={"include_history": True})).json()
     assert history["evaluated"] == 15 and history["model_errors"] == 0  # the 15 closed JIRA tickets
+    assert history["knowledge"]["evaluated"] == 0  # Knowledge Builder ran next; with the model off no notes passed
     assert (await client.post("/api/v1/closure/tickets/NOPE/check")).status_code == 404
     assert (await client.post("/api/v1/closure/tickets/AMS-1209/check")).status_code == 409  # still open
     assert (await client.get("/api/v1/closure/queue")).json() == []

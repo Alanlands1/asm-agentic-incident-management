@@ -25,7 +25,7 @@ export const ROLES: {
     nav: [
       { label: "Overview", items: ["/team", "/my-tickets", "/incidents"] },
       { label: "Tickets", items: ["/review", "/tickets"] },
-      { label: "Agents", items: ["/agents/resolution"] },
+      { label: "Agents", items: ["/agents/resolution", "/agents/knowledge"] },
     ],
   },
   {
