@@ -21,7 +21,7 @@ this week.
 | Task | State | Commit | Notes |
 |---|---|---|---|
 | 1 No automatic Jira writes | Done | see log | `JIRA_AGENT_WRITES` (off) gates every automatic write; Send sets the decided priority; 318 tests |
-| 2 Resolution reads the note | To do | | |
+| 2 Resolution reads the note | Done (was already) | see log | `reporter_text()` already adds the note to the case and fingerprint; a test now proves it |
 | 3 Lead review setting | To do | | |
 | 4 Submit, approve, send back (backend) | To do | | |
 | 5 Lead review on the ticket page | To do | | |
