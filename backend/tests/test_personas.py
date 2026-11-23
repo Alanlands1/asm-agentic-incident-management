@@ -216,8 +216,8 @@ def test_today_counts_each_agent_and_closed_by_names_the_closer(session):  # noq
     session.add(Review(ticket_id="AMS-1", agent_run_id=runs[3].id, agent="close", action="sent", reviewer="Ravi"))
     session.commit()
     got = service.today(session, day)
-    assert got["data_quality"] == {"done": 2, "flagged": 1} and got["resolution"]["done"] == 1
-    assert got["knowledge_builder"] == {"done": 1, "flagged": 1} and got["closed"] == 1
+    assert (got["data_quality"]["done"], got["data_quality"]["flagged"], got["resolution"]["done"]) == (2, 1, 1)
+    assert (got["knowledge_builder"]["done"], got["knowledge_builder"]["flagged"], got["closed"]) == (1, 1, 1)
     closed = service.closed_by(session, "Ravi")
     assert [(c["id"], c["summary"], c["kb"]) for c in closed] == [("AMS-1", "Paid orders stuck", None)]
     assert service.closed_by(session, "Priya") == []

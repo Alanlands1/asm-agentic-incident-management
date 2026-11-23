@@ -6,7 +6,7 @@ import { useParams } from "next/navigation";
 import { AppShell } from "@/components/console/app-shell";
 import { PageHeader } from "@/components/console/page-header";
 import { PriorityChip } from "@/components/console/priority-chip";
-import { FeedbackStars } from "@/components/console/feedback-stars";
+import { FeedbackThumbs } from "@/components/console/feedback-thumbs";
 import { ReviewActions } from "@/components/console/review-actions";
 import { RunbookButton } from "@/components/console/runbook-button";
 import { FixChat } from "@/components/console/fix-chat";
@@ -31,7 +31,7 @@ import { ticketService } from "@/services/ticket-service";
 import { AttentionItem } from "@/types/incident";
 import { AgentRun, FixOutcome, FLAGS, Outcome, PipelineTicket } from "@/types/pipeline";
 import { ServiceNowTicket } from "@/types/servicenow";
-import { Check, ChevronDown, LoaderCircle, Play, Send, Star, TriangleAlert } from "lucide-react";
+import { Check, ChevronDown, LoaderCircle, Play, Send, ThumbsDown, ThumbsUp, TriangleAlert } from "lucide-react";
 import { cn } from "cn";
 
 const STAGE_WORDS: Record<string, string> = { ...Object.fromEntries(STAGES), historical: "Closed before the agents started" };
@@ -568,7 +568,10 @@ function Activity({ ticket }: { ticket: PipelineTicket }) {
       what: /^P\d$/.test(r.verdict) ? `recommends ${r.verdict}` : (VERDICTS[r.verdict] ?? humanize(r.verdict)),
     })),
     ...(decided ? [{ key: "decided", at: decided.created_at, who: decided.reviewer, what: `decided the priority: P${decided.final_priority}` }] : []),
-    ...(ticket.feedback ?? []).map((f) => ({ key: `f${f.id}`, at: f.created_at, who: f.reviewer, what: `rated ${AGENTS[f.agent] ?? humanize(f.agent)} ${f.stars} of 5` })),
+    // Ratings from use repeat what is listed already (agreed with the priority, the fix worked): only thumbs given by hand.
+    ...(ticket.feedback ?? [])
+      .filter((f) => !f.reason.startsWith("From use: "))
+      .map((f) => ({ key: `f${f.id}`, at: f.created_at, who: f.reviewer, what: `said ${AGENTS[f.agent] ?? humanize(f.agent)} was ${f.stars >= 4 ? "right" : f.stars <= 2 ? "wrong" : "partly right"}` })),
     ...ticket.comments.map((c) => ({ key: `c${c.id}`, at: c.created_at, who: masked(c.author_email), what: "added an update" })),
     ...(ticket.lead_reviews ?? []).map((s, i) => ({
       key: `l${i}`,
@@ -1357,7 +1360,7 @@ function Ticket() {
         {latestRun ? (
           <ul role="list">
             <Run run={latestRun}>
-              <FeedbackStars ticketId={ticket!.id} runId={latestRun.id} given={ratingOf(latestRun)} onSent={load} />
+              <FeedbackThumbs ticketId={ticket!.id} runId={latestRun.id} agent={latestRun.agent} references={references} given={ratingOf(latestRun)} onSent={load} />
             </Run>
           </ul>
         ) : (
@@ -1589,8 +1592,8 @@ function Ticket() {
                               ))}
                               {stars !== undefined && (
                                 <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                                  <Star className="size-3 fill-current text-primary" aria-hidden="true" />
-                                  Rated {stars} of 5
+                                  {stars >= 4 ? <ThumbsUp className="size-3 text-p3" aria-hidden="true" /> : <ThumbsDown className="size-3 text-primary" aria-hidden="true" />}
+                                  Rated {stars >= 4 ? "right" : stars <= 2 ? "wrong" : "partly right"}
                                 </span>
                               )}
                               {(s.section || action) && (

@@ -134,18 +134,28 @@ def today(db: Session, since: datetime, person: str | None = None) -> dict:
 
     reviews = db.scalars(select(Review).join(Ticket, Ticket.id == Review.ticket_id)
                          .where(Review.created_at >= since, *mine)).all()
+    week = datetime.now(UTC) - timedelta(days=7)
+    rated: dict[tuple[int, str], Feedback] = {}  # a person's latest rating of a result counts
+    for f in db.scalars(select(Feedback).join(Ticket, Ticket.id == Feedback.ticket_id)
+                        .where(Feedback.created_at >= week, *mine).order_by(Feedback.id)):
+        rated[(f.agent_run_id, f.reviewer)] = f
+
+    def thumbs(agent: str) -> dict:
+        given = [f for f in rated.values() if f.agent == agent]
+        return {"rated": len(given), "right": sum(f.stars >= 4 for f in given)}
+
     closed = db.scalar(select(func.count()).select_from(Ticket).where(
         Ticket.closed_at >= since.replace(tzinfo=None), Ticket.pipeline_status != PipelineStatus.HISTORICAL, *mine))
     return {
-        "data_quality": {"done": len(latest(DATA_QUALITY)),
+        "data_quality": {"done": len(latest(DATA_QUALITY)), **thumbs(DATA_QUALITY),
                          "flagged": sum(r.verdict == "needs_info" for r in latest(DATA_QUALITY))},
-        "triage": {"done": sum(bool(r.output.get("priority")) for r in latest(TRIAGE)),
+        "triage": {"done": sum(bool(r.output.get("priority")) for r in latest(TRIAGE)), **thumbs(TRIAGE),
                    "flagged": sum(r.agent == TRIAGE and r.reviewer == AUTO for r in reviews)},
-        "resolution": {"done": sum(r.verdict == "resolved" for r in latest(FIX)),
+        "resolution": {"done": sum(r.verdict == "resolved" for r in latest(FIX)), **thumbs(FIX),
                        "flagged": sum(r.agent == FIX and r.action in ("worked", "partly") for r in reviews)},
-        "closure_quality": {"done": len(latest("closure_quality")),
+        "closure_quality": {"done": len(latest("closure_quality")), **thumbs("closure_quality"),
                             "flagged": sum(r.verdict == "good" for r in latest("closure_quality"))},
-        "knowledge_builder": {"done": len(latest("knowledge_builder")),
+        "knowledge_builder": {"done": len(latest("knowledge_builder")), **thumbs("knowledge_builder"),
                               "flagged": sum(r.verdict == "matched" for r in latest("knowledge_builder"))},
         "closed": closed or 0,
     }

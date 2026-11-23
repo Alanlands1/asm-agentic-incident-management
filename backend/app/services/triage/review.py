@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.agents.triage.config import get_config
 from app.models.ticket import AgentRun, PipelineStatus, Review, Ticket
+from app.services import feedback
 from app.services.data_quality import last_run
 from app.services.triage.run import AGENT, AUTO_REVIEWER
 
@@ -69,6 +70,12 @@ def review(db: Session, ticket: Ticket, action: str, reviewer: str, priority: in
     decision = Review(ticket_id=ticket.id, agent_run_id=run.id, agent=AGENT, action=action, final_priority=final,
                       reason_code=reason_code, note=note, reviewer=reviewer.strip())
     db.add(decision)
+    if action == "accepted":  # what the engineer did is their rating of Triage's result
+        feedback.from_use(db, run, feedback.UP, reviewer, f"agreed with P{final}")
+    elif action == "edited":
+        feedback.from_use(db, run, feedback.DOWN, reviewer, f"changed P{run.output.get('priority')} to P{final}")
+    else:
+        feedback.from_use(db, run, feedback.DOWN, reviewer, "rejected the recommendation")
     ticket.pipeline_status = PipelineStatus.REVIEWED
     db.commit()
     return decision

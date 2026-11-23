@@ -144,12 +144,12 @@ async def test_rating_is_stored_with_the_agent_of_the_result(client, monkeypatch
     ]
 
 
-async def test_rating_needs_a_reason(client):
+async def test_a_thumb_needs_no_reason(client):
     ticket_id = await _first_ticket(client)
     run_id = await _seed_run(ticket_id)
-    response = await client.post(f"/api/v1/tickets/{ticket_id}/feedback", json=_rating(run_id, reason="   "))
-    assert response.status_code == 422
-    assert await _ratings() == 0
+    response = await client.post(f"/api/v1/tickets/{ticket_id}/feedback", json=_rating(run_id, stars=5, reason="   "))
+    assert response.status_code == 201 and response.json()["reason"] == ""  # one click: the reason is optional
+    assert await _ratings() == 1
 
 
 async def test_stars_outside_one_to_five_are_rejected(client):

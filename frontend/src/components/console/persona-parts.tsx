@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { BookOpen, CheckCheck, Library, ShieldCheck, SlidersHorizontal, type LucideIcon } from "lucide-react";
+import { BookOpen, CheckCheck, Library, ShieldCheck, SlidersHorizontal, ThumbsUp, type LucideIcon } from "lucide-react";
 import { CountUp } from "@/components/console/count-up";
 import { ListRow } from "@/components/console/list-row";
 import { STAGES } from "@/components/console/dashboard";
@@ -176,7 +176,7 @@ export function Sla({ ticket }: { ticket: BoardTicket }) {
   );
 }
 
-type AgentDay = { done: number; flagged: number };
+type AgentDay = { done: number; flagged: number; rated?: number; right?: number }; // rated, right: last 7 days
 type Today = Record<"data_quality" | "triage" | "resolution" | "closure_quality" | "knowledge_builder", AgentDay> & { closed: number };
 
 const midnight = () => {
@@ -255,6 +255,12 @@ export function AgentsToday({ today }: { today: Today | null }) {
                 </span>
                 <span className="text-xs text-muted-foreground">{flagged(day.flagged)}</span>
               </dd>
+              {key !== "knowledge_builder" && (
+                <dd className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <ThumbsUp className="size-3 text-p3" aria-hidden="true" />
+                  {day.rated ? `${day.right} of ${day.rated} rated right this week` : "Not rated this week"}
+                </dd>
+              )}
             </div>
           );
         })}

@@ -15,6 +15,7 @@ from app.agents.closure_quality.model_check import GAP
 from app.agents.closure_quality.rules import evaluate
 from app.agents.closure_quality.verdict import Verdict
 from app.models.ticket import AgentRun, Review, Ticket
+from app.services import feedback
 from app.services.closure.run import AGENT, RESOLVED
 from app.services.data_quality import last_run
 
@@ -71,6 +72,9 @@ def review(db: Session, ticket: Ticket, action: str, reviewer: str, final_text: 
     decision = Review(ticket_id=ticket.id, agent_run_id=run.id, agent=AGENT, action=action, final_text=final,
                       reason_code=reason_code, note=note, reviewer=reviewer.strip())
     db.add(decision)
+    feedback.from_use(db, run, {"accepted": feedback.UP, "edited": feedback.PARTLY}.get(action, feedback.DOWN), reviewer,
+                      {"accepted": "accepted the agent's close notes", "edited": "edited the agent's close notes"}
+                      .get(action, "set the check aside"))
     db.commit()
     return decision
 

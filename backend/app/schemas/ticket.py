@@ -48,8 +48,9 @@ class CommentOut(BaseModel):
 class FeedbackCreate(BaseModel):
     """A person's rating of one agent's result."""
     agent_run_id: int
-    stars: int = Field(..., ge=1, le=5)
-    reason: str = Field(..., min_length=1, examples=["The runbook is for the card gateway, this is the bank transfer file."])
+    stars: int = Field(..., ge=1, le=5)  # thumbs: 5 up, 1 down
+    reason: str = Field("", max_length=4000, description="Optional: quick reasons and a suggestion",
+                        examples=["Wrong runbook. The runbook is for the card gateway, this is the bank transfer file."])
     reviewer: str = Field(..., min_length=3, examples=["priya.raman@contoso.com"])
 
     @field_validator("reason", mode="before")

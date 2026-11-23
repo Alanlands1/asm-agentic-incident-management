@@ -159,13 +159,13 @@ def _set_guidance(db: Session, ticket_id: str, text: str) -> TicketSummary:
 
 @router.post("/tickets/{ticket_id}/feedback", response_model=FeedbackOut, status_code=201, summary="Rate an agent's result")
 async def rate_agent_run(ticket_id: str, payload: FeedbackCreate, db: AsyncSession = Depends(get_db)):
-    """One to five stars on one agent's result, with the reason. Ratings of Resolution answers move the runbooks they
-    cite up or down for later tickets of the same kind."""
+    """Thumbs up (5) or down (1) on one agent's result, with optional reasons and a suggestion. Ratings of Resolution
+    answers move the runbooks they cite up or down for later tickets of the same kind."""
     run = await db.get(AgentRun, payload.agent_run_id)
     if run is None or run.ticket_id != ticket_id:
         raise HTTPException(status_code=404, detail=f"Ticket {ticket_id} has no agent result {payload.agent_run_id}")
     reason = payload.reason
-    if settings.PII_MASKING_ENABLED:  # stored masked, like the note
+    if reason and settings.PII_MASKING_ENABLED:  # stored masked, like the note
         ticket = await db.get(Ticket, ticket_id)
         await db.refresh(ticket, ["comments"])
         reason = str(_masker(ticket, reason).mask(reason))

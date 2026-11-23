@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.ticket import AgentRun, PipelineStatus, Review, Ticket
+from app.services import feedback
 from app.services.data_quality import last_run
 
 AGENT = "resolution"
@@ -89,6 +90,8 @@ def record(db: Session, ticket: Ticket, run_id: int, outcome: str, reviewer: str
     answer = Review(ticket_id=ticket.id, agent_run_id=run.id, agent=AGENT, action=outcome, note=note,
                     reviewer=reviewer.strip())
     db.add(answer)
+    feedback.from_use(db, run, {"worked": feedback.UP, "partly": feedback.PARTLY}.get(outcome, feedback.DOWN), reviewer,
+                      {"worked": "the fix worked", "partly": "the fix worked with changes"}.get(outcome, "the fix didn't work"))
     db.flush()
     if outcome == "wrong":
         wrong = sum(a.action == "wrong" for a in answers(db, ticket.id).values())

@@ -78,6 +78,8 @@ async def board(
 
 class AgentDay(BaseModel):
     done: int  # tickets the agent worked on (Triage: given a priority; Resolution: a fix suggested)
+    rated: int = 0  # results rated in the last 7 days, by hand or from use (a person's latest rating counts)
+    right: int = 0  # of those, rated right (thumbs up)
     flagged: int  # DQ: need details; Triage: approved without a person; Resolution: fixes that worked;
     # Closure Quality: notes good; Knowledge Builder: matched to an article
 
