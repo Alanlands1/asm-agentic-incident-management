@@ -9,6 +9,7 @@ import { PriorityChip } from "@/components/console/priority-chip";
 import { FeedbackStars } from "@/components/console/feedback-stars";
 import { ReviewActions } from "@/components/console/review-actions";
 import { RunbookButton } from "@/components/console/runbook-button";
+import { FixChat } from "@/components/console/fix-chat";
 import { SectionHead, SlaClock } from "@/components/console/sync-parts";
 import { STAGES } from "@/components/console/dashboard";
 import { humanize } from "@/components/console/document-hints";
@@ -40,8 +41,11 @@ const AGENTS: Record<string, string> = {
   resolution: "Resolution",
   closure_quality: "Closure Quality",
   knowledge_builder: "Knowledge Builder",
+  fix_chat: "AI assistant",
 };
 const VERDICTS: Record<string, string> = {
+  answered: "answered the engineer",
+  proposed: "proposed a fix",
   uncertain: "the rules could not decide",
   passed: "complete",
   needs_info: "needs details from the reporter",
@@ -176,7 +180,10 @@ function Run({ run, children }: { run: AgentRun; children?: React.ReactNode }) {
     <li className="flex flex-col gap-1.5 border-b border-border px-4 py-3 text-[13px] last:border-b-0">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <span className="font-semibold">{AGENTS[run.agent] ?? humanize(run.agent)}</span>
-        <span>{/^P[1-5]$/.test(run.verdict) ? `recommends ${run.verdict}` : (VERDICTS[run.verdict] ?? run.verdict)}</span>
+        <span>
+          {o.source === "chat" ? "uses the fix worked out with the AI assistant" : /^P[1-5]$/.test(run.verdict) ? `recommends ${run.verdict}` : (VERDICTS[run.verdict] ?? run.verdict)}
+        </span>
+        {o.source === "chat" && <Badge variant="outline">AI suggestion, not from a runbook</Badge>}
         <Badge variant="secondary">{o.stage === "model" || run.agent === "resolution" ? "Model" : "Rules"}</Badge>
         {flags.map((f) => (
           <Badge key={f}>{FLAGS[f]}</Badge>
@@ -1368,6 +1375,9 @@ function Ticket() {
             busy={busy}
             onDone={load}
           />
+        )}
+        {key === "resolution" && !closed && (
+          <FixChat ticket={ticket!} noRunbook={latestRun?.verdict === "no_match"} onDone={load} />
         )}
         {key === "resolution" && references.length > 0 && (
           <div className="flex flex-wrap items-center gap-2 border-t border-border px-4 py-3">

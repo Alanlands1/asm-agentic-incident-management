@@ -1,5 +1,5 @@
 import { apiClient } from "@/lib/api-client";
-import { AgentCheckResult, AgentRunResult, AgentSlug, ClosureQueueItem, Outcome, PipelineTicket, ReviewInput, ReviewQueueItem, TicketListItem } from "@/types/pipeline";
+import { AgentCheckResult, AgentRun, AgentRunResult, AgentSlug, ClosureQueueItem, Outcome, PipelineTicket, ReviewInput, ReviewQueueItem, TicketListItem } from "@/types/pipeline";
 
 const id = encodeURIComponent;
 
@@ -44,6 +44,12 @@ export const pipelineService = {
   saveClosureNote: (ticketId: string, text: string) =>
     apiClient(`/tickets/${id(ticketId)}/closure-note`, { method: "PUT", body: JSON.stringify({ text }) }),
   /** Posts the closure note on the Jira issue and moves the issue to done. */
+  /** One turn with the AI assistant about the fix; returns the stored turn. */
+  chat: (ticketId: string, body: { message: string; author: string }) =>
+    apiClient<AgentRun>(`/tickets/${id(ticketId)}/chat`, { method: "POST", body: JSON.stringify(body) }),
+  /** Makes the assistant's proposed fix the ticket's suggested fix. */
+  useChatFix: (ticketId: string, body: { run_id: number; reviewer: string }) =>
+    apiClient(`/tickets/${id(ticketId)}/chat/use`, { method: "POST", body: JSON.stringify(body) }),
   /** Hands the checked closure note to the lead (when LEAD_REVIEW asks for it). */
   submitReview: (ticketId: string, reviewer: string) =>
     apiClient(`/tickets/${id(ticketId)}/submit-review`, { method: "POST", body: JSON.stringify({ reviewer }) }),
