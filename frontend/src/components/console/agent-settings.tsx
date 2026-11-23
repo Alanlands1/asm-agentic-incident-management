@@ -13,7 +13,7 @@ import { AdminSetting, SettingValue } from "@/types/admin";
 const selectClass =
   "h-8 w-full rounded-lg border border-input bg-background px-2.5 text-[13px] text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 
-const MODELS = ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5", "claude-fable-5-1"];
+const MODELS = ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5", "claude-fable-5-2"];
 const EFFORTS: [string, string][] = [
   ["low", "Low: quick checks"],
   ["medium", "Medium"],

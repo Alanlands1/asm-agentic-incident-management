@@ -23,6 +23,7 @@ class ConnectionOut(BaseModel):
     account_name: str | None = None
     error: str | None = None
     sync_minutes: int
+    write_back: bool = False  # an approved Knowledge Builder article may be published to Confluence
 
 
 class SpaceOut(BaseModel):
@@ -70,7 +71,8 @@ class PageDetail(PageOut):
 
 @router.get("/connection", response_model=ConnectionOut, summary="Test the Confluence connection")
 async def connection() -> ConnectionOut:
-    out = ConnectionOut(site=settings.ATLASSIAN_BASE_URL, connected=False, sync_minutes=settings.CONFLUENCE_SYNC_MINUTES)
+    out = ConnectionOut(site=settings.ATLASSIAN_BASE_URL, connected=False, sync_minutes=settings.CONFLUENCE_SYNC_MINUTES,
+                        write_back=settings.CONFLUENCE_WRITE_BACK)
     try:
         await confluence.list_spaces()  # proves Confluence access, not only the account
         out.account_name = await atlassian.whoami()

@@ -1,13 +1,14 @@
 """Copy Confluence pages into confluence_pages as plain text: the knowledge base the agents read.
 
-Read-only towards Confluence. Every sync copies every page of the selected spaces and drops pages deleted there.
+Read-only towards Confluence, except publish_article. Every sync copies every page of the selected spaces and drops
+pages deleted there.
 """
 
 import asyncio
 import logging
 import re
-import tempfile
 from datetime import UTC, datetime
+from html import escape
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
@@ -15,9 +16,12 @@ from typing import Any
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agents.closure_quality.model_check import kb_ids
+from app.agents.knowledge_builder.articles import articles
 from app.agents.resolution.ingest import ingest_kb
 from app.core.config import settings
 from app.models.confluence import ConfluencePage, ConfluenceSpace, ConfluenceSync
+from app.models.knowledge import KBDraft
 from app.services import atlassian
 from app.services.atlassian import AtlassianError
 
@@ -25,6 +29,7 @@ logger = logging.getLogger("app.confluence")
 
 MAX_PAGES = 2000  # shortcut: one sync copies at most this many pages per space; page by date if a space grows past it
 sync_lock = asyncio.Lock()
+CONTACTS = "<h2>Escalation contacts</h2>"  # the table after the last article on every application page
 
 
 class _Text(HTMLParser):
@@ -176,18 +181,70 @@ def runbook(page: ConfluencePage) -> str:
 
 
 async def feed_resolution(db: AsyncSession) -> None:
-    """The Resolution agent searches the copied pages in place of the runbook files; with nothing copied, the files.
-    Its ingest skips text it already has, so an unchanged copy costs no model call."""
+    """The agents read the copied pages in place of the runbook files; with nothing copied, the files. The pages are
+    written to CONFLUENCE_COPY_DIR: the Resolution agent's ingest skips text it already has, so an unchanged copy costs
+    no model call, and Knowledge Builder and Closure Quality read their article ids from the same folder."""
     pages = (await db.scalars(select(ConfluencePage))).all()
     await db.commit()  # no transaction open while the model describes the new chunks
+    folder = settings.CONFLUENCE_COPY_DIR
     try:
-        with tempfile.TemporaryDirectory() as folder:
-            for page in pages:
-                Path(folder, f"confluence-{page.id}.md").write_text(runbook(page), encoding="utf-8")
-            stats = await ingest_kb(Path(folder) if pages else None)
+        folder.mkdir(parents=True, exist_ok=True)
+        for old in folder.glob("*.md"):  # pages deleted in Confluence go too
+            old.unlink()
+        for page in pages:
+            Path(folder, f"confluence-{page.id}.md").write_text(runbook(page), encoding="utf-8")
+        articles.cache_clear()
+        kb_ids.cache_clear()
+        stats = await ingest_kb(folder if pages else None)
         logger.info("Resolution knowledge base from %s copied pages: %s", len(pages), stats)
     except Exception:
         logger.exception("Resolution knowledge base was not updated")  # the copy itself is good
+
+
+def _section(draft: KBDraft) -> str:
+    """An approved article in the storage format of the other articles on the page."""
+    def items(values: list[str]) -> str:
+        return "".join(f"<li>{escape(v)}</li>" for v in values)
+
+    return (f"<h3>{escape(draft.kb_id)} &mdash; {escape(draft.title)}</h3>"
+            f"<p><strong>Symptoms</strong></p><ul>{items(draft.symptoms)}</ul>"
+            f"<p><strong>Root cause</strong></p><p>{escape(draft.root_cause)}</p>"
+            f"<p><strong>Resolution steps</strong></p><ol>{items(draft.resolution_steps)}</ol>"
+            f"<p><strong>Escalation:</strong> {escape(draft.escalation)}</p><hr />")
+
+
+def application_page(pages: list[ConfluencePage], application: str) -> ConfluencePage | None:
+    """The page that holds an application's articles: "OrderHub — Application Support Knowledge Base"."""
+    return next((p for p in pages if p.title.startswith(f"{application} ")), None)
+
+
+async def publish_article(db: AsyncSession, draft: KBDraft) -> str:
+    """Add an approved article as a new section of its application's page, before the escalation contacts, then copy
+    the spaces again so the agents use it. Publishing it twice changes nothing. Returns the page's address."""
+    if not settings.CONFLUENCE_WRITE_BACK:
+        raise AtlassianError("Writing to Confluence is switched off: set CONFLUENCE_WRITE_BACK=true in backend/.env")
+    if draft.status != "approved" or not draft.kb_id:
+        raise AtlassianError("Only an approved article can be published")
+    page = application_page(list(await db.scalars(select(ConfluencePage))), draft.application)
+    if page is None:
+        raise AtlassianError(f"No page for {draft.application} in the copied spaces: sync Confluence first")
+    page_id, url = page.id, page.url
+    await db.commit()  # no transaction open while Confluence answers
+    async with atlassian.client() as c:
+        current = await atlassian.call(c, "GET", f"/wiki/api/v2/pages/{page_id}", params={"body-format": "storage"})
+        body = current["body"]["storage"]["value"]
+        if f"<h3>{escape(draft.kb_id)} " not in body:
+            at = body.find(CONTACTS)
+            body = body[:at] + _section(draft) + body[at:] if at >= 0 else body + _section(draft)
+            await atlassian.call(c, "PUT", f"/wiki/api/v2/pages/{page_id}", json={
+                "id": page_id, "status": "current", "title": current["title"],
+                "body": {"representation": "storage", "value": body},
+                "version": {"number": current["version"]["number"] + 1,
+                            "message": f"{draft.kb_id} added by the AMS Knowledge Builder"},
+            })
+            logger.info("Published %s to Confluence page %s", draft.kb_id, page_id)
+    await run_sync(db, "publish")
+    return url
 
 
 async def schedule_loop(session_factory) -> None:

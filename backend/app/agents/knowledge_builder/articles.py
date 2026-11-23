@@ -4,6 +4,7 @@ import hashlib
 import re
 from dataclasses import dataclass
 from functools import lru_cache
+from pathlib import Path
 
 from app.agents.resolution.chunking import chunk_knowledge_base
 from app.core.config import settings
@@ -35,11 +36,17 @@ def codes(text: str) -> frozenset[str]:
     return frozenset(c for c in CODE.findall(text) if not c.startswith("KB-") and not TICKET_REF.match(c))
 
 
+def kb_dir() -> Path:
+    """The copied Confluence pages when there are any (what the Resolution agent searches too), else the runbook files."""
+    copy = settings.CONFLUENCE_COPY_DIR
+    return copy if copy.is_dir() and any(copy.glob("*.md")) else settings.KB_DIR
+
+
 @lru_cache(maxsize=1)
 def articles() -> dict[str, Article]:
-    """Every article by id."""
+    """Every article by id. A Confluence sync clears the cache."""
     found = {}
-    for chunks in chunk_knowledge_base(settings.KB_DIR).values():
+    for chunks in chunk_knowledge_base(kb_dir()).values():
         for chunk in chunks:
             if chunk.kb_id and (heading := HEADING.search(chunk.content)):
                 symptoms = SYMPTOMS.search(chunk.content)

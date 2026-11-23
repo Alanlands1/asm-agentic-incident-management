@@ -7,6 +7,7 @@ from app.api.v1.endpoints import (
     closure,
     confluence,
     dashboard,
+    demo,
     data_quality,
     dq,
     health,
@@ -42,4 +43,5 @@ api_router.include_router(incidents.router)
 api_router.include_router(dashboard.router)
 api_router.include_router(personas.router)
 api_router.include_router(runbooks.router)
+api_router.include_router(demo.router)
 

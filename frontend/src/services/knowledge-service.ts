@@ -6,6 +6,7 @@ export const knowledgeService = {
   drafts: (status: DraftStatus) => apiClient<KBDraft[]>(`/knowledge/drafts?status=${status}`),
   review: (id: number, body: KBDraftReview) =>
     apiClient<KBDraft>(`/knowledge/drafts/${id}/review`, { method: "POST", body: JSON.stringify(body) }),
+  publish: (id: number) => apiClient<KBDraft>(`/knowledge/drafts/${id}/publish`, { method: "POST" }),
   exportUrl: (id: number) => `${getApiBase()}/knowledge/drafts/${id}/export`,
   problems: () => apiClient<ProblemCandidate[]>("/knowledge/problems?status=open"),
   decide: (id: number, action: "accepted" | "dismissed", decided_by: string) =>

@@ -108,6 +108,10 @@ class TicketDetail(TicketSummary):
     comments: list[CommentOut]
     feedback: list[FeedbackOut] = Field(default_factory=list, description="Star ratings people gave the agents' results")
     decided: Optional[ReviewOut] = Field(None, description="The last decision a person made on the priority, here or in Jira")
+    changed: dict[str, bool] = Field(
+        default_factory=dict,
+        description="Per agent that ran before: true when what it would see now differs from its last run, so running again "
+                    "can give a different answer")
 
 
 class TicketList(BaseModel):

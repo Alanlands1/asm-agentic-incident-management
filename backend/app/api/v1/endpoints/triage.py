@@ -1,6 +1,6 @@
 """Triage agent endpoints."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,7 +29,10 @@ router = APIRouter(prefix="/triage", tags=["triage"])
 @router.post("/run", response_model=TriageRunResponse, summary="Triage tickets that passed Data Quality")
 async def run(db: AsyncSession = Depends(get_db)) -> TriageRunResponse:
     """Recommend a priority for every dq_passed ticket. Safe to re-run: unchanged tickets are skipped."""
+    started = datetime.now(UTC)
     result = await db.run_sync(run_triage)
+    await jira.announce(db, started)  # every run writes its verdicts back to Jira (no-op unless JIRA_WRITE_BACK)
+    await jira.move_triaged(db)
     return TriageRunResponse(
         evaluated=result.evaluated, skipped=result.skipped, model_errors=result.model_errors,
         needs_review=result.needs_review, by_verdict=dict(result.by_verdict),
@@ -39,7 +42,11 @@ async def run(db: AsyncSession = Depends(get_db)) -> TriageRunResponse:
 @router.post("/tickets/{ticket_id}/check", response_model=TriageCheckResponse, summary="Triage one ticket")
 async def check_one_ticket(ticket_id: str, db: AsyncSession = Depends(get_db)) -> TriageCheckResponse:
     """Rules, then the model once: the impact, and any fact the rules lack. Without the model the rules' own answer is used."""
-    return await db.run_sync(_check_one, ticket_id)
+    started = datetime.now(UTC)
+    result = await db.run_sync(_check_one, ticket_id)
+    await jira.announce(db, started)
+    await jira.move_triaged(db)
+    return result
 
 
 def _check_one(db: Session, ticket_id: str) -> TriageCheckResponse:

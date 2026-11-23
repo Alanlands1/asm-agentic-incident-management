@@ -1,5 +1,7 @@
 """Data Quality agent endpoints."""
 
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
@@ -8,6 +10,7 @@ from app.db.session import get_db
 from app.llm import ModelError, ModelUnavailableError
 from app.models.ticket import PipelineStatus, Ticket
 from app.schemas.data_quality import DataQualityCheckResponse, DataQualityRunResponse
+from app.services import jira
 from app.services.data_quality import check_ticket, run_data_quality
 
 router = APIRouter(prefix="/data-quality", tags=["data quality"])
@@ -16,7 +19,10 @@ router = APIRouter(prefix="/data-quality", tags=["data quality"])
 @router.post("/run", response_model=DataQualityRunResponse, summary="Check pending tickets")
 async def run(db: AsyncSession = Depends(get_db)) -> DataQualityRunResponse:
     """Run the Data Quality checks on every pending ticket. Safe to re-run: unchanged tickets are skipped."""
+    started = datetime.now(UTC)
     result = await db.run_sync(run_data_quality)
+    await jira.announce(db, started)  # every run writes its verdicts back to Jira (no-op unless JIRA_WRITE_BACK)
+    await jira.move_triaged(db)
     return DataQualityRunResponse(
         evaluated=result.evaluated, skipped=result.skipped, model_errors=result.model_errors, by_verdict=dict(result.by_verdict)
     )
@@ -25,7 +31,11 @@ async def run(db: AsyncSession = Depends(get_db)) -> DataQualityRunResponse:
 @router.post("/tickets/{ticket_id}/check", response_model=DataQualityCheckResponse, summary="Check one ticket")
 async def check_one_ticket(ticket_id: str, db: AsyncSession = Depends(get_db)) -> DataQualityCheckResponse:
     """Rules, then the model if the rules cannot decide and the model is enabled. Pending tickets only."""
-    return await db.run_sync(_check_one, ticket_id)
+    started = datetime.now(UTC)
+    result = await db.run_sync(_check_one, ticket_id)
+    await jira.announce(db, started)
+    await jira.move_triaged(db)
+    return result
 
 
 def _check_one(db: Session, ticket_id: str) -> DataQualityCheckResponse:

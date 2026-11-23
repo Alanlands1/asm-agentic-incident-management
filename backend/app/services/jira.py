@@ -18,13 +18,15 @@ import re
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, object_session, selectinload
 from sqlalchemy.pool import NullPool
 
 from app.core.config import settings
+from app.models.confluence import ConfluencePage
 from app.models.jira import JiraProject, JiraSync
+from app.models.kb import KBChunk
 from app.models.servicenow import ServiceNowTicket
 from app.models.ticket import AgentRun, Comment, PipelineStatus, Review, Ticket
 from app.privacy.masking import Masker
@@ -44,7 +46,7 @@ logger = logging.getLogger("app.jira")
 PRIORITY = {"Highest": "1 - Critical", "High": "2 - High", "Medium": "3 - Moderate", "Low": "4 - Low", "Lowest": "5 - Planning"}
 FIELDS = [
     "summary", "description", "priority", "status", "reporter", "assignee", "components", "issuetype", "environment",
-    "created", "resolutiondate", "project",
+    "created", "resolutiondate", "project", "comment",
 ]
 PRIORITY_NUMBER = {"Highest": 1, "High": 2, "Medium": 3, "Low": 4, "Lowest": 5}
 STATUS = {"new": "new", "indeterminate": "in_progress", "done": "closed"}  # Jira status category -> tickets.status
@@ -109,16 +111,68 @@ async def reporter_replies(issue: dict[str, Any], c: Any = None) -> list[str]:
         for comment in reversed(data["comments"])
         if reporter and comment["author"].get("accountId") == reporter
     ]
-    return [t for t in texts if t and not t.startswith((SAID, "Automatic SLA warning")) and not _to_agents(t)]
+    return [t for t in texts if t and not t.startswith(SYSTEM) and not _to_agents(t)]
 
 
-async def post_comment(key: str, text: str, c: Any = None) -> None:
-    """Add a comment to a Jira issue, as the owner of the API token."""
+INLINE = re.compile(r"`([^`]+)`|\[([^\]]+)\]\((https?://[^)\s]+)\)")  # `command` and [title](url) in a system comment
+LABEL = re.compile(r"[A-Z][\w ]{0,24}: ")  # "Likely cause: ..." starts a line: the label is bold
+ORDERED = re.compile(r"\d+\. ")
+
+
+def plain(text: str) -> str:
+    """A system comment without its `code` and [link](url) marks: the copy kept on the ticket."""
+    return INLINE.sub(lambda m: m.group(1) or m.group(2), text)
+
+
+def _t(text: str, *marks: dict) -> dict:
+    return {"type": "text", "text": text, **({"marks": list(marks)} if marks else {})}
+
+
+def _inline(line: str) -> list[dict]:
+    nodes, at = [], 0
+    if (label := LABEL.match(line)) is not None:
+        nodes.append(_t(label.group(0)[:-1], {"type": "strong"}))
+        at = label.end() - 1  # the space stays plain
+    for m in INLINE.finditer(line, at):
+        if m.start() > at:
+            nodes.append(_t(line[at:m.start()]))
+        nodes.append(_t(m.group(1), {"type": "code"}) if m.group(1)
+                     else _t(m.group(2), {"type": "link", "attrs": {"href": m.group(3)}}))
+        at = m.end()
+    if at < len(line):
+        nodes.append(_t(line[at:]))
+    return nodes
+
+
+def _panel(text: str, tone: str) -> dict:
+    """A system comment as a coloured Jira panel: the first line a heading, "- " lines a bullet list, "1. " lines numbered."""
+    title, *rest = text.splitlines()
+    content: list[dict] = [{"type": "heading", "attrs": {"level": 4}, "content": [_t(title)]}]
+    items = None
+    for line in rest:
+        kind = "bulletList" if line.startswith("- ") else "orderedList" if ORDERED.match(line) else None
+        if kind is None:
+            items = None
+            if line:
+                content.append({"type": "paragraph", "content": _inline(line)})
+            continue
+        if items is None or items["type"] != kind:
+            items = {"type": kind, "content": []}
+            content.append(items)
+        body = line[2:] if kind == "bulletList" else ORDERED.sub("", line, count=1)
+        items["content"].append({"type": "listItem", "content": [{"type": "paragraph", "content": _inline(body)}]})
+    return {"type": "panel", "attrs": {"panelType": tone}, "content": content}
+
+
+async def post_comment(key: str, text: str, c: Any = None, tone: str | None = None) -> None:
+    """Add a comment to a Jira issue, as the owner of the API token. With a tone (info, note, success, warning, error)
+    the text is a system comment, formatted in a panel of that colour; without one it goes as written, in an info panel.
+    """
     if not settings.JIRA_WRITE_BACK:
         raise AtlassianError("Writing to Jira is switched off: set JIRA_WRITE_BACK=true in backend/.env")
     lines = [{"type": "paragraph", "content": [{"type": "text", "text": line}] if line else []} for line in text.splitlines()]
-    # an info panel marks the comment as the system's: Jira shows it under the token owner's name
-    panel = {"type": "panel", "attrs": {"panelType": "info"}, "content": lines}
+    # a panel marks the comment as the system's: Jira shows it under the token owner's name
+    panel = _panel(text, tone) if tone else {"type": "panel", "attrs": {"panelType": "info"}, "content": lines}
     async with _jira(c) as c:
         await atlassian.call(
             c, "POST", f"/rest/api/3/issue/{key}/comment", json={"body": {"type": "doc", "version": 1, "content": [panel]}}
@@ -169,6 +223,15 @@ def map_issue(issue: dict[str, Any], team: str | None) -> dict[str, Any]:
     )
 
 
+def _close_notes(fields: dict[str, Any]) -> str | None:
+    """The newest comment a person wrote on the issue: on a done issue, how it was fixed (Jira has no close-notes field)."""
+    for comment in reversed((fields.get("comment") or {}).get("comments", [])):
+        text = adf_text(comment.get("body")).strip()
+        if text and not text.startswith(SYSTEM) and not _to_agents(text):
+            return text
+    return None
+
+
 def map_ticket(issue: dict[str, Any], team: str | None) -> dict[str, Any]:
     """Jira issue -> tickets columns (before masking), the agents' input."""
     f = issue["fields"]
@@ -198,6 +261,7 @@ def map_ticket(issue: dict[str, Any], team: str | None) -> dict[str, Any]:
         opened_at=_when(f.get("created")),
         resolved_at=resolved,
         closed_at=(resolved or datetime.now(UTC).replace(tzinfo=None)) if status == "closed" else None,  # Done with no date
+        resolution_notes=_close_notes(f) if status == "closed" else None,  # what Closure Quality checks
         # no names or text here: raw is stored unmasked
         raw={"key": issue["key"], "status": (f.get("status") or {}).get("name"), "priority": priority,
              "components": [c["name"] for c in components]},
@@ -238,7 +302,7 @@ async def _upsert(
         for r in console:
             _mask(r, "caller", None, ("short_description", "description"))
         for r in agents:
-            masker = _mask(r, "reporter_name", "reporter_email", ("summary", "description"))
+            masker = _mask(r, "reporter_name", "reporter_email", ("summary", "description", "resolution_notes"))
             if r["id"] in replies:
                 replies[r["id"]] = [str(masker.mask(body)) for body in replies[r["id"]]]
 
@@ -280,6 +344,8 @@ async def _upsert(
                 run.queued += 1
                 author = r["reporter_email"] or r["reporter_name"] or "reporter"  # Jira often hides the email
                 db.add_all(Comment(ticket_id=t.id, author_email=author, body=body, from_reporter=True) for body in new)
+            if r["status"] == "closed" and (t.status != "closed" or t.resolution_notes != r["resolution_notes"]):
+                run.queued += 1  # closed in Jira, or its close notes changed: Closure Quality and Knowledge Builder run
             for k, v in r.items():  # agent results are kept, and the pipeline status unless set just above
                 if k != "opened_at":  # never changes in Jira; a clock restarted here for a test survives the sync
                     setattr(t, k, v)
@@ -349,25 +415,30 @@ async def move_triaged(db: AsyncSession) -> int:
     tickets = (await db.scalars(
         select(Ticket).where(Ticket.source == "JIRA", Ticket.status == "new", Ticket.pipeline_status.in_(TRIAGE_DONE))
     )).all()
+    reset = await db.scalar(select(JiraSync.started_at).where(JiraSync.trigger == "reset")
+                            .order_by(JiraSync.started_at.desc()).limit(1))
+    reset = (reset if reset.tzinfo else reset.replace(tzinfo=UTC)) if reset else None  # SQLite drops the zone
     await db.commit()  # no transaction open while Jira answers
     moved = 0
-    try:
-        async with atlassian.client() as c:
-            for ticket in tickets:
+    async with atlassian.client() as c:
+        for ticket in tickets:
+            try:
                 history = {"fields": "status", "expand": "changelog"}
                 issue = await atlassian.call(c, "GET", f"/rest/api/3/issue/{ticket.id}", params=history)
-                if any(i["field"] == "status" for h in issue["changelog"]["histories"] for i in h["items"]):
-                    continue  # the status set in Jira is final
+                if any(i["field"] == "status" for h in issue["changelog"]["histories"] for i in h["items"]
+                       if reset is None or datetime.fromisoformat(h["created"]) > reset):
+                    continue  # the status set in Jira is final (moves before a demo reset do not count)
                 url = f"/rest/api/3/issue/{ticket.id}/transitions"
                 steps = (await atlassian.call(c, "GET", url))["transitions"]
                 step = next((s for s in steps if s["to"]["name"].casefold() == TRIAGED_STATUS.casefold()), None)
                 if step is None:
                     continue
                 await atlassian.call(c, "POST", url, json={"transition": {"id": step["id"]}})
-                ticket.status, ticket.source_status = "in_progress", step["to"]["name"]  # what the next sync would bring
-                moved += 1
-    except AtlassianError as exc:  # the rest is moved after the next agent pass
-        logger.warning("Triaged issues not moved in Jira: %s", exc)
+            except AtlassianError as exc:  # one missing or locked issue must not stop the others; retried next pass
+                logger.warning("Triaged issue %s not moved in Jira: %s", ticket.id, exc)
+                continue
+            ticket.status, ticket.source_status = "in_progress", step["to"]["name"]  # what the next sync would bring
+            moved += 1
     await db.commit()
     return moved
 
@@ -390,8 +461,11 @@ def _agents_in_thread() -> None:
             async with sessions() as db:
                 await announce(db, started)
                 await move_triaged(db)
+            closing = datetime.now(UTC)
             async with sessions() as db:
                 await db.run_sync(run_closure)
+            async with sessions() as db:
+                await announce_closure(db, closing)
             async with sessions() as db:  # after Closure Quality: it learns only from notes that passed
                 await db.run_sync(run_knowledge)
         finally:
@@ -420,7 +494,7 @@ def start_agents() -> None:
 SLA_BOT = "AMS system (SLA warning)"
 
 
-USED = re.compile(r"\((\d+)% of the target is used\)")  # in every warning; the stored copies tell which level was sent
+USED = re.compile(r"(\d+)% of the target")  # in every warning; the stored copies tell which level was sent
 
 
 def _levels() -> tuple[int, ...]:
@@ -434,8 +508,8 @@ def _step(percent: int, levels: tuple[int, ...]) -> int:
     return max((p for p in levels if percent >= p), default=0)
 
 
-def _due_warnings(db: Session) -> list[tuple[Ticket, str]]:
-    """Open P1/P2 Jira tickets that reached a warning level since their last warning, each with its text."""
+def _due_warnings(db: Session) -> list[tuple[Ticket, str, str]]:
+    """Open P1/P2 Jira tickets that reached a warning level since their last warning, each with its text and tone."""
     items = [i for i in sla.open_p1_p2(db) if i.ticket.source == "JIRA"]
     levels = _levels()
     sent: dict[str, int] = {}
@@ -448,10 +522,11 @@ def _due_warnings(db: Session) -> list[tuple[Ticket, str]]:
         used = int(i.sla.used * 100)
         if _step(used, levels) > sent.get(i.ticket.id, 0):  # levels passed while the system was off are not sent late
             due_at = f"{sla.local(i.sla.due_at):%d %b %H:%M %Z}"
-            when = (f"breached its SLA at {due_at}, {-i.sla.minutes_left} minutes ago" if used >= 100
-                    else f"is due by {due_at}, {i.sla.minutes_left} minutes from now")
-            due.append((i.ticket, f"Automatic SLA warning: this P{i.priority} ticket {when} ({used}% of the target is used). "
-                                  f"Assigned to {i.ticket.assignee or 'nobody'}."))
+            breached = used >= 100
+            text = (f"SLA breached · P{i.priority}, {-i.sla.minutes_left} min over\nWas due: {due_at}" if breached
+                    else f"SLA warning · P{i.priority} due in {i.sla.minutes_left} min\nDue: {due_at}")
+            due.append((i.ticket, f"{text} ({used}% of the target time used)\nAssignee: {i.ticket.assignee or 'nobody'}",
+                        "error" if breached else "warning"))
     return due
 
 
@@ -460,8 +535,8 @@ async def send_sla_warnings(db: AsyncSession) -> int:
     the people on the issue), and keep a copy on the ticket. Returns how many comments were sent.
     """
     due = await db.run_sync(_due_warnings)
-    for ticket, text in due:
-        await post_comment(ticket.id, text)
+    for ticket, text, tone in due:
+        await post_comment(ticket.id, text, tone=tone)
         await db.run_sync(add_comment, ticket, SLA_BOT, text)  # the copy is what stops the same warning twice
     return len(due)
 
@@ -469,50 +544,103 @@ async def send_sla_warnings(db: AsyncSession) -> int:
 COMMAND = re.compile(r"/?ams\s*(dq|triage|agree)?")  # the whole comment: "/ams", "/ams dq", "ams triage", "/ams agree"
 COMMAND_BOT = "AMS system (asked in Jira)"
 AGENTS_BOT = "AMS agents"  # author of the stored copy of what announce wrote on the issue
-SAID = "AMS agents on "  # how every answer starts; a command with an answer after it is not answered again
+SAID = "AMS agents · "  # how every answer starts (its heading); a command with an answer after it is not answered again
+EARLIER = ("AMS agents on ", "Automatic SLA warning")  # how the system's comments started before
+SYSTEM = (SAID, "SLA warning · ", "SLA breached · ", *EARLIER)  # how every comment the system writes on an issue starts
 
 
 def help_text() -> str:
-    return ("Commands, each as a whole comment (the slash is optional, so Jira's menu stays closed): ams (what the agents "
-            "decided), ams dq or ams triage (one agent), ams agree (accept the recommended priority). "
-            f"Answered on the next sync, within about {settings.JIRA_SYNC_MINUTES} min.")
+    return ("Reply with one of these as a whole comment:\n"
+            "- `ams`: what the agents decided\n"
+            "- `ams dq` or `ams triage`: one agent's result\n"
+            "- `ams agree`: accept the recommended priority\n"
+            f"Answers come within about {settings.JIRA_SYNC_MINUTES} min.")
 
 
-LABELS = ["ams-needs-info", "ams-not-incident", "ams-uncertain", *(f"ams-p{n}" for n in range(1, 6))]  # one at a time
+# one at a time
+LABELS = ["ams-needs-info", "ams-not-incident", "ams-dq-passed", "ams-uncertain", *(f"ams-p{n}" for n in range(1, 6))]
 AGENTS = {"data_quality": "Data Quality", "triage": "Triage"}
-NEXT = {
+NEXT = {  # the line under the heading, for a ticket where nothing else needs saying
     PipelineStatus.PENDING: "Waiting for the Data Quality agent.",
-    PipelineStatus.AWAITING_INFO: "Next: the reporter gives the missing details.",
     PipelineStatus.DQ_PASSED: "Waiting for the Triage agent.",
-    PipelineStatus.TRIAGED: "Next: an engineer reviews the recommended priority.",
     PipelineStatus.REVIEWED: "The priority is decided; the ticket is ready to be worked.",
-    PipelineStatus.REJECTED: "Not an incident; nothing to do.",
-    PipelineStatus.ERROR: "An agent failed; a person has to look.",
+    PipelineStatus.ERROR: "Next: a person needs to look at this ticket.",
     PipelineStatus.HISTORICAL: "Closed before the agents started.",
 }
 
 
-def _said(run: AgentRun) -> str:
-    o = run.output
-    answer = o.get("answer") or {}
-    verdict = f"recommends {run.verdict}" if run.verdict.startswith("P") else run.verdict.replace("_", " ")
-    missing = [*o.get("missing", []), *answer.get("missing", [])]
-    return f"{verdict}. {o.get('reason') or answer.get('reason') or ''}" + (f" Missing: {', '.join(missing)}." if missing else "")
+def _why(run: AgentRun | None) -> str:
+    """The first sentence of an agent's reason, readable without the rest."""
+    if run is None:
+        return "has not checked this ticket yet."
+    answer = run.output.get("answer") or {}
+    reason = (answer.get("reason") or run.output.get("reason") or "").strip()
+    return reason.split(". ")[0].rstrip(".") + "." if reason else ""
 
 
-def agent_summary(ticket: Ticket, only: str | None = None) -> str:
-    """What the agents decided on a ticket, as the text of a Jira comment. `only` keeps one agent's line."""
-    lines = [f"{SAID}{ticket.id}. {NEXT.get(ticket.pipeline_status, ticket.pipeline_status)}"]
-    for agent, name in AGENTS.items():
-        if only in (None, agent):
-            run = last_run(ticket, agent)
-            lines.append(f"{name}: {_said(run) if run else 'has not checked this ticket yet.'}")
+def _missing(run: AgentRun) -> list[str]:
+    return [*run.output.get("missing", []), *(run.output.get("answer") or {}).get("missing", [])]
+
+
+def headline(ticket: Ticket) -> tuple[str, str]:
+    """The panel colour and the heading of a comment about where a ticket stands."""
+    status = ticket.pipeline_status
+    if status == PipelineStatus.AWAITING_INFO:
+        return "warning", "More details needed"
+    if status == PipelineStatus.REJECTED:
+        return "note", "Not an incident"
+    if status == PipelineStatus.ERROR:
+        return "error", "An agent failed"
+    if status == PipelineStatus.DQ_PASSED:
+        return "info", "Details complete"
+    if status == PipelineStatus.REVIEWED:
+        db = object_session(ticket)
+        final = db and db.scalar(select(Review.final_priority).where(Review.ticket_id == ticket.id, Review.agent == "triage")
+                                 .order_by(Review.id.desc()).limit(1))
+        return "success", f"Priority decided: P{final}" if final else "Priority decided"
+    if status == PipelineStatus.TRIAGED:
+        run = last_run(ticket, "triage")
+        priority = run.output.get("priority") if run else None
+        return ("info", f"Recommended priority: P{priority}") if priority else ("warning", "Priority unclear")
+    return "info", "Working on it"
+
+
+def agent_summary(ticket: Ticket, only: str | None = None, title: str | None = None) -> str:
+    """What the agents decided on a ticket, as the text of a Jira comment: a heading and what to do next.
+    `only` ("data_quality" or "triage") gives that agent's result instead."""
+    lines = [f"{SAID}{title or headline(ticket)[1]}"]
+    if only:
+        run = last_run(ticket, only)
+        verdict = run.verdict.replace("_", " ") if run else "not run"
+        return "\n".join([*lines, f"{AGENTS[only]}: {verdict}", f"Why: {_why(run)}"])
+    status, dq, triage = ticket.pipeline_status, last_run(ticket, "data_quality"), last_run(ticket, "triage")
+    if status == PipelineStatus.AWAITING_INFO:
+        missing = _missing(dq) or [_why(dq)]
+        lines += ["Please add these to the description or as a comment:", *(f"- {m[:1].upper()}{m[1:]}" for m in missing),
+                  "The agents check again on their own."]
+    elif status == PipelineStatus.REJECTED:
+        lines += [f"Why: {_why(dq)}", "If something is broken, describe it here and the agents check again."]
+    elif status == PipelineStatus.DQ_PASSED:  # Triage has not run yet, so Jira still hears that the details are fine
+        lines += [f"Data Quality: complete. {_why(dq)}", NEXT[status]]
+    elif status == PipelineStatus.TRIAGED:
+        lines += [f"Data Quality: complete. {_why(dq)}", f"Why: {_why(triage)}"]
+        if triage.output.get("priority"):
+            if ticket.reported_priority and ticket.reported_priority != triage.output["priority"]:
+                lines.append(f"Reported as: P{ticket.reported_priority}")
+            lines.append("Next: an engineer confirms it. Reply `ams agree` to accept, or set another priority here.")
+        else:
+            lines.append("Next: set the priority on this issue.")
+    else:
+        lines.append(NEXT.get(status, status))
     return "\n".join(lines)
 
 
 def _to_agents(text: str) -> bool:
-    """A comment written to the agents ("/ams ..."), not a reply about the problem."""
-    return text.lower().startswith("/ams") or COMMAND.fullmatch(text.lower()) is not None
+    """A comment written to the agents ("/ams ...", or a short "ams ..." such as a mistyped "ams agre"), not a reply
+    about the problem."""
+    words = text.lower().split()
+    return (text.lower().startswith("/ams") or COMMAND.fullmatch(text.lower()) is not None
+            or (0 < len(words) <= 3 and words[0] == "ams"))
 
 
 async def _asked(c: Any, key: str) -> tuple[str | None, str] | None:
@@ -523,7 +651,7 @@ async def _asked(c: Any, key: str) -> tuple[str | None, str] | None:
     data = await atlassian.call(c, "GET", f"/rest/api/3/issue/{key}/comment", params=newest)
     for comment in data["comments"]:
         text = adf_text(comment["body"]).strip()
-        if text.startswith(SAID):
+        if text.startswith((SAID, EARLIER[0])):
             return None
         if _to_agents(text):
             asked = COMMAND.fullmatch(text.lower())
@@ -531,9 +659,9 @@ async def _asked(c: Any, key: str) -> tuple[str | None, str] | None:
     return None
 
 
-async def _agree(db: AsyncSession, ticket: Ticket, who: str) -> str | None:
+async def _agree(db: AsyncSession, ticket: Ticket, who: str) -> tuple[str, str] | None:
     """ "/ams agree": the recommended priority becomes the decision, on the Jira issue too. Only for an open ticket that
-    still waits for a decision. Returns what changed, for the answer."""
+    still waits for a decision. Returns the new priority's name and who accepted it, for the answer."""
     if ticket.pipeline_status != PipelineStatus.TRIAGED or ticket.closed_at is not None:
         return None
     recommended = await db.run_sync(lambda s: last_run(ticket, "triage").output["priority"])
@@ -544,25 +672,20 @@ async def _agree(db: AsyncSession, ticket: Ticket, who: str) -> str | None:
         await set_priority(ticket.id, recommended)
     await db.run_sync(lambda s: triage_review.review(s, ticket, "accepted", who))
     name = next(n for n, p in PRIORITY_NUMBER.items() if p == recommended)
-    was = f", was {ticket.reported_priority_label}." if changed else ", as reported."
-    return f"{who} agreed: the priority is now {name}{was}"
+    was = f" (was {ticket.reported_priority_label})" if changed else " (as reported)"
+    return name, f"Accepted by: {who}{was}"
 
 
 def _announcement(ticket: Ticket) -> tuple[str, str]:
     """The comment and the label for a ticket the agents just decided on."""
     if ticket.pipeline_status == PipelineStatus.AWAITING_INFO:
-        answer = last_run(ticket, "data_quality").output.get("answer") or {}
-        ask = answer.get("chase_email") or (
-            "Please add the missing details to this issue, in the description or as a comment. "
-            "The agents check again on their own.")
-        return f"{agent_summary(ticket, 'data_quality')}\n\n{ask}", "ams-needs-info"
+        return agent_summary(ticket), "ams-needs-info"
     if ticket.pipeline_status == PipelineStatus.REJECTED:
-        again = "If something is broken, describe it on this issue and the agents check again."
-        return f"{agent_summary(ticket, 'data_quality')}\n\n{again}", "ams-not-incident"
+        return agent_summary(ticket), "ams-not-incident"
+    if ticket.pipeline_status == PipelineStatus.DQ_PASSED:
+        return agent_summary(ticket), "ams-dq-passed"
     run = last_run(ticket, "triage")
-    accept = "To accept this priority, comment ams agree. To decide another one, set" if run.output["priority"] else "Set"
-    return (f"{agent_summary(ticket)}\n\n{accept} the priority on this issue: what is set in Jira is final.",
-            f"ams-{run.verdict.lower()}" if run.output["priority"] else "ams-uncertain")
+    return agent_summary(ticket), f"ams-{run.verdict.lower()}" if run.output["priority"] else "ams-uncertain"
 
 
 async def announce(db: AsyncSession, since: datetime) -> int:
@@ -574,7 +697,7 @@ async def announce(db: AsyncSession, since: datetime) -> int:
     """
     if not settings.JIRA_WRITE_BACK:
         return 0
-    say = (PipelineStatus.AWAITING_INFO, PipelineStatus.TRIAGED, PipelineStatus.REJECTED)
+    say = (PipelineStatus.AWAITING_INFO, PipelineStatus.DQ_PASSED, PipelineStatus.TRIAGED, PipelineStatus.REJECTED)
     tickets = (await db.scalars(
         select(Ticket).where(Ticket.source == "JIRA", Ticket.closed_at.is_(None), Ticket.pipeline_status.in_(say),
                              Ticket.id.in_(select(AgentRun.ticket_id).where(AgentRun.created_at >= since)))
@@ -589,12 +712,111 @@ async def announce(db: AsyncSession, since: datetime) -> int:
             text, label = _announcement(ticket)
             labels = [*({"remove": other} for other in LABELS if other != label), {"add": label}]
             try:
-                await post_comment(ticket.id, text, c)
+                await post_comment(ticket.id, text, c, tone=headline(ticket)[0])
                 await atlassian.call(c, "PUT", f"/rest/api/3/issue/{ticket.id}", json={"update": {"labels": labels}})
             except AtlassianError as exc:
                 logger.warning("Agents' verdict on %s not fully written to Jira: %s", ticket.id, exc)
                 continue
-            await db.run_sync(add_comment, ticket, AGENTS_BOT, text)
+            await db.run_sync(add_comment, ticket, AGENTS_BOT, plain(text))
+            told += 1
+    return told
+
+
+async def _runbooks(db: AsyncSession, kb_ids: set[str]) -> dict[str, str]:
+    """Each runbook id as "[title](Confluence page)", or its title when the page is not known."""
+    if not kb_ids:
+        return {}
+    rows = await db.execute(
+        select(KBChunk.kb_id, KBChunk.title, ConfluencePage.url).distinct(KBChunk.kb_id)
+        .outerjoin(ConfluencePage, KBChunk.source_path == func.concat("confluence-", ConfluencePage.id, ".md"))
+        .where(KBChunk.kb_id.in_(kb_ids)).order_by(KBChunk.kb_id))
+    return {kb_id: f"[{title}]({url})" if url else title for kb_id, title, url in rows}
+
+
+ACTIONS = ("escalate", "notify", "contact", "raise", "assign", "route", "engage", "page ")  # how the agent's advice starts
+
+
+def _resolution_text(ticket: Ticket, runbooks: dict[str, str]) -> tuple[str, str]:
+    """The Resolution agent's answer as the text and the tone of a Jira comment."""
+    a = last_run(ticket, "resolution").output
+    if a.get("verdict") != "resolved":
+        sentences = re.split(r"(?<=\.)\s+", (a.get("notes") or "").strip())
+        advice = next((s.rstrip(".") for s in sentences if s.lower().startswith(ACTIONS)), None)  # "Escalate to ..."
+        lines = [f"{SAID}No known fix", "Why: no runbook covers this problem.",
+                 f"Next: {advice[:1].lower()}{advice[1:]}." if advice else "Next: an engineer investigates."]
+        return "\n".join(lines), "warning"
+    lines = [f"{SAID}Suggested fix",
+             *([f"Likely cause: {a['root_cause']}"] if a.get("root_cause") else []),
+             "Steps:", *(f"{n}. {s}" for n, s in enumerate(a.get("steps", []), 1)),
+             f"Runbook: {', '.join(runbooks.get(r, r) for r in a.get('references', []))}",
+             f"Confidence: {a.get('confidence', 'low')}",
+             *([f"Note: {a['notes']}"] if a.get("notes") else [])]
+    return "\n".join(lines), "success"
+
+
+async def announce_resolution(db: AsyncSession, since: datetime) -> int:
+    """Comment the Resolution agent's answer on each open Jira issue it answered since `since`. Returns how many."""
+    if not settings.JIRA_WRITE_BACK:
+        return 0
+    tickets = (await db.scalars(
+        select(Ticket).where(Ticket.source == "JIRA", Ticket.closed_at.is_(None),
+                             Ticket.id.in_(select(AgentRun.ticket_id).where(AgentRun.agent == "resolution",
+                                                                             AgentRun.created_at >= since)))
+        .options(selectinload(Ticket.agent_runs))
+    )).all()
+    runbooks = await _runbooks(db, {r for t in tickets for r in last_run(t, "resolution").output.get("references", [])})
+    await db.commit()  # no transaction open while Jira answers
+    told = 0
+    if not tickets:
+        return told
+    async with atlassian.client() as c:
+        for ticket in tickets:
+            text, tone = _resolution_text(ticket, runbooks)
+            try:
+                await post_comment(ticket.id, text, c, tone=tone)
+            except AtlassianError as exc:
+                logger.warning("Resolution for %s not written to Jira: %s", ticket.id, exc)
+                continue
+            await db.run_sync(add_comment, ticket, AGENTS_BOT, plain(text))
+            told += 1
+    return told
+
+
+def _closure_text(ticket: Ticket) -> str:
+    """Closure Quality's ask on a done issue whose notes need work: what is missing, and notes to start from."""
+    o = last_run(ticket, "closure_quality").output
+    lines = [f"{SAID}Close notes need work", *(f"- {q}" for q in o.get("questions") or [])]
+    if o.get("draft_notes"):
+        lines += ["Suggested close notes, from what is already on this issue (fill in anything in brackets):",
+                  o["draft_notes"]]
+    lines.append("Next: reply here with the completed close notes; the agents check them again.")
+    return "\n".join(lines)
+
+
+async def announce_closure(db: AsyncSession, since: datetime) -> int:
+    """Comment on each done Jira issue whose close notes Closure Quality found lacking since `since`. Returns how many."""
+    if not settings.JIRA_WRITE_BACK:
+        return 0
+    tickets = [t for t in (await db.scalars(
+        select(Ticket).where(Ticket.source == "JIRA", Ticket.status == "closed",  # history closed before the agents: left alone
+                             Ticket.pipeline_status != PipelineStatus.HISTORICAL,
+                             Ticket.id.in_(select(AgentRun.ticket_id).where(AgentRun.agent == "closure_quality",
+                                                                             AgentRun.created_at >= since)))
+        .options(selectinload(Ticket.agent_runs))
+    )).all() if last_run(t, "closure_quality").verdict == "needs_work"]
+    await db.commit()  # no transaction open while Jira answers
+    told = 0
+    if not tickets:
+        return told
+    async with atlassian.client() as c:
+        for ticket in tickets:
+            text = _closure_text(ticket)
+            try:
+                await post_comment(ticket.id, text, c, tone="warning")
+            except AtlassianError as exc:
+                logger.warning("Closure Quality for %s not written to Jira: %s", ticket.id, exc)
+                continue
+            await db.run_sync(add_comment, ticket, AGENTS_BOT, plain(text))
             told += 1
     return told
 
@@ -627,13 +849,15 @@ async def answer_commands(db: AsyncSession) -> int:
         done = await _agree(db, ticket, who) if command == "agree" else None
         only = {"dq": "data_quality", "triage": "triage"}.get(command)
         if command == "help":
-            text = f"{SAID}{key}. {help_text()}"
+            text, tone = f"{SAID}Commands\n{help_text()}", "note"
         else:
-            text = await db.run_sync(lambda s, t=ticket, o=only: agent_summary(t, o))
+            title = f"Priority set to {done[0]}" if done else None
+            text = await db.run_sync(lambda s, t=ticket, o=only, h=title: agent_summary(t, o, h))
+            tone = "success" if done else await db.run_sync(lambda s, t=ticket: headline(t)[0])
         if done:
-            text = f"{text}\n{done}"
-        await post_comment(key, text)
-        await db.run_sync(add_comment, ticket, COMMAND_BOT, text)
+            text = f"{text}\n{done[1]}"
+        await post_comment(key, text, tone=tone)
+        await db.run_sync(add_comment, ticket, COMMAND_BOT, plain(text))
         answered += 1
     return answered
 
@@ -658,7 +882,10 @@ async def schedule_loop(session_factory) -> None:
             if settings.JIRA_WRITE_BACK:
                 async with session_factory() as db:
                     await answer_commands(db)
+            resolved_from = datetime.now(UTC)
             await run_resolution()  # reviewed tickets get their fix without a person pressing Run; unchanged ones skip
+            async with session_factory() as db:
+                await announce_resolution(db, resolved_from)
         except JiraError as exc:
             logger.info("Scheduled Jira sync skipped: %s", exc)
         except Exception:

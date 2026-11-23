@@ -188,8 +188,8 @@ async def test_the_system_warns_at_watch_breach_likely_and_breach(client, fake_j
             await s.commit()
             assert await jira.send_sla_warnings(s) == sent, used
     assert [path for path, _ in posted] == ["/rest/api/3/issue/AMS-8/comment"] * 3
-    assert b"Automatic SLA warning: this P1 ticket is due by" in posted[0][1] and b"(55% of the target is used)" in posted[0][1]
-    assert b"breached its SLA at" in posted[2][1]
+    assert b"P1 due in" in posted[0][1] and b"(55% of the target time used)" in posted[0][1]
+    assert b"min over" in posted[2][1] and b'"panelType":"error"' in posted[2][1]
     copies = (await client.get("/api/v1/tickets/AMS-8")).json()["comments"]
     assert len(copies) == 3 and all(c["author_email"] == jira.SLA_BOT and not c["from_reporter"] for c in copies)
     await client.post("/api/v1/jira/sync")  # the sync keeps the clock the test set
@@ -244,11 +244,11 @@ async def test_a_command_written_in_jira_is_answered_once(client, fake_jira, mon
         assert await jira.answer_commands(s) == 1 and ran == [1]
         assert await jira.answer_commands(s) == 0  # the answer is on the issue
     answer = jira.adf_text(comments["AMS-8"][0]["body"])
-    assert answer.startswith("AMS agents on AMS-8. Waiting for the Data Quality agent.")
-    assert "Data Quality: has not checked this ticket yet." in answer and "Triage" not in answer  # "/ams dq" asks for one agent
+    assert answer.startswith("AMS agents · Working on it\nData Quality: not run")
+    assert "Why: has not checked this ticket yet." in answer and "Triage" not in answer  # "/ams dq" asks for one agent
 
     sent = await client.post("/api/v1/tickets/AMS-8/agent-summary", json={"author_email": "Alan Lands"})  # the button
-    assert sent.status_code == 201 and "Triage: has not checked" in sent.json()["body"] and len(comments["AMS-8"]) == 3
+    assert sent.status_code == 201 and "Waiting for the Data Quality" in sent.json()["body"] and len(comments["AMS-8"]) == 3
     copies = (await client.get("/api/v1/tickets/AMS-8")).json()["comments"]
     assert [c["author_email"] for c in copies] == [jira.COMMAND_BOT, "Alan Lands"]
     assert (await client.post("/api/v1/tickets/NOPE-1/agent-summary", json={"author_email": "Alan Lands"})).status_code == 404
@@ -336,14 +336,14 @@ async def test_agree_and_an_unknown_command_in_jira(client, fake_jira, monkeypat
     assert (ticket["pipeline_status"], decided["action"], decided["final_priority"], decided["reviewer"]) == (
         "reviewed", "accepted", 1, "Lena Lead")
     answer = jira.adf_text(comments[0]["body"])
-    assert answer.startswith("AMS agents on AMS-8. The priority is decided")
-    assert "Lena Lead agreed: the priority is now Highest, was High." in answer
+    assert answer.startswith("AMS agents · Priority set to Highest\nThe priority is decided")
+    assert "Accepted by: Lena Lead (was High)" in answer
 
     comments.insert(0, {"body": _doc("/ams help")})
     async for s in app.dependency_overrides[get_db]():
         assert await jira.answer_commands(s) == 1
         assert await jira.answer_commands(s) == 0
-    assert "ams agree (accept the recommended priority)" in jira.adf_text(comments[0]["body"])
+    assert "ams agree: accept the recommended priority" in jira.adf_text(comments[0]["body"])
 
 
 async def test_the_agents_say_their_verdict_on_the_issue(client, fake_jira, monkeypatch):  # noqa: F811
@@ -370,9 +370,11 @@ async def test_the_agents_say_their_verdict_on_the_issue(client, fake_jira, monk
     assert [(method, path) for method, path, _ in sent] == [
         ("POST", "/rest/api/3/issue/AMS-8/comment"), ("PUT", "/rest/api/3/issue/AMS-8")]
     text = jira.adf_text(sent[0][2]["body"])
-    assert text.startswith("AMS agents on AMS-8. Next: the reporter gives the missing details.")
-    assert "Missing: what is not working." in text and "Please add the missing details to this issue" in text
+    assert text.startswith("AMS agents · More details needed\nPlease add these to the description or as a comment:")
+    assert "What is not working" in text and "The agents check again on their own." in text
     labels = sent[1][2]["update"]["labels"]
     assert {"add": "ams-needs-info"} in labels and {"remove": "ams-p1"} in labels and {"remove": "ams-needs-info"} not in labels
     copies = (await client.get("/api/v1/tickets/AMS-8")).json()["comments"]
-    assert [(c["author_email"], c["body"].strip()) for c in copies] == [(jira.AGENTS_BOT, text.strip())]
+    (copy,) = copies  # the same text; Jira's own bullets replace the "- " in front of each agent's line
+    assert copy["author_email"] == jira.AGENTS_BOT
+    assert [line.removeprefix("- ") for line in copy["body"].splitlines() if line] == [line for line in text.splitlines() if line]

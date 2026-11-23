@@ -30,6 +30,22 @@ def no_real_model(monkeypatch):
     monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", SecretStr(""))
 
 
+@pytest.fixture(autouse=True)
+def own_confluence_copy(monkeypatch, tmp_path):
+    """A Confluence sync in a test writes its pages to a folder of its own, never to data/confluence_copy, so no
+    test's pages leak into the articles the next test reads."""
+    from app.agents.closure_quality.model_check import kb_ids
+    from app.agents.knowledge_builder.articles import articles
+
+    monkeypatch.setattr(settings, "CONFLUENCE_COPY_DIR", tmp_path / "confluence_copy")
+    monkeypatch.setattr(settings, "CONFLUENCE_WRITE_BACK", False)
+    articles.cache_clear()
+    kb_ids.cache_clear()
+    yield
+    articles.cache_clear()
+    kb_ids.cache_clear()
+
+
 @pytest.fixture
 async def client():
     """API client backed by a fresh in-memory database, so tests never touch ams.db."""

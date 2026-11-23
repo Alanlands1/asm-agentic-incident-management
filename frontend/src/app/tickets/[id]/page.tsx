@@ -35,6 +35,7 @@ const AGENTS: Record<string, string> = {
   triage: "Triage",
   resolution: "Resolution",
   closure_quality: "Closure Quality",
+  knowledge_builder: "Knowledge Builder",
 };
 const VERDICTS: Record<string, string> = {
   uncertain: "the rules could not decide",
@@ -47,6 +48,8 @@ const VERDICTS: Record<string, string> = {
   good: "close notes are good",
   needs_work: "close notes need work",
   not_applicable: "close notes not needed",
+  matched: "a knowledge-base article covers this fix",
+  gap: "no knowledge-base article covers this fix",
 };
 
 /** What the person looking at the ticket has to do, by stage. */
@@ -67,9 +70,11 @@ const DQ_STEP: Record<string, ["done" | "attention", string]> = {
   rejected: ["attention", "Rejected"],
   uncertain: ["attention", "Could not decide"],
 };
-// Resolution and Closure Quality: the words under their step, by verdict.
+// Resolution, Closure Quality and Knowledge Builder: the words under their step, by verdict.
 const LATER_STEP: Record<string, ["done" | "attention", string]> = {
   resolved: ["done", "Fix found"],
+  matched: ["done", "Article covers it"],
+  gap: ["attention", "No article yet"],
   no_match: ["attention", "No runbook covers it"],
   good: ["done", "Close notes good"],
   needs_work: ["attention", "Close notes need work"],
@@ -138,7 +143,7 @@ function Step({
         >
           {Icon ? <Icon className={cn("size-4", running && "animate-spin")} /> : n}
         </span>
-        {n < 5 && <span className={cn("h-0.5 flex-1", state === "done" && !running ? "bg-foreground" : "bg-border")} />}
+        {n < 6 && <span className={cn("h-0.5 flex-1", state === "done" && !running ? "bg-foreground" : "bg-border")} />}
       </div>
       <div className="flex min-w-0 flex-col items-start gap-1 pr-3">
         <span className="text-xs text-muted-foreground">{name}</span>
@@ -215,6 +220,8 @@ function Run({ run, children }: { run: AgentRun; children?: React.ReactNode }) {
         {flags.map((f) => (
           <Badge key={f}>{FLAGS[f]}</Badge>
         ))}
+        {/* Closure Quality: the notes said the engineer followed Resolution's fix, so its cause and steps were counted */}
+        {o.adopted_fix === true && <Badge variant="outline">Followed the suggested fix</Badge>}
         <span className="ml-auto text-xs text-muted-foreground">{when(run.created_at)}</span>
       </div>
       {reason && <p className="break-words">{reason}</p>}
@@ -252,6 +259,12 @@ function Run({ run, children }: { run: AgentRun; children?: React.ReactNode }) {
         {references.length > 0 && <span>Runbook articles: <span className="font-mono">{references.join(", ")}</span></span>}
         {typeof o.confidence === "string" && <span>Confidence: {o.confidence}</span>}
         {typeof o.score === "number" && <span>Score: {o.score} of 6</span>}
+        {run.agent === "knowledge_builder" && typeof o.article === "string" && <span>Article: <span className="font-mono">{o.article}</span></span>}
+        {run.agent === "knowledge_builder" && typeof (o.draft as { draft_id?: number } | undefined)?.draft_id === "number" && (
+          <Link href="/agents/knowledge" className="font-semibold text-primary">
+            Draft #{(o.draft as { draft_id: number }).draft_id} waiting for review
+          </Link>
+        )}
         {audits.length > 0 && (
           <span>
             {[...new Set(audits.map((a) => a.model))].join(", ")} · {sum("input_tokens")} in / {sum("output_tokens")} out tokens ·{" "}
@@ -264,13 +277,13 @@ function Run({ run, children }: { run: AgentRun; children?: React.ReactNode }) {
         <p className="flex flex-col gap-0.5 rounded-[14px] bg-primary px-3 py-2 text-xs text-primary-foreground">
           {higher.length > 0 && (
             <span>
-              <span className="font-semibold">Ranked higher from engineers' ratings: </span>
+              <span className="font-semibold">Ranked higher from engineers&rsquo; ratings: </span>
               <span className="font-mono">{higher.join(", ")}</span>
             </span>
           )}
           {lower.length > 0 && (
             <span>
-              <span className="font-semibold">Ranked lower from engineers' ratings: </span>
+              <span className="font-semibold">Ranked lower from engineers&rsquo; ratings: </span>
               <span className="font-mono">{lower.join(", ")}</span>
             </span>
           )}
@@ -302,7 +315,21 @@ function Run({ run, children }: { run: AgentRun; children?: React.ReactNode }) {
 }
 
 /** A person's note to the agents, kept on the ticket and read with the description on every run. */
-function Note({ ticketId, text, busy, rerun, onSaved }: { ticketId: string; text: string; busy: boolean; rerun?: () => void; onSaved: () => unknown }) {
+function Note({
+  ticketId,
+  text,
+  busy,
+  rerun,
+  inputChanged,
+  onSaved,
+}: {
+  ticketId: string;
+  text: string;
+  busy: boolean;
+  rerun?: () => void;
+  inputChanged: boolean;
+  onSaved: () => unknown;
+}) {
   const [value, setValue] = useState(text);
   const [saving, setSaving] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
@@ -329,7 +356,12 @@ function Note({ ticketId, text, busy, rerun, onSaved }: { ticketId: string; text
           {saving ? "Saving…" : "Save note"}
         </Button>
         {rerun && (
-          <Button size="sm" disabled={saving || busy} onClick={() => save(rerun)}>
+          <Button
+            size="sm"
+            disabled={saving || busy || (value.trim() === text && !inputChanged)}
+            title={value.trim() === text && !inputChanged ? "Nothing changed since the last run: change the note first" : undefined}
+            onClick={() => save(rerun)}
+          >
             <Play />
             Save and run again
           </Button>
@@ -424,16 +456,27 @@ function Ticket() {
       .finally(() => setRunning(null));
   };
   const canRun = !closed && CAN_RUN.includes(ticket?.pipeline_status ?? "");
-  const runButton = (agent: Agent, again: boolean) => (
-    <Button size="xs" variant="secondary" disabled={running !== null} onClick={() => runAgent(agent)}>
-      <Play />
-      {again ? "Run again" : "Run"}
-    </Button>
-  );
+  // Running again only helps when the agent would see something new; an unknown answer (older backend) allows it.
+  const inputChanged = (agent: Agent) => ticket?.changed?.[agent] ?? true;
+  const runButton = (agent: Agent, again: boolean) => {
+    const same = again && !inputChanged(agent);
+    return (
+      <Button
+        size="xs"
+        variant="secondary"
+        disabled={running !== null || same}
+        title={same ? "Nothing changed since the last run: edit the ticket, add a note or a reply first" : undefined}
+        onClick={() => runAgent(agent)}
+      >
+        <Play />
+        {again ? "Run again" : "Run"}
+      </Button>
+    );
+  };
 
   const triage = ticket?.agent_runs.findLast((r) => r.agent === "triage");
   const dq = ticket?.agent_runs.findLast((r) => r.agent === "data_quality");
-  const latest = [dq, triage, ...["resolution", "closure_quality"].map((a) => ticket?.agent_runs.findLast((r) => r.agent === a))].filter(
+  const latest = [dq, triage, ...["resolution", "closure_quality", "knowledge_builder"].map((a) => ticket?.agent_runs.findLast((r) => r.agent === a))].filter(
     (r) => r !== undefined,
   );
   const earlier = ticket?.agent_runs.filter((r) => !latest.includes(r)) ?? [];
@@ -446,8 +489,8 @@ function Ticket() {
     const given = (ticket?.feedback ?? []).filter((f) => f.agent_run_id === run?.id);
     return given.findLast((f) => f.reviewer === person) ?? given.at(-1);
   };
-  const rerun =
-    !closed && ticket?.pipeline_status === "reviewed" ? () => runAgent("resolution") : canRun ? () => runAgent("data_quality") : undefined;
+  const rerunAgent: Agent | null = !closed && ticket?.pipeline_status === "reviewed" ? "resolution" : canRun ? "data_quality" : null;
+  const rerun = rerunAgent ? () => runAgent(rerunAgent) : undefined;
   const back = (
     <Button variant="secondary" nativeButton={false} render={<Link href="/tickets" />}>
       All tickets
@@ -529,7 +572,7 @@ function Ticket() {
                   <Post label="Post the summary to Jira" onPost={() => pipelineService.sendToJira(ticket.id, person).then(load)} />
                 )}
               </SectionHead>
-              <ol role="list" className="grid grid-cols-5 border-b border-border px-4 py-4">
+              <ol role="list" className="grid grid-cols-6 border-b border-border px-4 py-4">
                 <Step
                   n={1}
                   state={dq ? (DQ_STEP[dq.verdict]?.[0] ?? "attention") : "waiting"}
@@ -573,7 +616,7 @@ function Ticket() {
                     )
                   ) : closed ? "Not needed" : ticket.pipeline_status === "triaged" ? "Waiting for you" : "Not yet"}
                 </Step>
-                {(["resolution", "closure_quality"] as const).map((agent, i) => {
+                {(["resolution", "closure_quality", "knowledge_builder"] as const).map((agent, i) => {
                   const run = ticket.agent_runs.findLast((r) => r.agent === agent);
                   // The server takes Resolution on reviewed tickets and Closure Quality on resolved ones.
                   const ready = agent === "resolution" ? !closed && ticket.pipeline_status === "reviewed" : ["resolved", "closed"].includes(ticket.status);
@@ -584,7 +627,8 @@ function Ticket() {
                       state={run ? (LATER_STEP[run.verdict]?.[0] ?? "attention") : "waiting"}
                       name={AGENTS[agent]}
                       running={running === agent}
-                      action={ready && runButton(agent, run !== undefined)}
+                      // Knowledge Builder has no one-ticket run: it follows Closure Quality on its own.
+                      action={ready && agent !== "knowledge_builder" && runButton(agent, run !== undefined)}
                       rating={ratingOf(run)?.stars}
                     >
                       {run ? (LATER_STEP[run.verdict]?.[1] ?? run.verdict) : "Not yet"}
@@ -621,7 +665,7 @@ function Ticket() {
               </div>
               {!closed && (
                 // After the decision, not before it. Remounts when the stored note changes, so the box shows it as kept (personal details masked).
-                <Note key={ticket.guidance ?? ""} ticketId={ticket.id} text={ticket.guidance ?? ""} busy={running !== null} rerun={rerun} onSaved={load} />
+                <Note key={ticket.guidance ?? ""} ticketId={ticket.id} text={ticket.guidance ?? ""} busy={running !== null} rerun={rerun} inputChanged={rerunAgent !== null && inputChanged(rerunAgent)} onSaved={load} />
               )}
               {latest.length ? (
                 <ul role="list">

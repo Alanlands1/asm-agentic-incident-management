@@ -69,7 +69,8 @@ class Ticket(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     agent_runs: Mapped[list["AgentRun"]] = relationship(
-        back_populates="ticket", cascade="all, delete-orphan", order_by="AgentRun.created_at"
+        back_populates="ticket", cascade="all, delete-orphan",
+        order_by="[AgentRun.created_at, AgentRun.id]",  # rules and model results of one pass share a timestamp
     )
     comments: Mapped[list["Comment"]] = relationship(
         back_populates="ticket", cascade="all, delete-orphan", order_by="Comment.created_at"

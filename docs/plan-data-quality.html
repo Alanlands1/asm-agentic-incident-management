@@ -1,0 +1,708 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AMS Incident Management · Data Quality plan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+/* Look borrowed from the leadership deck: paper, crimson and gold, glass cards, tinted icon tiles.
+   Scrolling page, not slides. One idea per card, as few words as possible. */
+:root{
+  --paper:#f7f3ee; --paper-3:#e9e4dc;
+  --ink:#16130e; --ink-soft:#3b3830; --stone:#5c594f;
+  --crimson:#ba0c2f; --crimson-bright:#d31145; --gold:#c7a566; --gold-ink:#94620a;
+  --green:#1a5f45; --green-soft:rgba(232,245,238,.92);
+  --red-soft:rgba(253,236,239,.9);
+  --font-sans:-apple-system,BlinkMacSystemFont,"Inter","Segoe UI","Helvetica Neue",Arial,sans-serif;
+  --font-mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{background:var(--paper-3);scroll-behavior:smooth}
+body{font-family:var(--font-sans);color:var(--ink);background:var(--paper);-webkit-font-smoothing:antialiased;
+  font-size:17px;line-height:1.5;min-height:100vh;position:relative;overflow-x:hidden}
+img{display:block;max-width:100%}
+a{color:inherit}
+
+/* soft coloured light behind the glass */
+.aurora{position:fixed;inset:0;overflow:hidden;pointer-events:none;z-index:0}
+.aurora b{position:absolute;display:block;border-radius:50%;filter:blur(80px);opacity:.5}
+.aurora .b1{width:720px;height:720px;left:-200px;top:-260px;background:#f2b6c0}
+.aurora .b2{width:620px;height:620px;right:-140px;top:-200px;background:#bcd6ec}
+.aurora .b3{width:700px;height:700px;right:5%;bottom:-380px;background:#edd39a}
+.aurora .b4{width:560px;height:560px;left:15%;bottom:-320px;background:#c4e6d5}
+.page{position:relative;z-index:1;max-width:1180px;margin:0 auto;padding:36px 24px 96px}
+@media (max-width:640px){.page{padding:20px 16px 72px}}
+
+/* glass */
+.glass{position:relative;background:rgba(255,255,255,.55);
+  -webkit-backdrop-filter:blur(22px) saturate(185%);backdrop-filter:blur(22px) saturate(185%);
+  box-shadow:inset 0 1px 1px rgba(255,255,255,.95),inset 0 -1px 1px rgba(255,255,255,.3),inset 0 0 24px rgba(255,255,255,.3),
+    0 1px 2px rgba(60,30,20,.06),0 26px 60px -22px rgba(90,40,30,.3)}
+.glass::before{content:"";position:absolute;inset:0;border-radius:inherit;padding:1.5px;pointer-events:none;
+  background:linear-gradient(135deg,rgba(255,255,255,.98) 0%,rgba(255,255,255,.3) 30%,rgba(255,255,255,.06) 55%,rgba(255,255,255,.65) 100%);
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude}
+.glass::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background:linear-gradient(180deg,rgba(255,255,255,.42) 0%,rgba(255,255,255,0) 48%)}
+.glass>*{position:relative;z-index:1}
+
+/* icon tiles */
+.app{position:relative;display:grid;place-items:center;border-radius:28%;flex:0 0 auto;width:52px;height:52px;
+  background:linear-gradient(155deg,var(--c1) 0%,var(--c2) 100%);
+  box-shadow:inset 0 1px 1px rgba(255,255,255,.55),inset 0 -3px 8px rgba(0,0,0,.16),0 2px 4px rgba(0,0,0,.08),0 14px 26px -10px var(--sh)}
+.app::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background:linear-gradient(180deg,rgba(255,255,255,.36) 0%,rgba(255,255,255,.1) 48%,rgba(255,255,255,0) 52%)}
+.app>svg{position:relative;z-index:1;width:50%;height:50%;color:#fff;filter:drop-shadow(0 1px 1.5px rgba(0,0,0,.22))}
+.app.blue  {--c1:#6590b5;--c2:#2d5378;--sh:rgba(45,83,120,.55)}
+.app.gold  {--c1:#d6a650;--c2:#98690f;--sh:rgba(152,105,15,.5)}
+.app.red   {--c1:#d9354f;--c2:#8e0a23;--sh:rgba(142,10,35,.5)}
+.app.green {--c1:#43a07b;--c2:#1a5f45;--sh:rgba(26,95,69,.5)}
+.app.ink   {--c1:#57524b;--c2:#1f1c18;--sh:rgba(31,28,24,.5)}
+.app.violet{--c1:#8574cc;--c2:#473690;--sh:rgba(71,54,144,.5)}
+.app.grey  {--c1:#a9a49b;--c2:#6f6a61;--sh:rgba(80,74,66,.45)}
+.app.teal  {--c1:#4fa7a9;--c2:#1f6264;--sh:rgba(31,98,100,.5)}
+.app.sm{width:36px;height:36px;border-radius:11px}
+.app.lg{width:68px;height:68px}
+
+/* top bar */
+.hdr{display:inline-flex;align-items:center;gap:12px;height:54px;padding:0 22px 0 9px;border-radius:99px}
+.hdr .mk{width:36px;height:36px;border-radius:50%;background:var(--crimson);display:grid;place-items:center;box-shadow:inset 0 1px 1px rgba(255,255,255,.45)}
+.hdr .mk svg{width:20px;height:20px}
+.hdr b{font-size:18px;font-weight:700;letter-spacing:-.02em}
+.hdr i{width:1px;height:20px;background:rgba(22,19,14,.18)}
+.hdr span{font-family:var(--font-mono);font-size:12px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--stone)}
+.topbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.topbar nav{display:flex;gap:8px;flex-wrap:wrap}
+.topbar nav a{text-decoration:none}
+.topbar nav a.on{background:var(--crimson);color:#fff;box-shadow:none}
+
+/* labels, tags */
+.kick{display:flex;align-items:center;gap:14px;font-family:var(--font-mono);font-size:13px;font-weight:700;letter-spacing:.22em;text-transform:uppercase;color:var(--crimson)}
+.kick i{display:block;width:40px;height:2px;background:var(--crimson)}
+.mono{font-family:var(--font-mono);font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--stone)}
+.tag{display:inline-block;padding:5px 11px;border-radius:99px;background:rgba(255,255,255,.75);box-shadow:inset 0 0 0 1px rgba(22,19,14,.16);
+  font-family:var(--font-mono);font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-soft);white-space:nowrap}
+.tag.red{background:var(--red-soft);color:#8e0a23;box-shadow:inset 0 0 0 1px rgba(186,12,47,.3)}
+.tag.green{background:var(--green-soft);color:var(--green);box-shadow:inset 0 0 0 1px rgba(26,95,69,.24)}
+.tag.gold{background:rgba(251,246,234,.9);color:var(--gold-ink);box-shadow:inset 0 0 0 1px rgba(148,98,10,.3)}
+
+/* headings */
+h1,h2,h3{font-weight:700;letter-spacing:-.03em;line-height:1.05;text-wrap:balance}
+h1{font-size:clamp(38px,6vw,64px)}
+h2{font-size:clamp(28px,4vw,40px)}
+h3{font-size:20px;letter-spacing:-.015em}
+.grad{background:linear-gradient(90deg,var(--crimson),var(--crimson-bright) 55%,var(--gold));-webkit-background-clip:text;background-clip:text;color:transparent}
+.sub{margin-top:18px;font-size:clamp(18px,2.2vw,24px);font-weight:500;line-height:1.45;letter-spacing:-.01em;color:var(--ink-soft);max-width:34em}
+.sub em{font-style:normal;font-weight:700;color:var(--crimson)}
+.lead{font-size:19px;color:var(--ink-soft);max-width:36em}
+
+/* sections */
+.hero{padding:72px 0 48px}
+section.block{margin-top:84px}
+section.block>.kick{margin-bottom:14px}
+section.block>h2{margin-bottom:10px}
+section.block>.lead{margin-bottom:28px}
+section.block>h2:last-of-type:not(:has(+.lead)){margin-bottom:28px}
+@media (max-width:640px){section.block{margin-top:60px}.hero{padding:44px 0 24px}}
+
+/* card grids */
+.grid{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(min(100%,250px),1fr))}
+.grid.two{grid-template-columns:repeat(auto-fit,minmax(min(100%,400px),1fr))}
+.grid.three{grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr))}
+.card{padding:20px 22px;border-radius:26px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.card .top{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.card .top .num{margin-left:auto;font-family:var(--font-mono);font-size:12px;font-weight:700;letter-spacing:.14em;color:var(--stone)}
+.card p{font-size:15.5px;line-height:1.45;color:var(--ink-soft)}
+.card b.big{font-size:22px;font-weight:700;letter-spacing:-.02em;line-height:1.15}
+.card .who{display:inline-flex;align-items:center;gap:6px;align-self:flex-start;padding:4px 10px 4px 8px;border-radius:99px;font-size:13px;font-weight:700;
+  color:var(--green);background:var(--green-soft);box-shadow:inset 0 0 0 1px rgba(26,95,69,.24)}
+.card .who svg{width:14px;height:14px}
+.card .who.ai{color:#8e0a23;background:var(--red-soft);box-shadow:inset 0 0 0 1px rgba(186,12,47,.25)}
+.card .who.gold{color:var(--gold-ink);background:rgba(251,246,234,.9);box-shadow:inset 0 0 0 1px rgba(148,98,10,.3)}
+
+/* horizontal flow rail */
+.rail{padding:26px 28px;border-radius:34px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.st{display:flex;flex-direction:column;align-items:center;text-align:center;width:150px;gap:10px}
+.st b{font-size:17px;font-weight:700;letter-spacing:-.02em;line-height:1.15}
+.st small{font-size:13px;color:var(--stone);line-height:1.3}
+.arrow{width:40px;height:16px;color:rgba(95,92,82,.5);flex:0 0 auto}
+@media (max-width:760px){.rail{flex-direction:column}.arrow{transform:rotate(90deg)}.st{width:100%}}
+
+/* vertical steps (agent flows) */
+.flow{padding:24px 26px 26px;border-radius:30px;display:flex;flex-direction:column;gap:0}
+.flow .head{display:flex;align-items:center;gap:14px;margin-bottom:18px;flex-wrap:wrap}
+.flow .head .app{width:56px;height:56px}
+.flow .head b{display:block;font-size:24px;font-weight:700;letter-spacing:-.025em}
+.flow .head span.mono{display:block;margin-top:2px}
+.flow .head .tag{margin-left:auto}
+.step{display:flex;gap:14px;align-items:flex-start}
+.step .dot{flex:0 0 auto;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-family:var(--font-mono);font-size:12.5px;font-weight:700;
+  color:#fff;background:var(--ink);box-shadow:0 0 0 2.5px #fff;position:relative}
+.step .dot.ai{background:var(--crimson)}
+.step .dot.you{background:var(--green)}
+.step .dot.out{background:var(--gold-ink)}
+.step .dot svg{width:16px;height:16px}
+.step .txt{padding-top:4px;padding-bottom:18px;min-width:0}
+.step .txt b{display:block;font-size:17px;font-weight:700;letter-spacing:-.015em}
+.step .txt p{margin-top:3px;font-size:15px;line-height:1.45;color:var(--ink-soft)}
+.step:not(:last-child) .dot::after{content:"";position:absolute;left:50%;top:100%;width:2px;height:22px;transform:translateX(-50%);background:rgba(95,92,82,.3)}
+.step.out .txt b{color:var(--gold-ink)}
+.step.you .txt{background:var(--green-soft);border-radius:16px;padding:10px 14px 12px;margin-bottom:18px;box-shadow:inset 0 0 0 1px rgba(26,95,69,.2)}
+.step.you .txt b{color:var(--green)}
+.step.ai .txt b{color:var(--crimson)}
+
+/* chain strip */
+.chain{padding:18px 22px;border-radius:24px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.chain .link{display:inline-flex;align-items:center;gap:8px;padding:6px 12px 6px 6px;border-radius:99px;font-size:15px;font-weight:600;background:rgba(255,255,255,.8);
+  box-shadow:inset 0 0 0 1px rgba(22,19,14,.1);white-space:nowrap}
+.chain .link .app{width:30px;height:30px;border-radius:9px}
+.chain em{font-style:normal;color:rgba(95,92,82,.5);font-size:18px}
+
+/* outcome rows */
+.outcome{display:flex;align-items:center;gap:12px;padding:14px 18px;border-radius:18px;font-size:17px;font-weight:700;letter-spacing:-.01em}
+.outcome svg{width:24px;height:24px;flex:0 0 auto}
+.outcome.good{background:var(--green-soft);color:var(--green);box-shadow:inset 0 0 0 1px rgba(26,95,69,.24)}
+.outcome.bad{background:var(--red-soft);color:#8e0a23;box-shadow:inset 0 0 0 1px rgba(186,12,47,.22)}
+
+/* big number tiles */
+.nums{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(min(100%,170px),1fr))}
+.num{padding:18px 20px;border-radius:24px}
+.num b{display:block;font-size:40px;font-weight:700;letter-spacing:-.035em;line-height:1;color:var(--crimson)}
+.num span{display:block;margin-top:8px;font-size:14.5px;font-weight:600;color:var(--ink-soft);line-height:1.3}
+
+/* simple list */
+ul.plain{list-style:none;display:flex;flex-direction:column;gap:10px}
+ul.plain li{display:flex;gap:10px;align-items:flex-start;font-size:16px;color:var(--ink-soft)}
+ul.plain li svg{width:20px;height:20px;flex:0 0 auto;color:var(--crimson);margin-top:2px}
+ul.plain li b{color:var(--ink)}
+
+/* legend */
+.legend{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:22px;font-size:14px;color:var(--stone)}
+.legend span{display:inline-flex;align-items:center;gap:8px}
+.legend i{display:inline-block;width:14px;height:14px;border-radius:50%}
+
+footer{margin-top:84px;padding-top:20px;border-top:1px solid rgba(22,19,14,.12);display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;
+  font-family:var(--font-mono);font-size:12px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:var(--stone)}
+footer a{text-decoration:none;color:var(--crimson)}
+
+
+/* ===================================================================
+   AGENT FLOWS IN DETAIL — full-width flow, hand-off table, detail cards
+   =================================================================== */
+.bigflow{padding:26px 28px;border-radius:30px}
+.bigflow .step .txt{max-width:70ch}
+.branchy{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.branchy span{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:99px;font-size:13px;font-weight:600;background:rgba(255,255,255,.8);box-shadow:inset 0 0 0 1px rgba(22,19,14,.12);color:var(--ink-soft)}
+.branchy span b{font-family:var(--font-mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--crimson)}
+.branchy span.go b{color:var(--green)}
+.branchy span.loop b{color:var(--gold-ink)}
+.lane-tag{display:inline-block;margin:6px 0 10px 48px;font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--crimson)}
+
+.detail{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:8px 26px;padding:24px 26px 26px;border-radius:30px;margin-bottom:22px}
+.detail .head{grid-column:1/-1;display:flex;align-items:center;gap:14px;margin-bottom:14px;flex-wrap:wrap}
+.detail .head .app{width:56px;height:56px}
+.detail .head b{display:block;font-size:26px;font-weight:700;letter-spacing:-.025em}
+.detail .head .mono{display:block;margin-top:2px}
+.detail .head .tags{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}
+.detail .steps{min-width:0}
+.detail .step .txt p{max-width:62ch}
+.facts{display:flex;flex-direction:column;gap:10px;min-width:0}
+.fact{padding:12px 14px 13px;border-radius:16px;background:rgba(255,255,255,.6);box-shadow:inset 0 0 0 1px rgba(22,19,14,.08)}
+.fact .k{display:block;font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--stone);margin-bottom:4px}
+.fact p{font-size:14px;line-height:1.45;color:var(--ink-soft)}
+.fact ul{margin:0;padding-left:1.1em;font-size:14px;line-height:1.45;color:var(--ink-soft)}
+.fact.ai{box-shadow:inset 0 0 0 1px rgba(186,12,47,.25);background:rgba(253,236,239,.6)}
+.fact.you{box-shadow:inset 0 0 0 1px rgba(26,95,69,.25);background:rgba(232,245,238,.7)}
+.json{font-family:var(--font-mono);font-size:12.5px;line-height:1.55;white-space:pre-wrap;word-break:break-word;background:rgba(22,19,14,.06);border-radius:12px;padding:10px 12px;color:var(--ink)}
+.json i{font-style:normal;color:var(--crimson)}
+.counts{display:flex;gap:8px;flex-wrap:wrap}
+.counts span{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:99px;font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;background:rgba(255,255,255,.8);box-shadow:inset 0 0 0 1px rgba(22,19,14,.12);color:var(--ink-soft)}
+.counts span b{color:var(--crimson)}
+@media (max-width:900px){.detail{grid-template-columns:1fr}}
+
+/* tables */
+.tablebox{padding:8px 12px;border-radius:24px;overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:14.5px}
+th,td{text-align:left;vertical-align:top;padding:10px 12px;border-bottom:1px solid rgba(22,19,14,.1)}
+th{font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--stone)}
+tr:last-child td{border-bottom:0}
+td b{font-weight:700}
+td code{font-family:var(--font-mono);font-size:12.5px;background:rgba(22,19,14,.06);padding:1px 5px;border-radius:5px}
+td .mini{display:inline-block;padding:2px 8px;border-radius:99px;font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap}
+td .mini.yes{color:var(--green);background:var(--green-soft);box-shadow:inset 0 0 0 1px rgba(26,95,69,.24)}
+td .mini.part{color:var(--gold-ink);background:rgba(251,246,234,.9);box-shadow:inset 0 0 0 1px rgba(148,98,10,.3)}
+td .mini.no{color:#8e0a23;background:var(--red-soft);box-shadow:inset 0 0 0 1px rgba(186,12,47,.25)}
+body.present .detail.off{display:none}
+body.present .detail{margin-bottom:0}
+/* ===================================================================
+   PRESENT MODE — the Present button (or the P key) turns each section
+   into a full-screen slide. Arrows move, Esc exits, F is fullscreen.
+   =================================================================== */
+.topbar button.tag{cursor:pointer;border:0;font:inherit;font-family:var(--font-mono);font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase}
+.topbar button.tag.red{background:var(--crimson);color:#fff;box-shadow:none}
+body.present{overflow:hidden}
+body.present .page{max-width:none;padding:0;height:100vh}
+body.present .topbar{position:fixed;left:24px;right:24px;top:20px;z-index:5}
+body.present .hero,body.present section.block{display:none;position:fixed;top:0;bottom:0;left:50%;transform:translateX(-50%);
+  width:min(100%,1320px);margin:0;padding:112px 48px 48px;overflow:auto;flex-direction:column;justify-content:flex-start}
+body.present .hero.on>:first-child,body.present section.block.on>:first-child{margin-top:auto}
+body.present .hero.on>:last-child,body.present section.block.on>:last-child{margin-bottom:auto}
+body.present .hero.on,body.present section.block.on{display:flex;animation:slidein .5s cubic-bezier(.16,1,.3,1)}
+@keyframes slidein{from{opacity:0;transform:translate(-50%,14px)}to{opacity:1;transform:translate(-50%,0)}}
+body.present footer{display:none}
+body.present .flow.off{display:none}
+body.present section[data-split] .grid{grid-template-columns:minmax(0,820px);justify-content:center}
+body.present section[data-split] .flow .step .txt p{font-size:16px}
+body.present .grid.three{grid-template-columns:repeat(auto-fit,minmax(min(100%,270px),1fr))}
+@media (min-width:1200px){body.present .grid.three{grid-template-columns:repeat(4,1fr)}}
+body.present .hero{text-align:left}
+body.present h1{font-size:clamp(44px,6.5vw,84px)}
+body.present h2{font-size:clamp(32px,4.5vw,52px)}
+body.present .sub{font-size:clamp(20px,2.4vw,28px)}
+#pg{display:none}
+body.present #pg{display:inline-block}
+@media (max-width:640px){body.present .hero,body.present section.block{padding:96px 16px 32px}body.present .topbar{left:12px;right:12px;top:12px}}
+
+/* ===== PLAN PAGE ===== */
+.verdict{padding:26px 28px;border-radius:30px;display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:22px}
+.verdict p{margin-top:12px;font-size:16px;line-height:1.5;color:var(--ink-soft)}
+@media (max-width:900px){.verdict{grid-template-columns:1fr}}
+.detail .head .fnum{font-family:var(--font-mono);font-size:13px;font-weight:700;letter-spacing:.14em;color:var(--crimson)}
+.step.bad .txt b{color:#8e0a23}.step .dot.bad{background:#8e0a23}
+.step.fix .txt{background:var(--green-soft);border-radius:16px;padding:10px 14px 12px;margin-bottom:18px;box-shadow:inset 0 0 0 1px rgba(26,95,69,.2)}
+.step.fix .txt b{color:var(--green)}
+.step .txt ol,.step .txt ul{margin:6px 0 0 1.2em;font-size:15px;line-height:1.45;color:var(--ink-soft)}
+.step .txt li{margin-top:4px}
+code{font-family:var(--font-mono);font-size:12.5px;background:rgba(22,19,14,.06);padding:1px 5px;border-radius:5px}
+.card .lab{font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;margin-top:4px}
+.card .lab.ok{color:var(--green)}.card .lab.bad{color:#8e0a23}.card .lab.chg{color:var(--gold-ink)}
+.q .card .top .num{margin-left:0;font-size:22px;color:var(--crimson);letter-spacing:-.02em}
+.q .card .own{font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--stone)}
+.code{font-family:var(--font-mono);font-size:12.5px;line-height:1.55;white-space:pre;overflow-x:auto;background:rgba(22,19,14,.06);border-radius:16px;padding:14px 16px;color:var(--ink)}
+.code i{font-style:normal;color:var(--crimson)}
+.code em{font-style:normal;color:var(--stone)}
+.changes li{padding:10px 0;border-bottom:1px solid rgba(22,19,14,.1);font-size:15px;line-height:1.45;color:var(--ink)}
+.changes li:last-child{border-bottom:0}
+.changes li .n{font-family:var(--font-mono);font-size:12px;font-weight:700;letter-spacing:.14em;color:var(--crimson);margin-right:10px}
+.changes{padding:8px 26px 10px;border-radius:30px}
+ul.plain.changes li{display:block}
+.changes li code,.branch small code,.never small code{display:inline}
+.branch{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-top:14px}
+.branch .glass{padding:16px 18px;border-radius:20px}
+.branch b{display:block;font-size:15px}
+.branch small{display:block;color:var(--stone);font-size:13px;margin-top:4px;line-height:1.4}
+.never{background:rgba(142,10,35,.07);box-shadow:inset 0 0 0 1px rgba(142,10,35,.18)}
+
+/* ===== STEP 1 FLOW ===== */
+.rail.pre{gap:8px}
+.rail.pre .st{width:118px}
+.rail.pre .st small{font-size:12px}
+.rail.pre .st b{font-size:16px}
+.ba{display:grid;grid-template-columns:minmax(0,1fr) 56px minmax(0,1fr);gap:12px;align-items:stretch;margin-top:18px}
+.ba .arr{display:flex;align-items:center;justify-content:center}
+.ba .arr svg{width:40px;height:16px;color:rgba(95,92,82,.6)}
+.ba .glass{padding:18px 20px;border-radius:24px}
+.ba .lab,.bound .lab{font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--stone)}
+.ba b.big{display:block;font-size:17px;letter-spacing:-.02em;margin-top:4px}
+.ba p.t{font-family:var(--font-mono);font-size:13px;line-height:1.75;margin-top:10px;color:var(--ink)}
+mark{border-radius:5px;padding:1px 5px;font-weight:700;background:none;color:inherit}
+mark.pii{background:rgba(142,10,35,.12);color:#8e0a23;text-decoration:line-through}
+mark.tok{background:rgba(152,105,15,.16);color:var(--gold-ink)}
+mark.keep{background:rgba(26,95,69,.14);color:var(--green)}
+.key{display:flex;gap:16px;flex-wrap:wrap;margin-top:12px;font-size:13px;color:var(--stone)}
+.key mark{font-size:12px}
+.bound{display:grid;grid-template-columns:minmax(0,1.45fr) 88px minmax(0,1fr);gap:12px;align-items:center;margin-top:18px}
+.bound .box{padding:18px 20px;border-radius:24px}
+.bound .box.inside{box-shadow:inset 0 0 0 2px rgba(26,95,69,.35)}
+.bound .box.outside{box-shadow:inset 0 0 0 2px rgba(142,10,35,.3)}
+.bound .box b.big{display:block;font-size:17px;letter-spacing:-.02em;margin-top:4px}
+.bound .arr{text-align:center;font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--stone);letter-spacing:.08em;text-transform:uppercase;line-height:1.4}
+.bound .arr svg{width:64px;height:20px;color:rgba(95,92,82,.6);display:block;margin:0 auto 8px}
+.bound ul{margin:10px 0 0 1.1em;font-size:14px;line-height:1.5;color:var(--ink-soft)}
+.bound li{margin-top:4px}
+.bound li code{display:inline}
+.mini{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px}
+.mini .chip{font-family:var(--font-mono);font-size:12px;padding:6px 10px;border-radius:10px;background:rgba(22,19,14,.06);color:var(--ink)}
+.mini .chip.db{background:rgba(45,83,120,.12);color:#2d5378}
+.mini .chip.ai{background:rgba(142,10,35,.1);color:#8e0a23}
+.mini svg{width:28px;height:12px;color:rgba(95,92,82,.6);flex:0 0 auto}
+@media (max-width:760px){.ba,.bound{grid-template-columns:1fr}.ba .arr svg,.bound .arr svg{transform:rotate(90deg)}}
+</style></head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-file-text" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></symbol>
+    <symbol id="i-clipboard-list" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/></symbol>
+    <symbol id="i-code-xml" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 16 4-4-4-4"/><path d="m6 8-4 4 4 4"/><path d="m14.5 4-5 16"/></symbol>
+    <symbol id="i-flask-conical" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2v7.527a2 2 0 0 1-.211.896L4.72 20.55a1 1 0 0 0 .9 1.45h12.76a1 1 0 0 0 .9-1.45l-5.069-10.127A2 2 0 0 1 14 9.527V2"/><path d="M8.5 2h7"/><path d="M7 16h10"/></symbol>
+    <symbol id="i-rocket" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.350 22.350 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+    <symbol id="i-shield-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></symbol>
+    <symbol id="i-sparkles" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/></symbol>
+    <symbol id="i-circle-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></symbol>
+    <symbol id="i-circle-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></symbol>
+    <symbol id="i-user-round" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/></symbol>
+    <symbol id="i-ticket" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M13 5v2"/><path d="M13 17v2"/><path d="M13 11v2"/></symbol>
+    <symbol id="i-clipboard-paste" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H9a1 1 0 0 0-1 1v2c0 .6.4 1 1 1h6c.6 0 1-.4 1-1V3c0-.6-.4-1-1-1Z"/><path d="M8 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2M16 4h2a2 2 0 0 1 2 2v2M11 14h10"/><path d="m17 10 4 4-4 4"/></symbol>
+    <symbol id="i-bot" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></symbol>
+    <symbol id="i-git-branch" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" x2="6" y1="3" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></symbol>
+    <symbol id="i-layers" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></symbol>
+    <!-- i-scan is Lucide "maximize-2": used for "view the real screen" -->
+    <symbol id="i-scan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" x2="14" y1="3" y2="10"/><line x1="3" x2="10" y1="21" y2="14"/></symbol>
+    <symbol id="i-list-checks" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/></symbol>
+    <symbol id="i-package" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z"/><path d="M12 22V12"/><path d="m3.3 7 7.703 4.734a2 2 0 0 0 1.994 0L20.7 7"/><path d="m7.5 4.27 9 5.15"/></symbol>
+    <symbol id="i-git-pull-request" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" x2="6" y1="9" y2="21"/></symbol>
+    <symbol id="i-git-merge" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/></symbol>
+    <symbol id="i-git-commit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><line x1="3" x2="9" y1="12" y2="12"/><line x1="15" x2="21" y1="12" y2="12"/></symbol>
+    <symbol id="i-folder-tree" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-2.5a1 1 0 0 1-.8-.4l-.9-1.2A1 1 0 0 0 15 3h-2a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1Z"/><path d="M20 21a1 1 0 0 0 1-1v-3a1 1 0 0 0-1-1h-2.9a1 1 0 0 1-.88-.55l-.42-.85a1 1 0 0 0-.92-.6H13a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1Z"/><path d="M3 5a2 2 0 0 0 2 2h3"/><path d="M3 3v13a2 2 0 0 0 2 2h3"/></symbol>
+    <symbol id="i-file-code" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 12.5 8 15l2 2.5"/><path d="m14 12.5 2 2.5-2 2.5"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"/></symbol>
+    <symbol id="i-file-json" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 12a1 1 0 0 0-1 1v1a1 1 0 0 1-1 1 1 1 0 0 1 1 1v1a1 1 0 0 0 1 1"/><path d="M14 18a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1 1 1 0 0 1-1-1v-1a1 1 0 0 0-1-1"/></symbol>
+    <symbol id="i-terminal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-arrow-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></symbol>
+    <symbol id="i-refresh-cw" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></symbol>
+    <symbol id="i-user-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><polyline points="16 11 18 13 22 9"/></symbol>
+    <symbol id="i-triangle-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
+    <symbol id="i-log-in" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" x2="3" y1="12" y2="12"/></symbol>
+    <symbol id="i-kanban" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M8 7v7"/><path d="M12 7v4"/><path d="M16 7v9"/></symbol>
+    <symbol id="i-message-question" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></symbol>
+    <symbol id="i-book-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></symbol>
+    <symbol id="i-chart-column" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></symbol>
+    <symbol id="i-key-round" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></symbol>
+  </defs>
+<symbol id="i-mail" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></symbol>
+    <symbol id="i-database" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+    <symbol id="i-inbox" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></symbol>
+    <symbol id="i-power" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.77.04"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></symbol>
+    <symbol id="i-eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"/><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"/><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/><path d="m2 2 20 20"/></symbol>
+    <symbol id="i-map-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></symbol>
+    <symbol id="i-users" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+    <symbol id="i-wrench" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></symbol>
+    <symbol id="i-calendar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></symbol>
+    <symbol id="i-arrow-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></symbol>
+</svg>
+<main class="page">
+
+<div class="topbar">
+  <div class="glass hdr">
+    <span class="mk"><svg viewBox="0 0 24 24" fill="none" stroke="#faf8f4" stroke-width="2.2" stroke-linecap="round"><path d="M4 16c3-1 5-7 8-7s5 6 8 7"/><circle cx="12" cy="8" r="1.6" fill="#faf8f4" stroke="none"/></svg></span>
+    <b>AMS Incident Management</b><i></i><span>Data Quality plan</span>
+  </div>
+  <nav>
+    <a class="tag" href="architecture.html">What we build</a>
+    <a class="tag" href="review.html">Code review</a>
+    <a class="tag on" href="plan-data-quality.html">DQ plan</a>
+    <span class="tag" id="pg"></span>
+    <button class="tag" id="present-btn" title="P · arrows move · Esc exits · F fullscreen">Present</button>
+  </nav>
+</div>
+
+<header class="hero">
+  <p class="kick"><i></i>Plan · Data Quality agent · the first of three</p>
+  <h1 style="margin-top:14px">Rules first. One call.<br><span class="grad">A person sends the email.</span></h1>
+  <p class="sub">The agent decides whether an engineer can act on a ticket, names what is missing for that application, and produces the chasing email a person accepts, edits or rejects. The markdown source is <em>docs/plan-data-quality.md</em>.</p>
+  <div class="legend" style="margin-top:26px">
+    <span><i style="background:var(--ink)"></i>code decides</span>
+    <span><i style="background:var(--crimson)"></i>one model call</span>
+    <span><i style="background:var(--green)"></i>a person decides</span>
+  </div>
+</header>
+
+<!-- ===================================================== JOB -->
+<section class="block">
+  <p class="kick"><i></i>1 · The job</p>
+  <h2>One ticket in seven cannot be worked. Someone chases it by hand.</h2>
+  <div class="grid two">
+    <article class="glass card"><div class="top"><span class="app ink sm"><svg><use href="#i-ticket"/></svg></span><b class="big">Who, today, what hurts</b></div><p>The person on the AMS support rota opens every new ticket from ServiceNow, JIRA and the mailbox and decides whether it can be worked. In the sample, 15 of 100 cannot: &quot;System not working. Please fix ASAP.&quot;, &quot;cant login&quot;, a forwarded email with only a screenshot. The rota person reads it, guesses the application, writes a chasing email, and the ticket sits until the requester answers.</p></article>
+    <article class="glass card"><div class="top"><span class="app red sm"><svg><use href="#i-sparkles"/></svg></span><b class="big">What the agent produces</b></div><p>One verdict per ticket: <code>pass</code>, <code>needs_info</code>, <code>not_an_incident</code>, <code>service_request</code>, or <code>needs_review</code> when the model is unavailable. A list of the specific items missing for that application with one plain question each. An assembled email a person accepts, edits or rejects and sends from their own mail client.</p></article>
+  </div>
+  <div class="branch">
+    <div class="glass never"><b>Never sends</b><small>No email is sent and no ServiceNow or JIRA record is changed by the agent. It writes to this service's database only.</small></div>
+    <div class="glass never"><b>Never sees PII</b><small>Nothing on the client's PII class list reaches the model. It never sees the ticket number or the requester's name, and never writes the email.</small></div>
+    <div class="glass never"><b>Never holds a P1</b><small>Urgent tickets get the same verdict and draft, and Triage selects them regardless of the data-quality outcome.</small></div>
+    <div class="glass never"><b>Never leaves Canada</b><small>Model endpoint in a Canadian region. Unverified for the model named below; only synthetic tickets until it is.</small></div>
+  </div>
+  <div class="grid two" style="margin-top:18px">
+    <article class="glass card"><div class="top"><span class="app grey sm"><svg><use href="#i-clipboard-list"/></svg></span><b class="big">Assumptions, because the brief did not say</b></div><ul class='plain'><li><svg><use href="#i-circle-check"/></svg><span>Trigger is ingestion: pending tickets whose latest run has no human decision or a changed input hash.</span></li><li><svg><use href="#i-circle-check"/></svg><span>Per-app checklists are derived from the seven KB pages; the support lead corrects them.</span></li><li><svg><use href="#i-circle-check"/></svg><span>The gate is the decision endpoint from the code review plus one HTMX page.</span></li><li><svg><use href="#i-circle-check"/></svg><span>Volume unknown. The sample has 67 open tickets over 8 days, so 8 to 10 a day; 40 is the planning ceiling.</span></li></ul></article>
+    <article class="glass card"><div class="top"><span class="app gold sm"><svg><use href="#i-flask-conical"/></svg></span><b class="big">Measured before it was written</b></div><p>Candidate rules were run against all 100 tickets and the answer key.</p><ul class='plain'><li><svg><use href="#i-circle-check"/></svg><span>Incomplete tickets caught by rules alone: 14 of 15, with zero false fails.</span></li><li><svg><use href="#i-circle-check"/></svg><span>Good tickets cleared with no model call: 37 of 85.</span></li><li><svg><use href="#i-circle-check"/></svg><span>Left for the model: 49. Every should-pass body is at least 63 characters; 14 of 15 should-fail are under 50 after signature stripping.</span></li></ul></article>
+  </div>
+</section>
+
+<!-- ===================================================== WORKING -->
+<section class="block" data-split>
+  <p class="kick"><i></i>2 · What "working" means</p>
+  <h2>The eval set, the bars, and who rates</h2>
+  <div class="glass tablebox"><table><thead><tr><th>Slice</th><th>Size</th><th>Where from</th><th>Role</th></tr></thead><tbody><tr><td>Should-fail tickets</td><td>15</td><td>answer key, <code>scenario = incomplete</code>; 3 marked borderline</td><td>Tuning set</td></tr><tr><td>Should-pass tickets</td><td>85</td><td>all other scenarios, each with an expected application</td><td>Tuning set for false fails; scores application accuracy</td></tr><tr><td>Real incomplete tickets</td><td>7 to 14</td><td>support lead, before milestone 2 ends</td><td><b>The only holdout.</b> Nothing is tuned on it</td></tr><tr><td>Reply re-check</td><td>0 in v0.1</td><td>synthetic: original plus reply</td><td>Deferred with the reply path</td></tr></tbody></table></div>
+  <p class="sub" style="margin-top:14px">The thresholds were chosen on the 100 synthetic tickets, so the bars are met on the tuning set by construction. The plan says "not yet met" until at least 7 held-out tickets are scored. The rater is the support lead or a rota engineer who did not write the prompt.</p>
+  <div class="glass tablebox"><table><thead><tr><th>Metric</th><th>Definition</th><th>Bar to ship</th><th>Rollback</th></tr></thead><tbody><tr><td>Fail recall</td><td>should-fail tickets caught (<code>needs_info</code>, <code>not_an_incident</code> or <code>service_request</code>)</td><td>15 / 15 tuning; ≥ 90% holdout</td><td>&lt; 13 / 15, or &lt; 80% holdout</td></tr><tr><td>False-fail rate</td><td>should-pass tickets not passed</td><td>≤ 2 / 85</td><td>&gt; 4 / 85, or &gt; 5% of production tickets in a week</td></tr><tr><td>Missing-item F1</td><td>precision and recall of <code>missing[].item</code> against the taxonomy-mapped key</td><td>≥ 0.75</td><td>&lt; 0.65</td></tr><tr><td>Spurious asks</td><td>items the ticket already answers, counted by the rater</td><td>≤ 0.3 per ticket</td><td>&gt; 1 per ticket</td></tr><tr><td>Application accuracy</td><td><code>application</code> equals the expected one on the 85</td><td>≥ 0.90</td><td>&lt; 0.80</td></tr><tr><td>Draft accept rate</td><td>accepted or lightly edited (&lt; 20% of characters) by the named rater</td><td>≥ 10 / 15; ≥ 60% in production</td><td>&lt; 40% over a week</td></tr><tr><td>LLM skip rate</td><td>tickets decided by rules alone</td><td>reported; baseline 51%</td><td>none</td></tr><tr><td>p95 latency</td><td>ingest to verdict stored</td><td>≤ 60 s, dashboard line</td><td>none; background job</td></tr></tbody></table></div>
+  <div class="grid two" style="margin-top:18px">
+    <article class="glass card"><div class="top"><span class="app ink sm"><svg><use href="#i-list-checks"/></svg></span><b class="big">The taxonomy, fixed on day 1</b></div><div class='code'>application, symptom, error_text, since_when, impact_scope,
+identifier, period, environment, location, attachment_content,
+previous_ticket_ref, approval, requested_access,
+expected_vs_actual, not_an_incident</div><p>The answer key's free text (&quot;application, since when, how many users&quot;) is mapped to these 15 items so coverage is scored in code. The three borderline rows must not <code>pass</code>; <code>needs_info</code> or <code>needs_review</code> both count as caught.</p></article>
+    <article class="glass card"><div class="top"><span class="app green sm"><svg><use href="#i-refresh-cw"/></svg></span><b class="big">Feedback loop</b></div><p>Every accept, edit or reject lands in <code>agent_runs</code> with its reason and the edited text. Weekly, a script pulls rejected and heavily edited runs into a review workbook for the support lead to label. Labelled rows join the holdout. Nothing is auto-promoted.</p></article>
+  </div>
+</section>
+
+<!-- ===================================================== SHAPE -->
+<section class="block" data-split>
+  <p class="kick"><i></i>3 · Shape of the system</p>
+  <h2>Plain functions in a row. One gate. One model call for half the tickets.</h2>
+  <div class="glass rail">
+    <div class="st"><span class="app ink lg"><svg><use href="#i-eye-off"/></svg></span><b>prepare</b><small>redact · app guess</small></div><svg class="arrow" viewBox="0 0 40 16" aria-hidden="true"><path d="M1 8h34M29 2l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <div class="st"><span class="app ink lg"><svg><use href="#i-list-checks"/></svg></span><b>rules</b><small>6 signals · 5 rules</small></div><svg class="arrow" viewBox="0 0 40 16" aria-hidden="true"><path d="M1 8h34M29 2l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <div class="st"><span class="app red lg"><svg><use href="#i-sparkles"/></svg></span><b>assess</b><small>one call · 49% · code writes the email</small></div><svg class="arrow" viewBox="0 0 40 16" aria-hidden="true"><path d="M1 8h34M29 2l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <div class="st"><span class="app green lg"><svg><use href="#i-user-check"/></svg></span><b>gate</b><small>accept · edit · reject</small></div><svg class="arrow" viewBox="0 0 40 16" aria-hidden="true"><path d="M1 8h34M29 2l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <div class="st"><span class="app blue lg"><svg><use href="#i-database"/></svg></span><b>record</b><small>agent_runs · status</small></div>
+  </div>
+  <div class="branch">
+    <div class="glass"><b>rules → pass</b><small>37 of 100. Straight to record, <code>dq_passed</code>. No model call.</small></div>
+    <div class="glass"><b>rules → not_an_incident</b><small>Test tickets. No email; flagged for a person to close.</small></div>
+    <div class="glass"><b>rules → service_request</b><small>"Need access." No chase; routed to the request path; a person confirms.</small></div>
+    <div class="glass"><b>rules → needs_info / uncertain</b><small>63 of 100. One model call, then compose, then the gate.</small></div>
+    <div class="glass"><b>model unavailable</b><small>Kill switch, breaker open, refusal: verdict <code>needs_review</code> with the template email. The queue keeps moving.</small></div>
+    <div class="glass"><b>requester replies (v0.2)</b><small>Re-ingest changes the input hash and the same function runs again. Needs a mailbox poll first.</small></div>
+  </div>
+  <div class="grid two" style="margin-top:18px">
+    <article class="glass card"><div class="top"><span class="app grey sm"><svg><use href="#i-git-branch"/></svg></span><b class="big">Code, call, or gate: each with its reason</b></div><ul class='plain'><li><svg><use href="#i-circle-check"/></svg><span><b>prepare, rules, compose, record: code.</b> Deterministic, auditable, run when AI is off.</span></li><li><svg><use href="#i-circle-check"/></svg><span><b>assess: one structured model call.</b> Needs language understanding of a 70-character email and app-specific questions.</span></li><li><svg><use href="#i-circle-check"/></svg><span><b>gate: a person.</b> Advisory only, by project rule. A status on the run row, not a framework interrupt.</span></li><li><svg><use href="#i-circle-check"/></svg><span>Nothing in parallel. Nothing on its own clock; the two-day reminder is deferred.</span></li></ul></article>
+    <article class="glass card"><div class="top"><span class="app gold sm"><svg><use href="#i-git-merge"/></svg></span><b class="big">On LangGraph</b></div><p>The original request asked for it, the design repo bans it, and the only thing it buys is resume on reply, which is v0.2. So v0.1 is <code>run_ticket()</code> calling five plain functions. When the reply path is built, the engineers evaluate LangGraph against &quot;call the same function with the new text&quot; and adopt it only if the resume semantics are worth a dependency and a second state store. The decision is dated in <code>docs/adr/0001-orchestration.md</code> and ARCHITECTURE.md is updated to match. The nodes do not change under either answer.</p></article>
+  </div>
+</section>
+
+<!-- ===================================================== STEP 1 FLOW -->
+<section class="block" data-split>
+  <p class="kick"><i></i>Step 1 as a picture</p>
+  <h2>prepare: hide the private bits, keep the useful bits, then let the model look.</h2>
+  <div class="glass rail pre">
+    <div class="st"><span class="app grey lg"><svg><use href="#i-mail"/></svg></span><b>ticket in</b><small>raw text: name, email, phone, IDs, app</small></div><svg class="arrow" viewBox="0 0 40 16" aria-hidden="true"><path d="M1 8h34M29 2l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <div class="st"><span class="app ink lg"><svg><use href="#i-search"/></svg></span><b>find</b><small>Presidio + spaCy mark names, places, emails, phones, employee IDs</small></div><svg class="arrow" viewBox="0 0 40 16" aria-hidden="true"><path d="M1 8h34M29 2l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <div class="st"><span class="app gold lg"><svg><use href="#i-shield-check"/></svg></span><b>protect</b><small>allow-list app names · keep-list ORD, INV, SKU, PO</small></div><svg class="arrow" viewBox="0 0 40 16" aria-hidden="true"><path d="M1 8h34M29 2l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <div class="st"><span class="app ink lg"><svg><use href="#i-eye-off"/></svg></span><b>swap</b><small>labels and numbered tokens replace the private bits</small></div><svg class="arrow" viewBox="0 0 40 16" aria-hidden="true"><path d="M1 8h34M29 2l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <div class="st"><span class="app blue lg"><svg><use href="#i-package"/></svg></span><b>guess app</b><small>system field first, else registry keywords</small></div><svg class="arrow" viewBox="0 0 40 16" aria-hidden="true"><path d="M1 8h34M29 2l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <div class="st"><span class="app red lg"><svg><use href="#i-sparkles"/></svg></span><b>clean ticket</b><small>only this reaches the model, in step 3</small></div>
+  </div>
+
+  <div class="ba">
+    <article class="glass">
+      <span class="lab">Before · what arrives</span>
+      <b class="big">A made-up ticket, as the reporter wrote it</b>
+      <p class="t">Hi, this is <mark class="pii">Priya Raman</mark> (emp <mark class="pii">48213</mark>) from the <mark class="pii">Mississauga</mark> site. <mark class="keep">PayrollPro</mark> shows error PR-409 on invoice <mark class="keep">INV-2026-91226</mark> since Monday. Call me on <mark class="pii">416 555 0199</mark> or <mark class="pii">priya.raman@example.com</mark>.<br>Thanks, <mark class="pii">Priya</mark></p>
+    </article>
+    <div class="arr"><svg viewBox="0 0 40 16" aria-hidden="true"><path d="M1 8h34M29 2l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+    <article class="glass">
+      <span class="lab">After · what the model sees</span>
+      <b class="big">Same ticket, private bits swapped, useful bits kept</b>
+      <p class="t">Hi, this is <mark class="tok">[REPORTER]</mark> (emp <mark class="tok">[EMP_ID_1]</mark>) from the <mark class="tok">[LOCATION_1]</mark> site. <mark class="keep">PayrollPro</mark> shows error PR-409 on invoice <mark class="keep">INV-2026-91226</mark> since Monday. Call me on <mark class="tok">[PHONE]</mark> or <mark class="tok">[EMAIL]</mark>.<br><mark class="tok">[SIGNATURE]</mark></p>
+      <div class="key"><span><mark class="pii">red</mark> private, removed</span><span><mark class="tok">gold</mark> label or token in its place</span><span><mark class="keep">green</mark> kept on purpose: app name and business identifier</span></div>
+    </article>
+  </div>
+
+  <div class="bound">
+    <div class="glass box inside">
+      <span class="lab">Inside our service · Canadian region · nothing leaves</span>
+      <b class="big">Where the private data stays</b>
+      <ul>
+        <li>The raw ticket, as ingested.</li>
+        <li>The token map: <code>[EMP_ID_1]</code> to the real employee ID, in <code>redaction_tokens</code>. Used later to put real values back into the email a person sends.</li>
+        <li>A count per entity type for every run (3 names, 1 email, 1 phone). Never the values.</li>
+      </ul>
+      <div class="mini"><span class="chip">swap</span><svg viewBox="0 0 40 16" aria-hidden="true"><path d="M1 8h34M29 2l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="chip db">redaction_tokens</span><svg viewBox="0 0 40 16" aria-hidden="true"><path d="M1 8h34M29 2l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="chip">compose, step 4: real values back in</span></div>
+      <div class="mini"><span class="chip">swap</span><svg viewBox="0 0 40 16" aria-hidden="true"><path d="M1 8h34M29 2l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="chip db">agent_runs log</span><span class="chip">counts only</span></div>
+    </div>
+    <div class="arr"><svg viewBox="0 0 40 16" aria-hidden="true"><path d="M1 8h34M29 2l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>clean text<br>+ app guess<br>+ 6 signals</div>
+    <div class="glass box outside">
+      <span class="lab">Model endpoint · step 3 · one call</span>
+      <b class="big">What the model is allowed to see</b>
+      <ul>
+        <li>The redacted text with labels and tokens.</li>
+        <li>The application guess and the six rule signals.</li>
+        <li>Never a name, email, phone, employee ID or customer name.</li>
+      </ul>
+      <div class="mini"><span class="chip ai">claude-opus-5-5</span><span class="chip">structured output</span><span class="chip">one retry</span></div>
+    </div>
+  </div>
+  <div class="grid two" style="margin-top:18px">
+    <article class="glass card"><div class="top"><span class="app gold sm"><svg><use href="#i-shield-check"/></svg></span><b class="big">Why the protect stop exists</b></div><p>spaCy tags PayrollPro and OrderHub as organisations. Without the allow-list they would be hidden and the app guess would break. Without the keep-list, <code>INV-2026-91226</code> looks like a phone number; the v0.1 regex ate it on five tickets. Protect runs before swap so the right things survive.</p></article>
+    <article class="glass card"><div class="top"><span class="app green sm"><svg><use href="#i-flask-conical"/></svg></span><b class="big">How we know it works</b></div><p>The redaction eval runs on all 100 tickets and on every change to recognisers, allow-list or threshold. It asserts no reporter, email or third-party name survives, every application name survives untouched, and every business identifier survives intact or as a typed token. Milestone 2, before any real ticket.</p></article>
+  </div>
+</section>
+
+<!-- ===================================================== STEPS -->
+<section class="block" data-split>
+  <p class="kick"><i></i>4 · Each step in detail</p>
+  <h2>prepare and rules: what code decides, on what</h2>
+  
+  <article class="glass detail">
+    <div class="head"><span class="app ink"><svg><use href="#i-eye-off"/></svg></span><div><span class="fnum">Step 1</span><b>prepare</b></div><div class="tags"><span class="tag">code</span><span class="tag">Presidio + spaCy NER</span><span class="tag">app guess</span></div></div>
+    <div class="steps"><div class="step "><span class="dot"><svg><use href="#i-eye-off"/></svg></span><div class="txt"><b>Redact with Presidio, in process</b><p>Presidio Analyzer with the spaCy large English model for <code>PERSON</code> and <code>LOCATION</code>, the built-in email and phone recognisers, and custom recognisers with context words for <code>EMPLOYEE_ID</code> and <code>CUSTOMER_NAME</code>. <code>ORG</code> is left out: spaCy tags PayrollPro and OrderHub as organisations and redacting them breaks the app guess. Every registry name and KB title is allow-listed. Nothing leaves the service, so residency is untouched.</p></div></div><div class="step "><span class="dot"><svg><use href="#i-key-round"/></svg></span><div class="txt"><b>Keep-list and reversible tokens</b><p>Order, invoice, SKU, PO, device and job identifiers are their own entity types with a higher score than the generic recognisers, so Presidio keeps them. Names and contacts are replaced (<code>[REPORTER]</code>, <code>[PERSON_n]</code>, <code>[EMAIL]</code>, <code>[PHONE]</code>, <code>[SIGNATURE]</code>). Employee IDs, customer names and locations become reversible tokens, <code>[EMP_ID_1]</code>, <code>[CUSTOMER_1]</code>, <code>[LOCATION_1]</code>, with the mapping in <code>redaction_tokens</code>. Location is tokenised, not deleted, because it is a taxonomy item the model must see is present.</p></div></div><div class="step "><span class="dot"><svg><use href="#i-scan"/></svg></span><div class="txt"><b>Threshold and model size</b><p>Presidio scores every finding; the threshold is chosen on the 100 tickets and re-checked on the first real batch. The phone recogniser uses the phonenumbers library with context, so <code>INV-2026-91226</code> scores low instead of being swallowed as the v0.1 regex did on five tickets. The large model is used because the sample names are South Asian and the small models miss more of them; the transformer model is the fallback only if the eval demands it.</p></div></div><div class="step "><span class="dot"><svg><use href="#i-search"/></svg></span><div class="txt"><b>Application guess</b><p>From <code>cmdb_ci</code> or <code>components</code> when present, else the first keyword hit in <code>data/registry/apps.yaml</code>. Attachments by name only.</p></div></div><div class="step fix"><span class="dot you"><svg><use href="#i-circle-check"/></svg></span><div class="txt"><b>Redaction eval, milestone 2</b><p>On all 100 tickets, and on every change to recognisers, allow-list or threshold: no reporter name, email or third-party name from the workbook survives into the stored model input; every registry application name survives untouched; every <code>INV-</code>, <code>ORD-</code>, <code>SKU-</code>, <code>PO-</code>, device and employee identifier survives intact or as a typed token.</p></div></div></div>
+    <aside class="facts"><div class="fact "><span class="k">Decides</span>the redacted text the model may see, and the application guess</div><div class="fact "><span class="k">PII list</span>open question 2; assumed to include names, contact details, employee IDs</div><div class="fact "><span class="k">Logged</span>replacement counts per entity type, every run</div><div class="fact "><span class="k">Who decides what</span>Presidio decides how to redact; the privacy owner decides what counts as PII</div></aside>
+  </article>
+  
+  <article class="glass detail">
+    <div class="head"><span class="app ink"><svg><use href="#i-list-checks"/></svg></span><div><span class="fnum">Step 2</span><b>rules</b></div><div class="tags"><span class="tag">code</span><span class="tag">measured</span><span class="tag">provisional thresholds</span></div></div>
+    <div class="steps"><div class="step "><span class="dot"><svg><use href="#i-list-checks"/></svg></span><div class="txt"><b>Six signals on every ticket first</b><p><code>body_length</code> after signature stripping · <code>app_found</code> · <code>identifier_found</code> · <code>attachment_only</code> · <code>summary_equals_body</code> · <code>mentions_previous_ticket</code>. All six reach the model whichever rule fires.</p></div></div><div class="step "><span class="dot"><svg><use href="#i-circle-x"/></svg></span><div class="txt"><b>Then the verdict, in order</b><ol><li>Test blocklist → <code>not_an_incident</code>. No email; flag for a person to close.</li><li>Access or new-user request with nothing broken → <code>service_request</code>. No chase.</li><li><code>body_length</code> &lt; 50 → <code>needs_info</code>. Every should-pass body is ≥ 63; 14 of 15 should-fail are under 50 after stripping. One is 49.</li><li><code>body_length</code> ≥ 60, app found, identifier found → <code>pass</code>. No model call.</li><li>Otherwise <code>uncertain</code> → model call.</li></ol></div></div><div class="step fix"><span class="dot you"><svg><use href="#i-flask-conical"/></svg></span><div class="txt"><b>Measured on 100 tickets</b><p>37 pass, 14 fail, 49 uncertain (48 should pass, 1 should fail). Zero wrong verdicts. The thresholds are provisional: chosen on the synthetic set, re-tuned on the first 50 real tickets.</p></div></div></div>
+    <aside class="facts"><div class="fact "><span class="k">Decides</span>pass · not_an_incident · service_request · needs_info · uncertain</div><div class="fact "><span class="k">Skip rate</span>51% of tickets never reach the model</div><div class="fact "><span class="k">Margin</span>the shortest good ticket is 63 chars; the longest short bad one is 49. Both margins exist because one author wrote both sides of the data</div></aside>
+  </article>
+
+  <h2 style="margin-top:40px">assess: the one model call</h2>
+  
+  <article class="glass detail">
+    <div class="head"><span class="app red"><svg><use href="#i-sparkles"/></svg></span><div><span class="fnum">Step 3</span><b>assess</b></div><div class="tags"><span class="tag">one call</span><span class="tag">structured output</span><span class="tag">claude-opus-5-5 · effort low</span></div></div>
+    <div class="steps"><div class="step ai"><span class="dot ai"><svg><use href="#i-sparkles"/></svg></span><div class="txt"><b>Inputs</b><p>Source, channel, application guess and whether it came from a system field, redacted summary (≤ 200 chars), redacted body (≤ 2,000 chars, truncated with a marker), attachment names, the six signals, the per-app checklist (≤ 300 tokens) or the generic one, the urgent flag. Not the ticket number. Not the name.</p></div></div><div class="step ai"><span class="dot ai"><svg><use href="#i-file-json"/></svg></span><div class="txt"><b>Output: verdict and one question per missing item</b><div class="json">{ <i>actionable</i>: false,
+  <i>application</i>: "PayrollPro" | null,
+  <i>not_an_incident</i>: false,
+  <i>service_request</i>: false,
+  <i>missing</i>: [
+    { <i>item</i>: "symptom",
+      <i>why</i>: "says 'check my salary' with nothing about what is wrong",
+      <i>question</i>: "What looks wrong with your salary: the amount, a missing allowance, or something else?" },
+    { <i>item</i>: "period", <i>why</i>: "no pay period named",
+      <i>question</i>: "Which pay period is affected, for example October 2026?" },
+    { <i>item</i>: "identifier", <i>why</i>: "no employee ID",
+      <i>question</i>: "What is your employee ID, so we can look up the payslip?" } ],
+  <i>schema_version</i>: 1 }</div><p>The model does not write the email. It does not see or produce the ticket number, the requester's name, or any address.</p></div></div><div class="step "><span class="dot"><svg><use href="#i-shield-check"/></svg></span><div class="txt"><b>Validation, in code, after the schema check</b><ul><li><code>actionable == false</code> if and only if <code>missing</code> is non-empty or a flag is set; a flag implies <code>missing</code> is empty.</li><li><code>application</code> in the registry or null; if the guess came from a system field, the model may fill a null, not overrule it.</li><li>1 to 5 items, each in the taxonomy, unique.</li><li>Each question: ends with <code>?</code>, ≤ 200 chars, no URL, no <code>@</code>, no digit run longer than 4, no redaction token, none of password, OTP, PIN, card number.</li><li>No question asks for an item the signals found present.</li></ul></div></div><div class="step fix"><span class="dot you"><svg><use href="#i-refresh-cw"/></svg></span><div class="txt"><b>Retry and fallback</b><p>One retry with the failures appended. Then verdict <code>needs_review</code> with the rules signals and the generic template email; a person decides. Same path when the model is down, the breaker is open, the kill switch is off, or the response is a refusal.</p></div></div></div>
+    <aside class="facts"><div class="fact "><span class="k">Model</span>claude-opus-5-5, effort low set explicitly (the default is medium), adaptive thinking, no streaming</div><div class="fact "><span class="k">Why that tier</span>quality on 70-character tickets is the whole job; cost is irrelevant at this volume. Haiku 5.5 is the first experiment against the eval, not the default</div><div class="fact "><span class="k">Prompt</span>one file, hashed into prompt_version. Stable block first and cached: role, question rules, taxonomy, schema. Checklist and ticket after the breakpoint, uncached: at 20 calls a day across seven apps a per-app prefix is never read</div><div class="fact "><span class="k">Injection</span>ticket text is labelled as data; schema-constrained output; no tools; the model writes no free text a person forwards</div></aside>
+  </article>
+
+  <h2 style="margin-top:40px">compose, gate, record</h2>
+  
+  <article class="glass detail">
+    <div class="head"><span class="app ink"><svg><use href="#i-mail"/></svg></span><div><span class="fnum">Step 4</span><b>compose</b></div><div class="tags"><span class="tag">code</span><span class="tag">template</span></div></div>
+    <div class="steps"><div class="step "><span class="dot"><svg><use href="#i-mail"/></svg></span><div class="txt"><b>Email from the template and the questions</b><div class="json"><em>subject:</em>  [{ticket_ref}] A few details so we can start on your {app_label} ticket
+<em>body:</em>     Hi {reporter_first_name},
+
+          Thanks for raising {ticket_ref}. To look into this we need {n} thing(s):
+
+          1. {question 1}
+          2. {question 2}
+
+          Reply to this email and we will pick it up straight away.
+
+          AMS Support</div><p><code>app_label</code> is the registry display name, or &quot;support&quot; when the application is null. The first name is filled from <code>tickets.reporter_name</code> at render time on the review page, never passed to the model; &quot;there&quot; if it cannot be split.</p></div></div></div>
+    <aside class="facts"><div class="fact "><span class="k">Runs when</span>missing is non-empty</div><div class="fact "><span class="k">Template</span>data/registry/dq_email_template.md, versioned by hash, owned by the support lead</div></aside>
+  </article>
+  
+  <article class="glass detail">
+    <div class="head"><span class="app green"><svg><use href="#i-user-check"/></svg></span><div><span class="fnum">Step 5</span><b>gate</b></div><div class="tags"><span class="tag">a person</span><span class="tag">advisory</span><span class="tag">HTMX page</span></div></div>
+    <div class="steps"><div class="step "><span class="dot"><svg><use href="#i-user-check"/></svg></span><div class="txt"><b>One review page</b><p>The ticket unredacted (the reviewer is internal), the verdict and why, the assembled email with the real first name, a textarea, and three buttons that call <code>POST /api/v1/agent_runs/{id}/decision</code>. Accept and edit show the final text with a copy button and a <code>mailto:</code> link as a convenience; the person sends it from their own client.</p></div></div><div class="step "><span class="dot"><svg><use href="#i-circle-x"/></svg></span><div class="txt"><b>Reject takes a reason</b><ul><li><code>ticket_is_fine</code>: the verdict was wrong → <code>dq_passed</code>.</li><li><code>draft_unusable</code>: the verdict was right, the questions were not; the reviewer writes their own, stored as <code>edited_value</code> → <code>needs_info</code>.</li><li><code>wrong_application</code>: the reviewer corrects the app → re-run once with it.</li></ul></div></div></div>
+    <aside class="facts"><div class="fact "><span class="k">Never</span>sends anything, closes anything, writes to ServiceNow or JIRA</div><div class="fact "><span class="k">Stored</span>decision, decided_by, decided_at, reject_reason, edited_value</div></aside>
+  </article>
+  
+  <article class="glass detail">
+    <div class="head"><span class="app blue"><svg><use href="#i-database"/></svg></span><div><span class="fnum">Step 6</span><b>record</b></div><div class="tags"><span class="tag">code</span><span class="tag">idempotent</span><span class="tag">hand-off</span></div></div>
+    <div class="steps"><div class="step "><span class="dot"><svg><use href="#i-database"/></svg></span><div class="txt"><b>Status transitions</b><p><code>pass</code> → <code>dq_passed</code>. Accepted or edited draft → <code>needs_info</code>. <code>not_an_incident</code> and <code>service_request</code> keep their names for a person to close or route. <code>needs_review</code> stays <code>pending</code> with the run visible on the page. Reject → the table above.</p></div></div><div class="step "><span class="dot"><svg><use href="#i-key-round"/></svg></span><div class="txt"><b>Idempotency</b><p>Unique on (<code>ticket_id</code>, <code>agent</code>, <code>input_hash</code>, <code>prompt_version</code>). Selection skips any ticket whose latest run has a human decision unless the input hash changed. A prompt bump never re-chases a requester; a reply always re-runs.</p></div></div><div class="step fix"><span class="dot you"><svg><use href="#i-arrow-right"/></svg></span><div class="txt"><b>Hand-off to Triage</b><p><code>dq_verdict</code>, <code>missing[]</code>, <code>application</code>, <code>urgent</code>. Triage selects <code>pipeline_status = dq_passed OR urgent = true</code>: an urgent ticket that failed data quality is triaged and chased at the same time.</p></div></div></div>
+    <aside class="facts"><div class="fact "><span class="k">Row holds</span>model, prompt_version, input_hash, output as returned, assembled subject and body, template_version, latency, tokens incl. cache reads, cost, decision fields</div></aside>
+  </article>
+</section>
+
+<!-- ===================================================== DATA + GUARDRAILS -->
+<section class="block" data-split>
+  <p class="kick"><i></i>5 · Data and knowledge</p>
+  <h2>Eight things, each with an owner. No second database.</h2>
+  <div class="glass tablebox"><table><thead><tr><th>Item</th><th>Where</th><th>Owner</th><th>Freshness</th></tr></thead><tbody><tr><td>Tickets, common format</td><td><code>tickets</code> (exists)</td><td>ingestion</td><td>per ingest run</td></tr><tr><td>Agent runs</td><td><code>agent_runs</code>, extended per the code review plus <code>status</code>, <code>reject_reason</code>, <code>input_hash</code>, <code>template_version</code></td><td>this agent</td><td>per run</td></tr><tr><td>Identifier token map</td><td><code>redaction_tokens</code>: run id, token, original value</td><td>this agent</td><td>same retention as the run</td></tr><tr><td>App registry</td><td><code>data/registry/apps.yaml</code>, derived once from the KB pages</td><td>support lead</td><td>when an app is added</td></tr><tr><td>Per-app checklist</td><td><code>data/registry/dq_checklists.yaml</code></td><td>support lead</td><td>same</td></tr><tr><td>Email template</td><td><code>data/registry/dq_email_template.md</code>, hashed</td><td>support lead</td><td>same</td></tr><tr><td>Prompt</td><td><code>app/agents/data_quality/prompts/v1.md</code>, hashed</td><td>engineering</td><td>per change, through the eval</td></tr><tr><td>Eval set and taxonomy map</td><td><code>evaluation/ground_truth.xlsx</code>, <code>dq_taxonomy.yaml</code>, <code>holdout/</code></td><td>engineering with the support lead</td><td>per labelled batch</td></tr></tbody></table></div>
+  <div class="grid three" style="margin-top:18px">
+    <article class="glass card"><div class="top"><span class="app grey sm"><svg><use href="#i-search"/></svg></span><b class="big">Retrieval: not applicable</b></div><p>The agent needs a 300-token checklist per application, not search. The KB pages are read once offline to write the checklists. If a checklist grows past a few thousand tokens, that is the point to revisit.</p></article>
+    <article class="glass card"><div class="top"><span class="app gold sm"><svg><use href="#i-clock"/></svg></span><b class="big">Retention</b></div><p>Redacted input, model output, assembled email, <code>edited_value</code> (which may hold a first name) and the token map: 90 days, then deleted. Hash, verdict, decision, tokens and cost: kept. Raw ticket text lives in <code>tickets.raw</code> under its own retention.</p></article>
+    <article class="glass card"><div class="top"><span class="app ink sm"><svg><use href="#i-lock"/></svg></span><b class="big">Access</b></div><p>The service database and the review page are reachable by the rota team only. The answer key stays outside <code>data/</code> so the pipeline can never read it.</p></article>
+  </div>
+
+  <p class="kick" style="margin-top:40px"><i></i>6 · Guardrails</p>
+  <h2>Advisory, redacted, switchable, audited, in region</h2>
+  <div class="grid three">
+    <article class="glass card"><div class="top"><span class="app ink sm"><svg><use href="#i-eye-off"/></svg></span><b class="big">PII</b></div><p>The class list comes from the client's privacy owner, not from this plan. Redaction is Presidio with spaCy NER, in process, logged per entity type, with an allow-list for application names and keep-list recognisers for business identifiers. The redaction eval runs in milestone 2 and on every change to recognisers, allow-list or threshold. Third-party names are covered by the NER pass from milestone 2.</p></article>
+    <article class="glass card"><div class="top"><span class="app ink sm"><svg><use href="#i-shield-check"/></svg></span><b class="big">Untrusted input</b></div><p>The ticket body is user-written and labelled as data. Schema-constrained output, no tools, the model never writes free text a person forwards, and the question validator rejects URLs, redaction tokens and credential words.</p></article>
+    <article class="glass card"><div class="top"><span class="app green sm"><svg><use href="#i-user-check"/></svg></span><b class="big">Advisory vs automated</b></div><p>Verdict and <code>pipeline_status</code> are internal state, written automatically. The email is advisory. Never automated: sending email, closing a ticket, routing a service request, any ServiceNow or JIRA write.</p></article>
+    <article class="glass card"><div class="top"><span class="app red sm"><svg><use href="#i-power"/></svg></span><b class="big">Kill switch</b></div><p><code>LLM_ENABLED</code> (global, the design repo's one switch) and <code>DQ_LLM_ENABLED</code> (per agent), read from the environment or a settings row on every run, never cached at import. Off → <code>assess</code> skipped, verdict <code>needs_review</code>, the queue keeps moving.</p></article>
+    <article class="glass card"><div class="top"><span class="app blue sm"><svg><use href="#i-clipboard-list"/></svg></span><b class="big">Audit</b></div><p>One <code>agent_runs</code> row per run with everything under Stored. The proposed-versus-accepted gap, the metric the client asked for, is a query.</p></article>
+    <article class="glass card"><div class="top"><span class="app gold sm"><svg><use href="#i-map-pin"/></svg></span><b class="big">Residency and vendor</b></div><p>The first-party API cannot pin inference to Canada, so the route under the project rule is the vendor's Bedrock client in a Canadian region, if the model is served there. Refusal fallback on that platform is the SDK's client-side middleware. <b>Verified by ______ on ______</b> before any real ticket.</p></article>
+  </div>
+</section>
+
+<!-- ===================================================== OPS + COST -->
+<section class="block" data-split>
+  <p class="kick"><i></i>7 · Operations</p>
+  <h2>A CLI over 40 tickets a day. Boring on purpose.</h2>
+  <div class="grid two">
+    <article class="glass card"><div class="top"><span class="app ink sm"><svg><use href="#i-terminal"/></svg></span><b class="big">Queue and idempotency</b></div><p>v0.1 is <code>python -m app.agents.run data_quality</code>, selecting as in record and processing in order. Idempotency is the unique key plus the selection rule. A scheduled background task is the v0.2 trigger; a queue table with <code>SKIP LOCKED</code> is the Postgres-day answer.</p></article>
+    <article class="glass card"><div class="top"><span class="app red sm"><svg><use href="#i-refresh-cw"/></svg></span><b class="big">Model gateway</b></div><p>Vendor SDK, <code>max_retries=2</code>, timeout 60 s. Circuit breaker: five consecutive failures open it for the rest of the run and route to the fallback. The CLI exits per batch, so the breaker is per run; acceptable at this volume and written here so nobody expects more. Token usage read from every response.</p></article>
+    <article class="glass card"><div class="top"><span class="app gold sm"><svg><use href="#i-chart-column"/></svg></span><b class="big">Observability</b></div><p>Structured log per run: ticket id, request id, verdict, model, prompt version, latency, tokens, cost, skip reason, redaction counts. Dashboard, a SQL view: tickets per day, verdict mix, skip rate, accept / edit / reject with reasons, application accuracy on tickets with a system field, p95 latency, cost per day.</p></article>
+    <article class="glass card"><div class="top"><span class="app grey sm"><svg><use href="#i-git-commit"/></svg></span><b class="big">Versioning and runbook</b></div><p>Prompt hash is <code>prompt_version</code>; <code>schema_version</code> is in the output; template hash is <code>template_version</code>. Changing any creates new runs on undecided tickets only. Runbook headings: model down or breaker open · false-fail spike · redaction miss · re-run after a prompt change · rotating the key · turning the LLM off · clearing the 90-day data.</p></article>
+  </div>
+
+  <p class="kick" style="margin-top:40px"><i></i>8 · Cost and latency</p>
+  <h2>About $12 a month at the ceiling. Quality decides, not price.</h2>
+  <div class="nums">
+    <div class="glass num"><b>$0.020</b><span>per model call, first-party list price</span></div>
+    <div class="glass num"><b>20</b><span>calls a day at the 40-ticket ceiling × 49%</span></div>
+    <div class="glass num"><b>$12</b><span>a month, plus 10% for retries</span></div>
+    <div class="glass num"><b>60 s</b><span>p95 per ticket, dashboard line</span></div>
+  </div>
+  <div class="glass tablebox"><table><thead><tr><th>Part</th><th>Tokens (guess)</th><th>Price</th><th>Cost</th></tr></thead><tbody><tr><td>System prompt, taxonomy, schema (cached)</td><td>1,100</td><td>$0.20 / M cache read</td><td>$0.0002</td></tr><tr><td>Checklist, signals, ticket (uncached)</td><td>900</td><td>$4 / M</td><td>$0.0036</td></tr><tr><td>Output incl. thinking at low effort</td><td>800</td><td>$20 / M</td><td>$0.016</td></tr><tr><td><b>Per call</b></td><td></td><td></td><td><b>≈ $0.020</b></td></tr></tbody></table></div>
+  <div class="grid three" style="margin-top:18px">
+    <article class="glass card"><div class="top"><span class="app gold sm"><svg><use href="#i-flask-conical"/></svg></span><b class="big">Firmed up in milestone 2</b></div><p>Token counts are a guess until the token-count endpoint is run on the real prompt. Partner pricing on the residency route will differ; the table is redone when question 1 is answered.</p></article>
+    <article class="glass card"><div class="top"><span class="app grey sm"><svg><use href="#i-clock"/></svg></span><b class="big">Latency</b></div><p>One call with about 800 output tokens on an Opus-tier model: 12 to 20 s. The v0.1 guess of 4 to 8 s was about half the truth. The step is not user-facing; it runs after ingestion.</p></article>
+    <article class="glass card"><div class="top"><span class="app green sm"><svg><use href="#i-users"/></svg></span><b class="big">Human time replaced</b></div><p>About 3 minutes per bad ticket to read, guess the app and write the chase, times 15% of 40 tickets, is 18 minutes a day at the ceiling. The real value is the design repo's: fewer tickets sitting for days on a vague reply.</p></article>
+  </div>
+</section>
+
+
+
+<footer>
+  <span>Data Quality agent · Plan · October 2026 · written with the ai-architect skill</span>
+  <span>The client and the bank are not named on purpose · <a href="review.html">← Code review</a></span>
+</footer>
+</main>
+
+<script>
+// Present mode. Slides = the hero + every section. A section marked data-split shows one helper card per slide.
+(function(){
+  var slides=[], i=0, on=false;
+  var btn=document.getElementById('present-btn'), pg=document.getElementById('pg');
+  slides.push({el:document.querySelector('.hero')});
+  document.querySelectorAll('section.block').forEach(function(s){
+    var cards=s.hasAttribute('data-split')?s.querySelectorAll('.flow,.detail'):[];
+    if(cards.length){cards.forEach(function(c){slides.push({el:s,card:c})})}else{slides.push({el:s})}
+  });
+  function show(n){
+    i=Math.max(0,Math.min(slides.length-1,n));
+    slides.forEach(function(s){s.el.classList.remove('on')});
+    document.querySelectorAll('.flow,.detail').forEach(function(f){f.classList.remove('off')});
+    var s=slides[i]; s.el.classList.add('on');
+    if(s.card){s.el.querySelectorAll('.flow,.detail').forEach(function(f){if(f!==s.card)f.classList.add('off')})}
+    s.el.scrollTop=0;
+    pg.textContent=(i+1)+' / '+slides.length+' · ← → · Esc';
+  }
+  function enter(){on=true;document.body.classList.add('present');btn.textContent='Exit';btn.classList.add('red');show(0);history.replaceState(null,'','#present')}
+  function exit(){
+    on=false;document.body.classList.remove('present');btn.textContent='Present';btn.classList.remove('red');
+    slides.forEach(function(s){s.el.classList.remove('on')});
+    document.querySelectorAll('.flow,.detail').forEach(function(f){f.classList.remove('off')});
+    history.replaceState(null,'',location.pathname);
+    if(document.fullscreenElement&&document.exitFullscreen)document.exitFullscreen();
+  }
+  btn.addEventListener('click',function(){on?exit():enter()});
+  document.addEventListener('keydown',function(e){
+    if(e.key==='p'||e.key==='P'){e.preventDefault();on?exit():enter();return}
+    if(!on)return;
+    if(e.key==='ArrowRight'||e.key===' '||e.key==='PageDown'||e.key==='ArrowDown'||e.key==='Enter'){e.preventDefault();show(i+1)}
+    else if(e.key==='ArrowLeft'||e.key==='PageUp'||e.key==='ArrowUp'||e.key==='Backspace'){e.preventDefault();show(i-1)}
+    else if(e.key==='Home'){show(0)}
+    else if(e.key==='End'){show(slides.length-1)}
+    else if(e.key==='Escape'){exit()}
+    else if(e.key==='f'||e.key==='F'){document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen()}
+    else if(e.key>='1'&&e.key<='9'){show(parseInt(e.key,10)-1)}
+  });
+  document.addEventListener('click',function(e){
+    if(!on)return;
+    if(e.target.closest('a,button,.topbar'))return;
+    show(i+1);
+  });
+  if(location.hash==='#present')enter();
+})();
+</script>
+</body>
+</html>

@@ -63,6 +63,7 @@ class KBDraftOut(BaseModel):
     note: str | None
     decided_at: datetime | None
     created_at: datetime
+    confluence_url: str | None = Field(None, description="The Confluence page it is published on, once it is")
 
 
 class KBDraftReview(BaseModel):

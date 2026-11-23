@@ -37,3 +37,6 @@ yarn-error.log*
 next-env.d.ts
 .vercel/
 
+
+# Copied Confluence pages (rebuilt by every Confluence sync)
+data/confluence_copy/
