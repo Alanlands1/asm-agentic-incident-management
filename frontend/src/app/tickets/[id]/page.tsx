@@ -1512,9 +1512,7 @@ function Ticket() {
                         ? fixAnswer?.action === "wrong"
                           ? "You said the fix didn't work. The Resolution agent looks for another one with what you wrote."
                           : "Try the suggested fix, then tell us if it worked. The closure note opens once it did."
-                        : ticket.pipeline_status === "reviewed" && jira && writeBack
-                          ? NEXT.reviewed.replace("decided.", "decided and set on the Jira issue.")
-                          : (NEXT[ticket.pipeline_status] ?? ticket.pipeline_status)}
+                        : (NEXT[ticket.pipeline_status] ?? ticket.pipeline_status)}
                   </span>
                   {nowStep && actionFor(nowStep.key) && <span className="ml-auto">{actionFor(nowStep.key)}</span>}
                 </div>

@@ -90,7 +90,10 @@ class Settings(BaseSettings):
     ATLASSIAN_API_TOKEN: SecretStr = SecretStr("")
     JIRA_SYNC_MINUTES: int = Field(0, ge=0)  # 0 = no automatic sync, only "Sync now"
     SLA_AUTO_WARN: bool = False  # true = the system comments on a Jira issue at every 25% of its SLA target (if JIRA_WRITE_BACK)
-    JIRA_WRITE_BACK: bool = False  # true = comments, reviewed priorities and the triaged status are written to the Jira issue
+    JIRA_WRITE_BACK: bool = False  # true = what an engineer sends goes to the Jira issue (closure note, replies)
+    # true = also the automatic writes: the agents' comments and labels, the triaged status, the reviewed priority,
+    # answers to /ams commands and SLA warnings. Off by design (D8): only what an engineer sends goes to Jira.
+    JIRA_AGENT_WRITES: bool = False
     CONFLUENCE_SYNC_MINUTES: int = Field(0, ge=0)  # knowledge base copy; 0 = only "Sync now"
     CONFLUENCE_WRITE_BACK: bool = False  # true = an approved Knowledge Builder article can be published to its Confluence page
     CONFLUENCE_COPY_DIR: Path = REPO_DIR / "data" / "confluence_copy"  # the copied pages as runbook files, for the agents
@@ -115,6 +118,7 @@ class Settings(BaseSettings):
 # What the admin API may change at runtime. Everything else (storage paths, secrets, the admin key, the region
 # allow-list) is set in the environment only, so the API cannot loosen its own guardrails.
 ADMIN_EDITABLE = frozenset({
+    "JIRA_AGENT_WRITES",
     "LOG_LEVEL",
     "PII_MASKING_ENABLED",
     "LLM_ENABLED",

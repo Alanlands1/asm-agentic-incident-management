@@ -7,6 +7,7 @@ export interface JiraConnection {
   error?: string | null;
   sync_minutes: number;
   write_back?: boolean;
+  agent_writes?: boolean; // JIRA_AGENT_WRITES: the system also writes to Jira on its own
 }
 
 export interface JiraProject {

@@ -6,7 +6,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from app.core.config import settings
 from app.db.session import get_db
 from app.models.ticket import PipelineStatus, Ticket
 from app.schemas.storm import FirstMessageOut, SlaItemOut
@@ -85,9 +84,10 @@ async def review_queue(limit: int = Query(50, ge=1, le=500), db: AsyncSession = 
 async def review_ticket(ticket_id: str, payload: ReviewCreate, db: AsyncSession = Depends(get_db)) -> ReviewOut:
     """Accept, edit or reject the latest recommendation. The ticket moves on to Resolution.
 
-    With JIRA_WRITE_BACK on, a Jira issue's priority is set to the reviewed one first; if Jira refuses, nothing is recorded."""
+    With JIRA_AGENT_WRITES on, a Jira issue's priority is set to the reviewed one first; if Jira refuses, nothing is
+    recorded. Otherwise it goes to Jira with the closure note (design D8)."""
     ticket, final = await db.run_sync(_checked, ticket_id, payload)
-    if settings.JIRA_WRITE_BACK and ticket.source == "JIRA" and final and final != ticket.reported_priority:
+    if jira.agent_writes() and ticket.source == "JIRA" and final and final != ticket.reported_priority:
         try:
             await jira.set_priority(ticket.id, final)
         except AtlassianError as exc:

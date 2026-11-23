@@ -309,9 +309,13 @@ async def close_in_jira(
         raise HTTPException(status_code=409, detail=f"Ticket {ticket_id}: confirm the fix and write the closure note first")
     if "[engineer to add:" in notes:
         raise HTTPException(status_code=409, detail="Fill in the parts marked [engineer to add: …] first")
+    decided = await db.scalar(  # the decided priority goes back with the note when it changed (design D8)
+        select(Review.final_priority).where(Review.ticket_id == ticket_id, Review.agent == "triage").order_by(Review.id.desc()).limit(1)
+    )
+    changed = decided if decided and decided != ticket.reported_priority else None
     await db.commit()  # no transaction open while Jira answers
     try:
-        moved_to = await jira.close_issue(ticket_id, notes)
+        moved_to = await jira.close_issue(ticket_id, notes, priority=changed)
     except AtlassianError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     closed = await db.run_sync(_closed, ticket_id, author_email, notes, moved_to)

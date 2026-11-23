@@ -208,6 +208,7 @@ async def test_triaged_issue_leaves_the_backlog(client, fake_jira, monkeypatch):
     async for db in app.dependency_overrides[get_db]():
         assert await jira.move_triaged(db) == 0  # writing to Jira is off
         monkeypatch.setattr(jira.settings, "JIRA_WRITE_BACK", True)
+        monkeypatch.setattr(jira.settings, "JIRA_AGENT_WRITES", True)  # the automatic writes (off by default, D8)
         assert await jira.move_triaged(db) == 0  # not triaged yet
         (await db.get(Ticket, "AMS-8")).pipeline_status = "triaged"
         await db.commit()

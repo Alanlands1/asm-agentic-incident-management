@@ -166,12 +166,23 @@ async def test_send_posts_the_closure_note_and_closes_the_issue(client, monkeypa
     fake = httpx.MockTransport(jira_site)
     monkeypatch.setattr(atlassian, "client", lambda: httpx.AsyncClient(base_url="https://jira.test", transport=fake))
     monkeypatch.setattr(jira.settings, "JIRA_WRITE_BACK", True)
+    from app.db.session import get_db
+    from app.main import app
+
+    async for session in app.dependency_overrides[get_db]():  # a person decided P3 for the reporter's P1
+        triage = AgentRun(ticket_id="AMS-1209", agent="triage", verdict="P3", output={"priority": 3})
+        session.add(triage)
+        await session.flush()
+        session.add(Review(ticket_id="AMS-1209", agent_run_id=triage.id, agent="triage", action="accepted", final_priority=3,
+                           reviewer="ravi@contoso.com"))
+        await session.commit()
     learning = []
     monkeypatch.setattr(jira, "start_knowledge", lambda: learning.append(True))
     r = await client.post("/api/v1/tickets/AMS-1209/close", json=send)
     assert r.status_code == 200 and r.json()["status"] == "closed"
     assert learning == [True]  # Knowledge Builder starts at once, not on the next sync
-    assert calls == [("GET", "/rest/api/3/issue/AMS-1209/transitions"), ("POST", "/rest/api/3/issue/AMS-1209/comment"),
+    assert calls == [("GET", "/rest/api/3/issue/AMS-1209/transitions"), ("PUT", "/rest/api/3/issue/AMS-1209"),  # the decided P3
+                     ("POST", "/rest/api/3/issue/AMS-1209/comment"),
                      ("POST", "/rest/api/3/issue/AMS-1209/transitions")]
     detail = (await client.get("/api/v1/tickets/AMS-1209")).json()
     assert (detail["source_status"], detail["closed_at"] is not None) == ("Done", True)
@@ -210,3 +221,21 @@ def test_parts_left_to_fill_in_count_as_missing():
     ticket = Ticket(id="T-1", resolution_notes=notes)
     ticket.agent_runs = []
     assert notes_for(ticket)[0] == "Cause: \nFix: restarted it\nChecked:"
+
+
+async def test_with_write_back_on_the_system_writes_nothing_on_its_own(monkeypatch):
+    """Design D8: comments, labels, status moves and priorities only with JIRA_AGENT_WRITES; nothing reaches Jira here."""
+    from datetime import UTC, datetime
+
+    from app.services import atlassian, jira
+
+    def no_jira():
+        raise AssertionError("the system wrote to Jira on its own")
+
+    monkeypatch.setattr(atlassian, "client", no_jira)
+    monkeypatch.setattr(jira.settings, "JIRA_WRITE_BACK", True)
+    now = datetime.now(UTC)
+    assert not jira.agent_writes()
+    for told in (await jira.announce(None, now), await jira.announce_resolution(None, now),
+                 await jira.announce_closure(None, now), await jira.move_triaged(None)):
+        assert told == 0

@@ -106,9 +106,11 @@ export default function JiraSettingsPage() {
       <PageHeader
         title="Jira"
         context={`Pull tickets from Jira into the ticket list. New open tickets go through Data Quality, then Triage. ${
-          conn?.write_back
-            ? "The agents comment, label and set the priority on the Jira issue; what a person sets in Jira stays final."
-            : "Nothing is written back to Jira (JIRA_WRITE_BACK is off)."
+          !conn?.write_back
+            ? "Nothing is written back to Jira (JIRA_WRITE_BACK is off)."
+            : conn.agent_writes
+              ? "The agents comment, label and set the priority on the Jira issue; what a person sets in Jira stays final."
+              : "Only what an engineer sends goes to Jira: a reply to the caller, and the closure note with the decided priority. The agents write nothing on their own."
         }`}
         actions={
           <Button variant="secondary" onClick={testConnection} disabled={testing}>

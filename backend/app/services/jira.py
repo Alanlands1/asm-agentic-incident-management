@@ -5,6 +5,8 @@ Each issue is written twice: to servicenow_tickets (what the console pages and D
 set_priority, which a person triggers, send_sla_warnings, which the scheduler runs when SLA_AUTO_WARN is on,
 answer_commands, which answers a person who wrote "/ams" on the issue, announce, which comments and labels an issue
 with what the agents decided, and move_triaged, which takes an issue out of the backlog once the agents have triaged it.
+Of these, only what a person sends (replies, the closure note with close_issue) is written unless JIRA_AGENT_WRITES is
+on (design D8): the automatic ones (announce*, move_triaged, answer_commands, SLA warnings) check agent_writes().
 What a person sets on the issue is final: a status they chose is not moved again, and a priority they set on a triaged
 ticket is recorded as the decision.
 Uses the API token from the environment.
@@ -180,9 +182,16 @@ async def post_comment(key: str, text: str, c: Any = None, tone: str | None = No
         )
 
 
-async def close_issue(key: str, text: str, c: Any = None) -> str:
+def agent_writes() -> bool:
+    """Whether the system writes to Jira on its own (comments, labels, status, priority, SLA warnings, /ams answers).
+    Off unless JIRA_AGENT_WRITES is on (design D8): then only what an engineer sends reaches Jira."""
+    return settings.JIRA_WRITE_BACK and settings.JIRA_AGENT_WRITES
+
+
+async def close_issue(key: str, text: str, c: Any = None, priority: int | None = None) -> str:
     """Post the closure note on a Jira issue and move the issue to a done status, as the owner of the API token. The note
-    goes as written, so the next sync reads it back as the close notes. Returns the status the issue moved to."""
+    goes as written, so the next sync reads it back as the close notes. `priority`: the decided one, set first when it
+    differs from the issue's (the decision goes back with the note). Returns the status the issue moved to."""
     if not settings.JIRA_WRITE_BACK:
         raise AtlassianError("Writing to Jira is switched off: set JIRA_WRITE_BACK=true in backend/.env")
     async with _jira(c) as c:
@@ -191,6 +200,8 @@ async def close_issue(key: str, text: str, c: Any = None) -> str:
         step = next((s for s in steps if (s["to"].get("statusCategory") or {}).get("key") == "done"), None)
         if step is None:  # checked before the comment, so a note is never left on an issue that stays open
             raise AtlassianError(f"{key} has no move to a done status from where it is in Jira")
+        if priority is not None:
+            await set_priority(key, priority, c)
         await post_comment(key, text, c)
         await atlassian.call(c, "POST", url, json={"transition": {"id": step["id"]}})
     return step["to"]["name"]
@@ -430,7 +441,7 @@ async def move_triaged(db: AsyncSession) -> int:
 
     shortcut: reads the newest 100 changes of an issue; page the changelog if issues get busier than that.
     """
-    if not settings.JIRA_WRITE_BACK:
+    if not agent_writes():
         return 0
     tickets = (await db.scalars(
         select(Ticket).where(Ticket.source == "JIRA", Ticket.status == "new", Ticket.pipeline_status.in_(TRIAGE_DONE))
@@ -765,7 +776,7 @@ async def announce(db: AsyncSession, since: datetime) -> int:
 
     shortcut: a comment Jira refuses is not sent again ("/ams" on the issue asks for it); queue them if that happens.
     """
-    if not settings.JIRA_WRITE_BACK:
+    if not agent_writes():
         return 0
     say = (PipelineStatus.AWAITING_INFO, PipelineStatus.DQ_PASSED, PipelineStatus.TRIAGED, PipelineStatus.REJECTED)
     tickets = (await db.scalars(
@@ -826,7 +837,7 @@ def _resolution_text(ticket: Ticket, runbooks: dict[str, str]) -> tuple[str, str
 
 async def announce_resolution(db: AsyncSession, since: datetime) -> int:
     """Comment the Resolution agent's answer on each open Jira issue it answered since `since`. Returns how many."""
-    if not settings.JIRA_WRITE_BACK:
+    if not agent_writes():
         return 0
     tickets = (await db.scalars(
         select(Ticket).where(Ticket.source == "JIRA", Ticket.closed_at.is_(None),
@@ -865,7 +876,7 @@ def _closure_text(ticket: Ticket) -> str:
 
 async def announce_closure(db: AsyncSession, since: datetime) -> int:
     """Comment on each done Jira issue whose close notes Closure Quality found lacking since `since`. Returns how many."""
-    if not settings.JIRA_WRITE_BACK:
+    if not agent_writes():
         return 0
     tickets = [t for t in (await db.scalars(
         select(Ticket).where(Ticket.source == "JIRA", Ticket.status == "closed",  # history closed before the agents: left alone
@@ -946,10 +957,10 @@ async def schedule_loop(session_factory) -> None:
                 run = await run_sync(db, "schedule")
             if run.queued:
                 start_agents()
-            if settings.SLA_AUTO_WARN and settings.JIRA_WRITE_BACK:
+            if settings.SLA_AUTO_WARN and agent_writes():
                 async with session_factory() as db:
                     await send_sla_warnings(db)
-            if settings.JIRA_WRITE_BACK:
+            if agent_writes():
                 async with session_factory() as db:
                     await answer_commands(db)
             resolved_from = datetime.now(UTC)

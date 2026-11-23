@@ -136,6 +136,7 @@ async def test_review_sets_the_jira_priority_and_a_reply_is_commented(client, fa
     fake = httpx.MockTransport(jira_site)
     monkeypatch.setattr(atlassian, "client", lambda: httpx.AsyncClient(base_url="https://jira.test", transport=fake))
     monkeypatch.setattr(settings, "JIRA_WRITE_BACK", True)
+    monkeypatch.setattr(settings, "JIRA_AGENT_WRITES", True)  # the automatic writes (off by default, D8)
 
     reply = {"author_email": "Alan Lands", "body": "Which screen fails?", "post_to_jira": True}
     assert (await client.post("/api/v1/tickets/AMS-8/comments", json=reply)).status_code == 502  # Jira refused: not stored
@@ -365,6 +366,7 @@ async def test_the_agents_say_their_verdict_on_the_issue(client, fake_jira, monk
         await s.commit()
         assert await jira.announce(s, before) == 0 and sent == []  # writing to Jira is off
         monkeypatch.setattr(settings, "JIRA_WRITE_BACK", True)
+        monkeypatch.setattr(settings, "JIRA_AGENT_WRITES", True)  # the automatic writes (off by default, D8)
         assert await jira.announce(s, before) == 1
         assert await jira.announce(s, datetime.now(UTC) + timedelta(minutes=1)) == 0  # nothing new decided: nothing said again
     assert [(method, path) for method, path, _ in sent] == [
