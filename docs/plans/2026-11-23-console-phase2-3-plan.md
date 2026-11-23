@@ -22,8 +22,8 @@ this week.
 |---|---|---|---|
 | 1 No automatic Jira writes | Done | see log | `JIRA_AGENT_WRITES` (off) gates every automatic write; Send sets the decided priority; 318 tests |
 | 2 Resolution reads the note | Done (was already) | see log | `reporter_text()` already adds the note to the case and fingerprint; a test now proves it |
-| 3 Lead review setting | To do | | |
-| 4 Submit, approve, send back (backend) | To do | | |
+| 3 Lead review setting | Done | see log | `LEAD_REVIEW` (admin-editable), card on the Jira settings page; needs `ADMIN_API_KEY` in `frontend/.env.local` to save |
+| 4 Submit, approve, send back (backend) | Done | see log | `services/lead_review.py`, two endpoints, Send and note edits guarded; 330 tests |
 | 5 Lead review on the ticket page | To do | | |
 | 6 Work statuses and the lead's queue | To do | | |
 | 7 Check end to end | To do | | |

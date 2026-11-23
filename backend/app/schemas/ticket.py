@@ -71,6 +71,18 @@ class FeedbackOut(BaseModel):
     created_at: datetime
 
 
+class ReviewStepCreate(BaseModel):
+    """The engineer submits the closure note for the lead's review."""
+    reviewer: str = Field(..., min_length=3, examples=["priya.raman@contoso.com"])
+
+
+class LeadReviewCreate(BaseModel):
+    """The lead's decision on a closure note in review."""
+    action: Literal["approved", "sent_back"] = Field(..., description="approved; sent_back: with what to change (note)")
+    note: str | None = Field(None, max_length=4000, examples=["Say how you checked that all four deals show paid."])
+    reviewer: str = Field(..., min_length=3, examples=["lead@contoso.com"])
+
+
 class FixOutcomeCreate(BaseModel):
     """The engineer's answer to the latest suggested fix."""
     agent_run_id: int
@@ -127,6 +139,9 @@ class TicketDetail(TicketSummary):
     agents_running: bool = Field(False, description="True while the agents' pass after a Jira sync is running")
     fix_outcomes: list[ReviewOut] = Field(
         default_factory=list, description="The engineer's answers on the suggested fixes (worked, partly, wrong), oldest first")
+    lead_review_required: bool = Field(False, description="A lead approves the closure note before it is sent (LEAD_REVIEW)")
+    lead_reviews: list[ReviewOut] = Field(
+        default_factory=list, description="Submitted for review, approved, sent back (with the comment), oldest first")
 
 
 class TicketList(BaseModel):

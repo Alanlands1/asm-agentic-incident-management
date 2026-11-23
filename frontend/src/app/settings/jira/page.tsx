@@ -5,6 +5,7 @@ import { AppShell } from "@/components/console/app-shell";
 import { PageHeader } from "@/components/console/page-header";
 import { SyncHistory, SyncInterval } from "@/components/console/sync-controls";
 import { SectionHead, Status, SyncHistoryRow } from "@/components/console/sync-parts";
+import { LeadReviewSetting } from "@/components/console/lead-review-setting";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -233,6 +234,8 @@ export default function JiraSettingsPage() {
           )}
         </SyncHistory>
       </Card>
+
+      <LeadReviewSetting />
     </AppShell>
   );
 }

@@ -19,7 +19,8 @@ from app.services.triage.run import AGENT
 
 SEVERITY = {"breached": 0, "breach_likely": 1, "watch": 2, "ok": 3}
 # Open tickets with a priority in force: triaged, and every stage after it until the ticket closes.
-TRIAGED = (PipelineStatus.TRIAGED, PipelineStatus.REVIEWED, PipelineStatus.FIX_CONFIRMED, PipelineStatus.NEEDS_LEAD)
+TRIAGED = (PipelineStatus.TRIAGED, PipelineStatus.REVIEWED, PipelineStatus.FIX_CONFIRMED, PipelineStatus.NEEDS_LEAD,
+           PipelineStatus.IN_REVIEW, PipelineStatus.APPROVED)
 
 
 @dataclass(frozen=True)

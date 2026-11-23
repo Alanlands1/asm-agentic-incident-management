@@ -23,6 +23,8 @@ class PipelineStatus(StrEnum):
     REVIEWED = "reviewed"  # an engineer decided the priority; ready for Resolution
     FIX_CONFIRMED = "fix_confirmed"  # the engineer said the fix worked; the closure note is open
     NEEDS_LEAD = "needs_lead"  # three suggested fixes did not work; the lead looks
+    IN_REVIEW = "in_review"  # the closure note waits for the lead's approval (LEAD_REVIEW)
+    APPROVED = "approved"  # the lead approved the closure note; ready to send
     REJECTED = "rejected"  # not a real ticket, e.g. a test
     ERROR = "error"  # failed in a way that needs a person to look
 

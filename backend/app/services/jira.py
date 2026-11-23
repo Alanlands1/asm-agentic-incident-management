@@ -429,7 +429,8 @@ async def run_sync(db: AsyncSession, trigger: str) -> JiraSync:
 
 
 TRIAGED_STATUS = "Selected for development"  # where a triaged issue goes; an issue that cannot go there is left alone
-TRIAGE_DONE = (PipelineStatus.TRIAGED, PipelineStatus.REVIEWED, PipelineStatus.FIX_CONFIRMED, PipelineStatus.NEEDS_LEAD)
+TRIAGE_DONE = (PipelineStatus.TRIAGED, PipelineStatus.REVIEWED, PipelineStatus.FIX_CONFIRMED, PipelineStatus.NEEDS_LEAD,
+               PipelineStatus.IN_REVIEW, PipelineStatus.APPROVED)
 RECHECK = (PipelineStatus.AWAITING_INFO, PipelineStatus.REJECTED)  # an edit or a reporter's reply sends these back to the agents
 IN_JIRA = "Set in Jira"  # the reviewer of a decision a person made on the issue itself
 

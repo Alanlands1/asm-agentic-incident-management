@@ -14,12 +14,12 @@ from app.llm import ModelError
 from app.models.ticket import AgentRun, Feedback, PipelineStatus, Review, Ticket
 from app.privacy.masking import Masker
 from app.schemas.ticket import (
-    CommentCreate, CommentOut, FeedbackCreate, FeedbackOut, FixOutcomeCreate, IngestResponse, TicketDetail, TicketList,
-    TicketSummary,
+    CommentCreate, CommentOut, FeedbackCreate, FeedbackOut, FixOutcomeCreate, IngestResponse, LeadReviewCreate, ReviewStepCreate,
+    TicketDetail, TicketList, TicketSummary,
 )
 from app.schemas.closure import ClosureReviewOut
 from app.schemas.triage import ReviewOut
-from app.services import fix, jira
+from app.services import fix, jira, lead_review
 from app.services.atlassian import AtlassianError
 from app.services.comments import add_comment
 from app.services.closure import check_ticket as check_closure
@@ -100,6 +100,10 @@ async def get_ticket(ticket_id: str, db: AsyncSession = Depends(get_db)) -> Tick
     detail.agents_running = jira.agents_lock.locked() or resolution_busy()
     answers = await db.scalars(select(Review).where(Review.ticket_id == ticket_id, Review.agent == fix.AGENT).order_by(Review.id))
     detail.fix_outcomes = [ReviewOut.model_validate(a) for a in answers]
+    steps = await db.scalars(
+        select(Review).where(Review.ticket_id == ticket_id, Review.agent == lead_review.AGENT).order_by(Review.id))
+    detail.lead_reviews = [ReviewOut.model_validate(s) for s in steps]
+    detail.lead_review_required = await db.run_sync(lambda s: lead_review.required(s, ticket))
     return detail
 
 
@@ -281,8 +285,11 @@ async def set_closure_note(
 
 def _set_closure_note(db: Session, ticket_id: str, text: str) -> TicketSummary:
     ticket = _get_or_404(db, ticket_id)
-    if ticket.closed_at is not None or ticket.pipeline_status != PipelineStatus.FIX_CONFIRMED:
+    if ticket.pipeline_status == PipelineStatus.IN_REVIEW:
+        raise HTTPException(status_code=409, detail=f"Ticket {ticket_id}: the lead is reviewing the closure note")
+    if ticket.closed_at is not None or ticket.pipeline_status not in (PipelineStatus.FIX_CONFIRMED, PipelineStatus.APPROVED):
         raise HTTPException(status_code=409, detail=f"Ticket {ticket_id}: the closure note opens once the fix worked")
+    ticket.pipeline_status = PipelineStatus.FIX_CONFIRMED  # a changed note is not the one the lead approved
     text = text.strip()
     if not text:
         raise HTTPException(status_code=422, detail="The closure note is empty")
@@ -290,6 +297,30 @@ def _set_closure_note(db: Session, ticket_id: str, text: str) -> TicketSummary:
         text = str(_masker(ticket, text).mask(text))
     ticket.resolution_notes = text
     check_closure(db, ticket)
+    db.commit()
+    db.refresh(ticket)
+    return TicketSummary.model_validate(ticket)
+
+
+@router.post("/tickets/{ticket_id}/submit-review", response_model=TicketSummary, summary="Submit the closure note to the lead")
+async def submit_review(ticket_id: str, payload: ReviewStepCreate, db: AsyncSession = Depends(get_db)) -> TicketSummary:
+    """The engineer hands the checked closure note to the lead, when LEAD_REVIEW asks for it on this ticket."""
+    return await db.run_sync(_review_step, ticket_id, lambda s, t: lead_review.submit(s, t, payload.reviewer))
+
+
+@router.post("/tickets/{ticket_id}/lead-review", response_model=TicketSummary, summary="Approve the closure note or send it back")
+async def decide_review(ticket_id: str, payload: LeadReviewCreate, db: AsyncSession = Depends(get_db)) -> TicketSummary:
+    """The lead approves the closure note (then it may be sent) or sends it back to the engineer with what to change."""
+    return await db.run_sync(
+        _review_step, ticket_id, lambda s, t: lead_review.decide(s, t, payload.action, payload.reviewer, payload.note))
+
+
+def _review_step(db: Session, ticket_id: str, step) -> TicketSummary:
+    ticket = _get_or_404(db, ticket_id)
+    try:
+        step(db, ticket)
+    except lead_review.ReviewError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     db.commit()
     db.refresh(ticket)
     return TicketSummary.model_validate(ticket)
@@ -305,12 +336,17 @@ async def close_in_jira(
     notes = (ticket.resolution_notes or "").strip()
     if ticket.source != "JIRA":
         raise HTTPException(status_code=409, detail=f"Ticket {ticket_id} did not come from Jira")
-    if ticket.closed_at is not None or ticket.pipeline_status != PipelineStatus.FIX_CONFIRMED or not notes:
+    needs_lead = await db.run_sync(lambda s: lead_review.required(s, ticket))
+    waiting = ticket.pipeline_status == PipelineStatus.FIX_CONFIRMED and needs_lead
+    if ticket.pipeline_status == PipelineStatus.IN_REVIEW or waiting:
+        raise HTTPException(status_code=409, detail=f"Ticket {ticket_id}: a lead approves the closure note before it is sent")
+    if ticket.closed_at is not None or not await db.run_sync(lambda s: lead_review.may_send(s, ticket)) or not notes:
         raise HTTPException(status_code=409, detail=f"Ticket {ticket_id}: confirm the fix and write the closure note first")
     if "[engineer to add:" in notes:
         raise HTTPException(status_code=409, detail="Fill in the parts marked [engineer to add: …] first")
     decided = await db.scalar(  # the decided priority goes back with the note when it changed (design D8)
-        select(Review.final_priority).where(Review.ticket_id == ticket_id, Review.agent == "triage").order_by(Review.id.desc()).limit(1)
+        select(Review.final_priority).where(Review.ticket_id == ticket_id, Review.agent == "triage")
+        .order_by(Review.id.desc()).limit(1)
     )
     changed = decided if decided and decided != ticket.reported_priority else None
     await db.commit()  # no transaction open while Jira answers

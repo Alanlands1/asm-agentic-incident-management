@@ -142,6 +142,8 @@ async def test_closure_note_opens_when_the_fix_worked_and_is_checked_on_every_sa
 async def test_send_posts_the_closure_note_and_closes_the_issue(client, monkeypatch):
     from app.services import atlassian, jira
 
+    monkeypatch.setattr(jira.settings, "LEAD_REVIEW", "never")  # Send itself; the lead's review has tests of its own
+
     run_id = await _seed(client)
     body = {"agent_run_id": run_id, "outcome": "worked", "reviewer": "ravi@contoso.com"}
     await client.post("/api/v1/tickets/AMS-1209/fix-outcome", json=body)

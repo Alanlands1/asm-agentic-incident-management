@@ -94,6 +94,8 @@ class Settings(BaseSettings):
     # true = also the automatic writes: the agents' comments and labels, the triaged status, the reviewed priority,
     # answers to /ams commands and SLA warnings. Off by design (D8): only what an engineer sends goes to Jira.
     JIRA_AGENT_WRITES: bool = False
+    # design D3: which closure notes a lead approves before they are sent: always, only P1-P2 tickets, or never
+    LEAD_REVIEW: Literal["always", "p1_p2", "never"] = "p1_p2"
     CONFLUENCE_SYNC_MINUTES: int = Field(0, ge=0)  # knowledge base copy; 0 = only "Sync now"
     CONFLUENCE_WRITE_BACK: bool = False  # true = an approved Knowledge Builder article can be published to its Confluence page
     CONFLUENCE_COPY_DIR: Path = REPO_DIR / "data" / "confluence_copy"  # the copied pages as runbook files, for the agents
@@ -119,6 +121,7 @@ class Settings(BaseSettings):
 # allow-list) is set in the environment only, so the API cannot loosen its own guardrails.
 ADMIN_EDITABLE = frozenset({
     "JIRA_AGENT_WRITES",
+    "LEAD_REVIEW",
     "LOG_LEVEL",
     "PII_MASKING_ENABLED",
     "LLM_ENABLED",
