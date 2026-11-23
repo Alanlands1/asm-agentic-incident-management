@@ -22,7 +22,7 @@ def test_queue_puts_flagged_and_urgent_tickets_first(triaged):
     assert flagged == sorted(flagged, reverse=True)  # every flagged ticket before every other one
     calm = [run.output["priority"] for _, run in queue if not run.output["needs_review"]]
     assert calm == sorted(calm)
-    assert len(pending(triaged, limit=3)) == 3
+    assert len(pending(triaged, limit=1)) == 1  # only lowered priorities wait now, so the fixture has few
 
 
 def test_accept_edit_and_reject(triaged):
@@ -46,7 +46,8 @@ def test_decisions_that_do_not_fit_are_refused(triaged):
         review(triaged, ticket, "edited", "ravi@contoso.com", priority=3)  # same as the recommendation
     with pytest.raises(ReviewError):
         review(triaged, ticket, "rejected", "ravi@contoso.com")  # no reason
-    assert ticket.pipeline_status == PipelineStatus.TRIAGED and not triaged.scalars(select(Review)).all()
+    assert ticket.pipeline_status == PipelineStatus.TRIAGED
+    assert not triaged.scalars(select(Review).where(Review.ticket_id == ticket.id)).all()
 
 
 def test_report_shows_agreement_by_rule_and_stage(triaged):
@@ -68,3 +69,39 @@ async def test_review_endpoints(client):
     assert (await client.post("/api/v1/triage/tickets/AMS-1209/review", json=body)).status_code == 409  # pending
     assert (await client.post("/api/v1/triage/tickets/AMS-1209/review", json={**body, "priority": 7})).status_code == 422
     assert (await client.get("/api/v1/triage/review-report")).json()["reviewed"] == 0
+
+
+def test_only_a_lowered_priority_waits_for_a_person(triaged):
+    from app.services.data_quality import last_run
+    from app.services.triage.run import AGENT, AUTO_REVIEWER
+
+    auto = {r.ticket_id: r for r in triaged.scalars(select(Review).where(Review.reviewer == AUTO_REVIEWER))}
+    done = (PipelineStatus.TRIAGED, PipelineStatus.REVIEWED)
+    decided = [t for t in triaged.scalars(select(Ticket)) if t.pipeline_status in done]
+    assert auto and any(t.pipeline_status == PipelineStatus.TRIAGED for t in decided)
+    for t in decided:
+        recommended = last_run(t, AGENT).output["priority"]
+        waits = recommended is None or (t.reported_priority is not None and recommended > t.reported_priority)
+        assert (t.pipeline_status == PipelineStatus.TRIAGED) == waits, t.id
+        assert (t.id in auto) == (not waits), t.id
+        if not waits:
+            assert (auto[t.id].action, auto[t.id].final_priority) == ("accepted", recommended)
+    assert report(triaged).reviewed == 0  # approvals no person made are not counted as engineers agreeing
+
+
+async def test_a_decision_starts_resolution(client, monkeypatch):
+    from app.services import jira
+
+    started = []
+    monkeypatch.setattr(jira, "start_resolution", lambda: started.append(True))
+    from app.db.session import get_db
+    from app.main import app
+
+    await client.post("/api/v1/ingest")
+    async for session in app.dependency_overrides[get_db]():  # the reporter's P1 lowered to P3: waits for a person
+        session.add(AgentRun(ticket_id="AMS-1209", agent="triage", verdict="P3", output={"priority": 3}))
+        (await session.get(Ticket, "AMS-1209")).pipeline_status = PipelineStatus.TRIAGED
+        await session.commit()
+    body = {"action": "accepted", "reviewer": "ravi@contoso.com"}
+    assert (await client.post("/api/v1/triage/tickets/AMS-1209/review", json=body)).status_code == 201
+    assert started == [True]

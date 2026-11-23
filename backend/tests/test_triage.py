@@ -222,7 +222,7 @@ def test_model_outage_falls_back_to_the_rules(db, provider):  # noqa: F811
     run, error = triage_ticket(db, db.get(Ticket, "MBX-00006"))
     assert error is not None
     assert (run.verdict, run.output["ai"], run.output["needs_review"]) == ("P1", "failed", True)
-    assert db.get(Ticket, "MBX-00006").pipeline_status == PipelineStatus.TRIAGED
+    assert db.get(Ticket, "MBX-00006").pipeline_status == PipelineStatus.REVIEWED  # no reported priority: nothing lowered
 
 
 async def test_check_endpoint_needs_a_dq_passed_ticket(client):

@@ -15,13 +15,14 @@ from app.agents.triage.verdict import Verdict
 from app.core.config import settings
 from app.llm import CallAudit, ModelError
 from app.llm.client import effort, model_id
-from app.models.ticket import AgentRun, PipelineStatus, Storm, Ticket
+from app.models.ticket import AgentRun, PipelineStatus, Review, Storm, Ticket
 from app.services.data_quality import OutageBreaker, fingerprint, last_run, reporter_text
 from app.services.triage.storms import detect_storms
 
 logger = logging.getLogger("app.triage")
 
 AGENT = "triage"
+AUTO_REVIEWER = "AMS agents (auto)"  # who approved a recommendation no person had to look at
 
 
 @dataclass
@@ -118,8 +119,21 @@ def triage_ticket(db: Session, ticket: Ticket, use_model: bool = True) -> tuple[
         elif error:
             final.input_hash = None  # nothing to fall back on: try again on the next run
     if final.verdict != Verdict.UNCERTAIN:
-        ticket.pipeline_status = PipelineStatus.TRIAGED
+        _triaged(db, ticket, final)
     return final, error
+
+
+def _triaged(db: Session, ticket: Ticket, run: AgentRun) -> None:
+    """A person reviews only a priority Triage lowered. Anything else (as urgent as the reporter asked or more, or a
+    ticket the reporter gave no priority) is approved without a person (console only: the Jira priority is not changed)."""
+    priority = run.output.get("priority")
+    if priority is None or (ticket.reported_priority is not None and priority > ticket.reported_priority):
+        ticket.pipeline_status = PipelineStatus.TRIAGED
+        return
+    db.flush()  # the run needs its id
+    db.add(Review(ticket_id=ticket.id, agent_run_id=run.id, agent=AGENT, action="accepted", final_priority=priority,
+                  reviewer=AUTO_REVIEWER, note="Approved without review: Triage did not lower the priority"))
+    ticket.pipeline_status = PipelineStatus.REVIEWED
 
 
 def _follow_main(db: Session, ticket: Ticket, storm: Storm, main_run: AgentRun) -> AgentRun:
@@ -134,7 +148,7 @@ def _follow_main(db: Session, ticket: Ticket, storm: Storm, main_run: AgentRun) 
                 **_recommendation(ticket, decision, reason, "not_needed")},
     )
     db.add(run)
-    ticket.pipeline_status = PipelineStatus.TRIAGED
+    _triaged(db, ticket, run)
     return run
 
 

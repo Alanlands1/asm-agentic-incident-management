@@ -205,3 +205,12 @@ async def test_ticket_detail_carries_the_close_notes_decision(client):
     decision = (await client.get(f"/api/v1/tickets/{ticket_id}")).json()["closure_decision"]
     assert decision["agent_run_id"] == closure_run
     assert decision["final_text"] == "Cause: x. Action: y. Check: z."
+
+
+async def test_agents_running_follows_the_agents_pass(client):
+    from app.services import jira
+
+    ticket_id = await _first_ticket(client)
+    assert (await client.get(f"/api/v1/tickets/{ticket_id}")).json()["agents_running"] is False
+    async with jira.agents_lock:
+        assert (await client.get(f"/api/v1/tickets/{ticket_id}")).json()["agents_running"] is True

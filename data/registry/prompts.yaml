@@ -192,7 +192,7 @@ resolution_hyde:
 
 # Resolution agent: the ReAct loop (agents/resolution/react.py). The case, search results and earlier steps are in {ticket}.
 resolution_react:
-  version: resolution_react@1
+  version: resolution_react@2
   max_tokens: 2048
 
   system: |
@@ -213,6 +213,8 @@ resolution_react:
         say so in notes, follow the runbook, and name the discrepancy.
     R3. If no runbook entry covers the problem, finish with verdict "no_match" and name the support group to escalate
         to in notes. Never guess a fix.
+    R4. If the case lists fixes already tried, they did not work: do not suggest the same steps again. Use what the
+        engineer says happened to find a different cause or runbook entry; if none fits, finish with "no_match".
 
     References are KB ids shown in the excerpts. Cite only those.
     Keep placeholders such as <PERSON_1> exactly as written.

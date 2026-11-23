@@ -119,6 +119,23 @@ async def test_tickets_reach_the_agents_table(client, fake_jira):
         assert (await db.get(Ticket, "AMS-7")).pipeline_status == "historical"
 
 
+async def test_sync_keeps_the_closure_note_written_in_the_console(client, fake_jira):
+    from app.db.session import get_db
+    from app.main import app
+    from app.models.ticket import Ticket
+    await client.put("/api/v1/jira/projects", json=[{"key": "AMS", "name": "AMS Support"}])
+    await client.post("/api/v1/jira/sync")
+    async for db in app.dependency_overrides[get_db]():
+        ticket = await db.get(Ticket, "AMS-8")
+        ticket.pipeline_status, ticket.resolution_notes = "fix_confirmed", "Cause: x. Fix: y. Checked: z."
+        await db.commit()
+    await client.post("/api/v1/jira/sync")  # the open issue has no close notes in Jira
+    async for db in app.dependency_overrides[get_db]():
+        ticket = await db.get(Ticket, "AMS-8")
+        await db.refresh(ticket)
+        assert (ticket.resolution_notes, ticket.pipeline_status) == ("Cause: x. Fix: y. Checked: z.", "fix_confirmed")
+
+
 async def test_edited_issue_awaiting_info_is_checked_again(client, fake_jira, monkeypatch):
     await client.put("/api/v1/jira/projects", json=[{"key": "AMS", "name": "AMS Support"}])
     await client.post("/api/v1/jira/sync")

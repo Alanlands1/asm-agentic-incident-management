@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session, object_session, selectinload
 from sqlalchemy.pool import NullPool
 
 from app.core.config import settings
+from app.db.session import AsyncSessionLocal
 from app.models.confluence import ConfluencePage
 from app.models.jira import JiraProject, JiraSync
 from app.models.kb import KBChunk
@@ -177,6 +178,22 @@ async def post_comment(key: str, text: str, c: Any = None, tone: str | None = No
         await atlassian.call(
             c, "POST", f"/rest/api/3/issue/{key}/comment", json={"body": {"type": "doc", "version": 1, "content": [panel]}}
         )
+
+
+async def close_issue(key: str, text: str, c: Any = None) -> str:
+    """Post the closure note on a Jira issue and move the issue to a done status, as the owner of the API token. The note
+    goes as written, so the next sync reads it back as the close notes. Returns the status the issue moved to."""
+    if not settings.JIRA_WRITE_BACK:
+        raise AtlassianError("Writing to Jira is switched off: set JIRA_WRITE_BACK=true in backend/.env")
+    async with _jira(c) as c:
+        url = f"/rest/api/3/issue/{key}/transitions"
+        steps = (await atlassian.call(c, "GET", url))["transitions"]
+        step = next((s for s in steps if (s["to"].get("statusCategory") or {}).get("key") == "done"), None)
+        if step is None:  # checked before the comment, so a note is never left on an issue that stays open
+            raise AtlassianError(f"{key} has no move to a done status from where it is in Jira")
+        await post_comment(key, text, c)
+        await atlassian.call(c, "POST", url, json={"transition": {"id": step["id"]}})
+    return step["to"]["name"]
 
 
 async def set_priority(key: str, priority: int, c: Any = None) -> None:
@@ -334,7 +351,8 @@ async def _upsert(
                     action = "accepted" if r["reported_priority"] == triage.output["priority"] else "edited"
                     db.add(Review(ticket_id=t.id, agent_run_id=triage.id, agent="triage", action=action, reviewer=IN_JIRA,
                                   final_priority=r["reported_priority"], note=f"Priority set to {r['raw']['priority']} in Jira"))
-                    t.pipeline_status = PipelineStatus.REVIEWED
+                    if t.pipeline_status == PipelineStatus.TRIAGED:  # a ticket further on stays where it is
+                        t.pipeline_status = PipelineStatus.REVIEWED
                 # Jira now holds the decided priority; the reporter's own stays as they gave it
                 r = {k: v for k, v in r.items() if not k.startswith("reported_priority")}
             edited = (t.summary, t.description) != (r["summary"], r["description"])
@@ -347,6 +365,8 @@ async def _upsert(
             if r["status"] == "closed" and (t.status != "closed" or t.resolution_notes != r["resolution_notes"]):
                 run.queued += 1  # closed in Jira, or its close notes changed: Closure Quality and Knowledge Builder run
             for k, v in r.items():  # agent results are kept, and the pipeline status unless set just above
+                if k == "resolution_notes" and v is None:
+                    continue  # an open issue has none: the closure note written in the console stays
                 if k != "opened_at":  # never changes in Jira; a clock restarted here for a test survives the sync
                     setattr(t, k, v)
         else:
@@ -398,7 +418,7 @@ async def run_sync(db: AsyncSession, trigger: str) -> JiraSync:
 
 
 TRIAGED_STATUS = "Selected for development"  # where a triaged issue goes; an issue that cannot go there is left alone
-TRIAGE_DONE = (PipelineStatus.TRIAGED, PipelineStatus.REVIEWED)
+TRIAGE_DONE = (PipelineStatus.TRIAGED, PipelineStatus.REVIEWED, PipelineStatus.FIX_CONFIRMED, PipelineStatus.NEEDS_LEAD)
 RECHECK = (PipelineStatus.AWAITING_INFO, PipelineStatus.REJECTED)  # an edit or a reporter's reply sends these back to the agents
 IN_JIRA = "Set in Jira"  # the reviewer of a decision a person made on the issue itself
 
@@ -475,7 +495,8 @@ def _agents_in_thread() -> None:
 
 
 async def run_agents() -> None:
-    """One agent pass at a time; a sync that finds new tickets while one runs leaves them for the next pass."""
+    """One agent pass at a time; a sync that finds new tickets while one runs leaves them for the next pass.
+    Tickets whose priority Triage approved without a person go on to Resolution straight away."""
     if agents_lock.locked():
         return
     async with agents_lock:
@@ -483,10 +504,59 @@ async def run_agents() -> None:
             await asyncio.to_thread(_agents_in_thread)
         except Exception:
             logger.exception("Agents after Jira sync failed")
+    await resolve_now()
 
 
 def start_agents() -> None:
     task = asyncio.create_task(run_agents())
+    _background.add(task)
+    task.add_done_callback(_background.discard)
+
+
+async def resolve_now(ticket_id: str | None = None) -> None:
+    """Resolution for every reviewed ticket that changed, or for one ticket, without waiting for the next sync."""
+    started = datetime.now(UTC)
+    try:
+        await run_resolution(ticket_id=ticket_id)
+        async with AsyncSessionLocal() as db:
+            await announce_resolution(db, started)
+    except Exception:
+        logger.exception("Resolution after a priority decision failed")
+
+
+def start_resolution(ticket_id: str | None = None) -> None:
+    """Run Resolution in the background once a priority is decided, by a person or automatically, or for one ticket
+    whose fix did not work."""
+    task = asyncio.create_task(resolve_now(ticket_id))
+    _background.add(task)
+    task.add_done_callback(_background.discard)
+
+
+def _knowledge_in_thread() -> None:
+    """Knowledge Builder alone, in a worker thread with its own event loop and engine, as in the agents' pass."""
+    async def run() -> None:
+        engine = create_async_engine(settings.DATABASE_URL, poolclass=NullPool)
+        try:
+            async with async_sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)() as db:
+                await db.run_sync(run_knowledge)
+        finally:
+            await engine.dispose()
+
+    asyncio.run(run())
+
+
+async def learn_now() -> None:
+    """Knowledge Builder right after a ticket is closed here, not on the next sync. Under the agents' lock, so it never
+    runs beside a pass, and the ticket page shows the agents at work meanwhile."""
+    async with agents_lock:
+        try:
+            await asyncio.to_thread(_knowledge_in_thread)
+        except Exception:
+            logger.exception("Knowledge Builder after closing a ticket failed")
+
+
+def start_knowledge() -> None:
+    task = asyncio.create_task(learn_now())
     _background.add(task)
     task.add_done_callback(_background.discard)
 

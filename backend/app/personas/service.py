@@ -21,7 +21,7 @@ from app.services.jira import COMMAND_BOT, EARLIER, SAID, SLA_BOT
 from app.services.triage import sla
 from app.services.triage.run import AGENT as TRIAGE
 
-TRIAGED = (PipelineStatus.TRIAGED, PipelineStatus.REVIEWED)
+TRIAGED = sla.TRIAGED
 KB_ID = re.compile(r"KB-[A-Z]+-\d+")
 
 

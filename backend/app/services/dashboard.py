@@ -147,7 +147,7 @@ def trends(db: Session, since: datetime, days: int, now: datetime | None = None)
     cfg, at = sla.config(), now.astimezone(UTC).replace(tzinfo=None)
     candidates = db.scalars(
         select(Ticket)
-        .where(Ticket.pipeline_status.in_([PipelineStatus.TRIAGED, PipelineStatus.REVIEWED]),
+        .where(Ticket.pipeline_status.in_(sla.TRIAGED),
                Ticket.opened_at >= naive - timedelta(hours=max(cfg.targets.values())))
         .options(selectinload(Ticket.agent_runs))
     ).all()

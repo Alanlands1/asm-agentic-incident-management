@@ -92,7 +92,9 @@ async def review_ticket(ticket_id: str, payload: ReviewCreate, db: AsyncSession 
             await jira.set_priority(ticket.id, final)
         except AtlassianError as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
-    return await db.run_sync(lambda s: ReviewOut.model_validate(triage_review.review(s, ticket, **payload.model_dump())))
+    decision = await db.run_sync(lambda s: ReviewOut.model_validate(triage_review.review(s, ticket, **payload.model_dump())))
+    jira.start_resolution()  # the fix is looked for now, not on the next sync
+    return decision
 
 
 def _checked(db: Session, ticket_id: str, payload: ReviewCreate) -> tuple[Ticket, int | None]:

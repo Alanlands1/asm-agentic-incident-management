@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.api.v1.endpoints import knowledge
 from app.db.session import get_db
-from app.models.ticket import Ticket
+from app.models.ticket import PipelineStatus, Ticket
 from app.schemas.closure import (
     ClosureCheckResponse,
     ClosureQueueItem,
@@ -45,7 +45,8 @@ async def run(
 
 @router.post("/tickets/{ticket_id}/check", response_model=ClosureCheckResponse, summary="Check one ticket's close notes")
 async def check_one_ticket(ticket_id: str, db: AsyncSession = Depends(get_db)) -> ClosureCheckResponse:
-    """Rules, then the model if the rules cannot stop the notes and the model is enabled. Resolved tickets only."""
+    """Rules, then the model if the rules cannot stop the notes and the model is enabled. Resolved tickets, or tickets
+    whose fix the engineer confirmed in the console."""
     started = datetime.now(UTC)
     checked = await db.run_sync(_check_one, ticket_id)
     await jira.announce_closure(db, started)
@@ -56,7 +57,7 @@ def _check_one(db: Session, ticket_id: str) -> ClosureCheckResponse:
     ticket = db.get(Ticket, ticket_id)
     if ticket is None:
         raise HTTPException(status_code=404, detail=f"Ticket {ticket_id} not found")
-    if ticket.status not in RESOLVED:
+    if ticket.status not in RESOLVED and ticket.pipeline_status != PipelineStatus.FIX_CONFIRMED:
         raise HTTPException(status_code=409, detail=f"Ticket {ticket_id} is {ticket.status}, not resolved")
     run, _ = check_ticket(db, ticket)
     db.commit()

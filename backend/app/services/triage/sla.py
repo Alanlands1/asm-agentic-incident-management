@@ -18,6 +18,8 @@ from app.services.data_quality import last_run
 from app.services.triage.run import AGENT
 
 SEVERITY = {"breached": 0, "breach_likely": 1, "watch": 2, "ok": 3}
+# Open tickets with a priority in force: triaged, and every stage after it until the ticket closes.
+TRIAGED = (PipelineStatus.TRIAGED, PipelineStatus.REVIEWED, PipelineStatus.FIX_CONFIRMED, PipelineStatus.NEEDS_LEAD)
 
 
 @dataclass(frozen=True)
@@ -147,7 +149,7 @@ def open_p1_p2(db: Session, at: datetime | None = None) -> list[SlaItem]:
     at, cfg = at or now(), config()
     tickets = db.scalars(
         select(Ticket)
-        .where(Ticket.pipeline_status.in_([PipelineStatus.TRIAGED, PipelineStatus.REVIEWED]),
+        .where(Ticket.pipeline_status.in_(TRIAGED),
                Ticket.closed_at.is_(None), Ticket.opened_at.is_not(None))
         .options(selectinload(Ticket.agent_runs))
     ).all()

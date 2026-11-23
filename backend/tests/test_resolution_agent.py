@@ -192,7 +192,7 @@ async def test_search_budget_ends_in_no_match(monkeypatch):
 
 def test_prompt_versions_name_every_resolution_prompt():
     versions = react.prompt_versions()
-    assert versions == "resolution_multiquery@1|resolution_hyde@1|resolution_react@1"
+    assert versions == "resolution_multiquery@1|resolution_hyde@1|resolution_react@2"
 
 
 # ---- run service ------------------------------------------------------------------------------------------------------

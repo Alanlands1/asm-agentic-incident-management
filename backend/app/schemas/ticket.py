@@ -1,7 +1,7 @@
 """Ticket request and response schemas."""
 
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -71,6 +71,16 @@ class FeedbackOut(BaseModel):
     created_at: datetime
 
 
+class FixOutcomeCreate(BaseModel):
+    """The engineer's answer to the latest suggested fix."""
+    agent_run_id: int
+    outcome: Literal["worked", "partly", "wrong"] = Field(
+        ..., description="worked; partly: worked with changes (note: what changed); wrong: did not work (note: what happened)")
+    note: str | None = Field(
+        None, max_length=4000, examples=["The re-run failed again with PAD_FILE_REJECT: trailer 412, file 411 rows."])
+    reviewer: str = Field(..., min_length=3, examples=["priya.raman@contoso.com"])
+
+
 class TicketSummary(BaseModel):
     """Ticket fields shown in lists."""
     model_config = ConfigDict(from_attributes=True)
@@ -114,6 +124,9 @@ class TicketDetail(TicketSummary):
         default_factory=dict,
         description="Per agent that ran before: true when what it would see now differs from its last run, so running again "
                     "can give a different answer")
+    agents_running: bool = Field(False, description="True while the agents' pass after a Jira sync is running")
+    fix_outcomes: list[ReviewOut] = Field(
+        default_factory=list, description="The engineer's answers on the suggested fixes (worked, partly, wrong), oldest first")
 
 
 class TicketList(BaseModel):

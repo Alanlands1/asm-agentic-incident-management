@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.agents.triage.config import get_config
 from app.models.ticket import AgentRun, PipelineStatus, Review, Ticket
 from app.services.data_quality import last_run
-from app.services.triage.run import AGENT
+from app.services.triage.run import AGENT, AUTO_REVIEWER
 
 
 class ReviewError(ValueError):
@@ -94,7 +94,8 @@ def report(db: Session, days: int = 7) -> ReviewReport:
     """How often engineers change the agent, and on which rules: the input for rule fixes."""
     since = datetime.now(timezone.utc) - timedelta(days=days)
     reviews = db.scalars(
-        select(Review).where(Review.agent == AGENT, Review.created_at >= since).options(selectinload(Review.agent_run))
+        select(Review).where(Review.agent == AGENT, Review.created_at >= since, Review.reviewer != AUTO_REVIEWER)
+        .options(selectinload(Review.agent_run))
     ).all()
     result = ReviewReport(days=days, reviewed=len(reviews))
     for r in reviews:
