@@ -35,6 +35,20 @@ def no_real_model(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def jira_not_asked_yet(monkeypatch):
+    """Who Jira lets be assigned is remembered between requests: every test starts as after a restart, and Jira
+    itself is never asked (a test that needs an answer installs its own)."""
+    from app.services import jira
+
+    async def away(keys):
+        raise jira.AtlassianError("no Jira in tests")
+
+    monkeypatch.setattr(jira, "assignable", away)
+    monkeypatch.setattr(jira, "known_people", None)
+    monkeypatch.setattr(jira, "_people_asked", None)
+
+
+@pytest.fixture(autouse=True)
 def own_confluence_copy(monkeypatch, tmp_path):
     """A Confluence sync in a test writes its pages to a folder of its own, never to data/confluence_copy, so no
     test's pages leak into the articles the next test reads."""

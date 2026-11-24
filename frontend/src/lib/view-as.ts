@@ -21,9 +21,9 @@ export const ROLES: {
     value: "lead",
     label: "Lead",
     person: "Alan Lands",
-    home: "/team",
+    home: "/lead",
     nav: [
-      { label: "Overview", items: ["/team", "/my-tickets", "/incidents"] },
+      { label: "Overview", items: ["/lead", "/team", "/my-tickets", "/incidents"] },
       { label: "Tickets", items: ["/review", "/tickets"] },
       { label: "Agents", items: ["/agents/resolution", "/agents/knowledge"] },
     ],

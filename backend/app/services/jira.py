@@ -1,8 +1,8 @@
 """Pull issues from Jira Cloud and hand new ones to the agents.
 
 Each issue is written twice: to servicenow_tickets (what the console pages and DQ rules read) and to tickets
-(what the Data Quality and Triage agents read). Read-only towards Jira, except post_comment and
-set_priority, which a person triggers, send_sla_warnings, which the scheduler runs when SLA_AUTO_WARN is on,
+(what the Data Quality and Triage agents read). Read-only towards Jira, except post_comment,
+set_priority and assign_issue, which a person triggers, send_sla_warnings, which the scheduler runs when SLA_AUTO_WARN is on,
 answer_commands, which answers a person who wrote "/ams" on the issue, announce, which comments and labels an issue
 with what the agents decided, and move_triaged, which takes an issue out of the backlog once the agents have triaged it.
 Of these, only what a person sends (replies, the closure note with close_issue) is written unless JIRA_AGENT_WRITES is
@@ -216,6 +216,57 @@ async def set_priority(key: str, priority: int, c: Any = None) -> None:
         await atlassian.call(c, "PUT", f"/rest/api/3/issue/{key}", json={"fields": {"priority": {"name": name}}})
 
 
+async def assignable(keys: list[str], c: Any = None) -> list[str]:
+    """The people an issue of these projects can be assigned to, by display name. Apps and closed accounts are left out."""
+    names: set[str] = set()
+    async with _jira(c) as c:
+        for key in keys:
+            people = await atlassian.call(
+                c, "GET", "/rest/api/3/user/assignable/search", params={"project": key, "maxResults": 200})
+            names |= {p["displayName"] for p in (people if isinstance(people, list) else [])
+                      if isinstance(p, dict) and p.get("displayName") and p.get("active", True)
+                      and p.get("accountType", "atlassian") == "atlassian"}
+    return sorted(names)
+
+
+known_people: list[str] | None = None  # who Jira lets a ticket be assigned to; None until Jira has answered
+_people_asked: datetime | None = None
+PEOPLE_RETRY = 300  # seconds before Jira is asked again after it did not answer
+
+
+async def refresh_people(db: AsyncSession, force: bool = False) -> None:
+    """Ask Jira who can be assigned in the selected projects and remember it: on every sync, and on the first read
+    after a start. shortcut: kept in memory, one process; store it once the API runs as several."""
+    global known_people, _people_asked
+    now = datetime.now(UTC)
+    waiting = _people_asked is not None and (now - _people_asked).total_seconds() < PEOPLE_RETRY
+    if not force and (known_people is not None or waiting):
+        return
+    keys = list(await db.scalars(select(JiraProject.key)))
+    await db.commit()  # no transaction open while Jira answers
+    if not keys or not atlassian.configured():
+        return
+    _people_asked = now
+    try:
+        known_people = await assignable(keys)
+    except AtlassianError:
+        logger.warning("Jira did not say who can be assigned; the people known here are used")
+
+
+async def assign_issue(key: str, name: str | None, c: Any = None) -> None:
+    """Assign a Jira issue to the person with this display name (None: nobody), as the owner of the API token."""
+    if not settings.JIRA_WRITE_BACK:
+        raise AtlassianError("Writing to Jira is switched off: set JIRA_WRITE_BACK=true in backend/.env")
+    async with _jira(c) as c:
+        account = None
+        if name:
+            people = await atlassian.call(c, "GET", "/rest/api/3/user/assignable/search", params={"issueKey": key, "query": name})
+            account = next((p["accountId"] for p in people or [] if p.get("displayName") == name), None)
+            if account is None:
+                raise AtlassianError(f"{name} cannot be assigned {key} in Jira")
+        await atlassian.call(c, "PUT", f"/rest/api/3/issue/{key}/assignee", json={"accountId": account})
+
+
 def adf_text(node: Any) -> str:
     """Plain text from a Jira description (Atlassian Document Format)."""
     if not isinstance(node, dict):
@@ -420,6 +471,7 @@ async def run_sync(db: AsyncSession, trigger: str) -> JiraSync:
                 run.error = f"Sync failed: {exc.__class__.__name__}"
                 logger.exception("Jira sync %s failed", run.id)
         run.finished_at = datetime.now(UTC)
+        await refresh_people(db, force=True)  # who can be assigned may have changed too
         db.add(run)
         await db.commit()
         logger.info(

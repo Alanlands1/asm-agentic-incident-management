@@ -2,11 +2,15 @@
 the suggested fix that the usual loop (worked, closure note) takes from there."""
 
 from app.llm import CallAudit, ModelUnavailableError
-from app.services.fix_chat import ChatAnswer, ChatFix
+from app.services.fix_chat import ChatAnswer, ChatFix, Rerun
 from tests.test_fix_outcome import _seed
 
 AUDIT = CallAudit(provider="anthropic", model="m", prompt_version="fix_chat@1", attempts=1, input_tokens=1,
                   output_tokens=1, latency_ms=1)
+
+
+def _answer(reply, fix=None, show=(), rerun=None):
+    return ChatAnswer(reply=reply, fix=fix, show=list(show), rerun=rerun)
 
 
 def _model(monkeypatch, answers):
@@ -27,8 +31,7 @@ async def test_chat_keeps_the_conversation_and_a_proposal_becomes_the_fix(client
     fix = ChatFix(root_cause="The posting batch rejected the file: the trailer count is one short.",
                   steps=["Regenerate the file with job PAY_BANK_FILE.", "Re-send it to the bank over SFTP."],
                   check="The bank portal shows the file accepted.")
-    seen = _model(monkeypatch, [ChatAnswer(reply="What does the batch log say?", fix=None),
-                                ChatAnswer(reply="Then regenerate the file.", fix=fix)])
+    seen = _model(monkeypatch, [_answer("What does the batch log say?"), _answer("Then regenerate the file.", fix=fix)])
     body = {"message": "Deals show unpaid after the posting run.", "author": "ravi@contoso.com"}
     first = (await client.post("/api/v1/tickets/AMS-1209/chat", json=body)).json()
     assert (first["agent"], first["verdict"]) == ("fix_chat", "answered")
@@ -92,7 +95,7 @@ async def test_each_turn_carries_team_notes_similar_closed_tickets_and_kb_articl
         return "KB-PAY-004 (PayrollPro): Salary bank transfer file not delivered to bank."
 
     monkeypatch.setattr(fix_chat, "articles", found)
-    seen = _model(monkeypatch, [ChatAnswer(reply="Looks like AMS-900.", fix=None)])
+    seen = _model(monkeypatch, [_answer("Looks like AMS-900.")])
     r = await client.post("/api/v1/tickets/AMS-1209/chat", json={"message": "Any idea?", "author": "ravi@contoso.com"})
     assert r.status_code == 200
     prompt = seen[0]
@@ -101,3 +104,64 @@ async def test_each_turn_carries_team_notes_similar_closed_tickets_and_kb_articl
     assert "AMS-900 (PayrollPro, article KB-PAY-004)" in prompt and "[someone] sent a short file" in prompt
     assert "KB-PAY-004 (PayrollPro): Salary bank transfer file" in prompt
     assert "AMS-901" not in prompt  # a closed ticket about something else is not similar
+
+
+async def test_a_turn_carries_the_status_and_points_at_stored_results_without_running_anything(client, monkeypatch):
+    await _seed(client)
+    seen = _model(monkeypatch, [_answer("Resolution found a runbook fix.", show=["resolution", "triage"])])
+    before = (await client.get("/api/v1/tickets/AMS-1209")).json()["agent_runs"]
+    turn = (await client.post("/api/v1/tickets/AMS-1209/chat", json={"message": "What did Resolution say?",
+                                                                     "author": "ravi@contoso.com"})).json()
+    assert "Stage: reviewed" in seen[0] and "Resolution: resolved - The posting batch rejected" in seen[0]
+    assert "Can run again now: Data Quality, Triage, Resolution" in seen[0]
+    fix_run = next(r["id"] for r in before if r["agent"] == "resolution")
+    assert turn["output"]["shown"] == {"resolution": fix_run}  # Triage never ran: nothing to point at
+    assert turn["output"]["rerun"] is None
+    after = (await client.get("/api/v1/tickets/AMS-1209")).json()["agent_runs"]
+    assert len(after) == len(before) + 1  # only the chat turn
+
+
+async def test_rerun_keeps_the_engineers_details_and_runs_that_agent_again(client, monkeypatch):
+    from app.services import jira
+
+    started = []
+    monkeypatch.setattr(jira, "start_resolution", lambda ticket_id=None: started.append(ticket_id))
+    await _seed(client)
+    asked = Rerun(agent="triage", note="Payroll cut-off is tomorrow 10:00.")
+    _model(monkeypatch, [_answer("Running Triage again.", rerun=asked)])
+    turn = (await client.post("/api/v1/tickets/AMS-1209/chat", json={"message": "Rerun triage: payroll cut-off is tomorrow.",
+                                                                     "author": "ravi@contoso.com"})).json()
+    done = turn["output"]["rerun"]
+    assert (done["agent"], done["ran"]) == ("triage", True)
+    detail = (await client.get("/api/v1/tickets/AMS-1209")).json()
+    assert "Payroll cut-off is tomorrow 10:00." in detail["guidance"]
+    assert done["run_id"] in [r["id"] for r in detail["agent_runs"] if r["agent"] == "triage"]
+
+
+async def test_rerun_is_refused_once_the_fix_is_confirmed_and_resolution_runs_in_the_background(client, monkeypatch):
+    from app.services import jira
+
+    started = []
+    monkeypatch.setattr(jira, "start_resolution", lambda ticket_id=None: started.append(ticket_id))
+    run_id = await _seed(client)
+    _model(monkeypatch, [_answer("Looking again.", rerun=Rerun(agent="resolution", note="")),
+                         _answer("Running Triage again.", rerun=Rerun(agent="triage", note=""))])
+    body = {"message": "Run it again.", "author": "ravi@contoso.com"}
+    again = (await client.post("/api/v1/tickets/AMS-1209/chat", json=body)).json()["output"]["rerun"]
+    assert again["ran"] and started == ["AMS-1209"]
+    worked = {"agent_run_id": run_id, "outcome": "worked", "reviewer": "ravi@contoso.com"}
+    assert (await client.post("/api/v1/tickets/AMS-1209/fix-outcome", json=worked)).status_code == 200
+    refused = (await client.post("/api/v1/tickets/AMS-1209/chat", json=body)).json()["output"]["rerun"]
+    assert not refused["ran"] and "fix_confirmed" in refused["detail"]
+
+
+async def test_clearing_the_chat_starts_it_afresh_and_keeps_the_turns_stored(client, monkeypatch):
+    await _seed(client)
+    seen = _model(monkeypatch, [_answer("What does the batch log say?"), _answer("Hello again.")])
+    body = {"message": "Deals show unpaid after the posting run.", "author": "ravi@contoso.com"}
+    await client.post("/api/v1/tickets/AMS-1209/chat", json=body)
+    assert (await client.delete("/api/v1/tickets/AMS-1209/chat")).status_code == 200
+    await client.post("/api/v1/tickets/AMS-1209/chat", json={**body, "message": "Starting over."})
+    assert "Deals show unpaid" not in seen[1]  # the cleared turn is not in the chat so far
+    turns = [r for r in (await client.get("/api/v1/tickets/AMS-1209")).json()["agent_runs"] if r["agent"] == "fix_chat"]
+    assert [bool(t["output"].get("cleared")) for t in turns] == [True, False]

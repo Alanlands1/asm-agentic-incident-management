@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BookOpen, CheckCheck, CheckCircle2, ClipboardList, Database, FileBarChart, FileSearch, FileText, History, Layers, LayoutDashboard,
-  Library, ListChecks, MessageSquare, Plug, ShieldCheck, SlidersHorizontal, Ticket, TrendingUp, TriangleAlert, Users,
+  Library, ListChecks, MessageSquare, UserCheck, Plug, ShieldCheck, SlidersHorizontal, Ticket, TrendingUp, TriangleAlert, Users,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "cn";
@@ -32,6 +32,7 @@ const ADMIN_GROUPS: { label: string; items: NavItem[] }[] = [
   {
     label: "Overview",
     items: [{ label: "Home", href: "/", match: (p) => p === "/" },
+      { label: "Lead desk", href: "/lead", match: (p) => p.startsWith("/lead") },
       INCIDENTS,
       { label: "Trends", href: "/trends", match: (p) => p.startsWith("/trends") },
       { label: "Reports", href: "/reports", match: (p) => p.startsWith("/reports") },
@@ -78,7 +79,7 @@ const ICONS: Record<string, LucideIcon> = {
   "/": LayoutDashboard, "/incidents": TriangleAlert, "/trends": TrendingUp, "/reports": FileBarChart, "/tickets": Ticket, "/review": CheckCircle2,
   "/dq-rules": ListChecks, "/agents/data-quality": ShieldCheck, "/agents/triage": SlidersHorizontal,
   "/agents/resolution": BookOpen, "/agents/closure": CheckCheck, "/agents/knowledge": Library,"/settings/jira": Plug, "/settings/confluence": FileText,
-  "/settings/reference": Database, "/settings/history": History, "/team": Users, "/my-tickets": ClipboardList,
+  "/settings/reference": Database, "/settings/history": History, "/team": Users, "/my-tickets": ClipboardList, "/lead": UserCheck,
 };
 
 // Every item a persona's menu in lib/view-as.ts can name by href.
@@ -100,6 +101,9 @@ const itemBase =
 const itemActive =
   "bg-sidebar-accent font-semibold";
 
+// Each page renders its own shell, so the menu is rebuilt on every page change: keep where it was scrolled to.
+let menuScroll = 0;
+
 interface AppSidebarProps {
   /** Called after a link is followed (used to close the mobile menu). */
   onNavigate?: () => void;
@@ -113,6 +117,11 @@ export function AppSidebar({ onNavigate, className }: AppSidebarProps) {
   const groups = roleInfo.nav
     ? roleInfo.nav.map((g) => ({ label: g.label, items: g.items.map((href) => ITEMS.find((i) => i.href === href)!) }))
     : ADMIN_GROUPS;
+
+  const list = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (list.current) list.current.scrollTop = menuScroll;
+  }, []);
 
   const [waiting, setWaiting] = useState<number>();
   useEffect(() => {
@@ -129,7 +138,7 @@ export function AppSidebar({ onNavigate, className }: AppSidebarProps) {
   return (
     <nav aria-label="Pages" className={cn("flex h-full flex-col gap-3 rounded-[20px] bg-sidebar p-3 text-sidebar-foreground", className)}>
       {/* Only the items scroll; the footer below stays in view. */}
-      <div className="-m-1 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain p-1 [scrollbar-color:rgb(255_255_255/0.35)_transparent] [scrollbar-width:thin]">
+      <div ref={list} onScroll={(e) => { menuScroll = e.currentTarget.scrollTop; }} className="-m-1 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain p-1 [scrollbar-color:rgb(255_255_255/0.35)_transparent] [scrollbar-width:thin]">
         {groups.map((group) => (
           <div key={group.label} className="flex flex-col gap-1">
             <p className="px-3 pb-1 pt-1 font-mono text-[10.5px] font-medium uppercase tracking-[0.08em] text-sidebar-foreground/75">{group.label}</p>

@@ -10,17 +10,16 @@ import { ResetDemoButton } from "@/components/console/reset-demo-button";
 import { PageHeader } from "@/components/console/page-header";
 import { PriorityChip } from "@/components/console/priority-chip";
 import {
-  AGES, ActivityCard, AgentsToday, BoardTicket, NO_ENGINEER, STATUSES, StagePill, ageOf, and, appOf, count, ticketHref,
+  AGES, ActivityCard, AgentsToday, BoardTicket, STATUSES, StagePill, ageOf, and, appOf, count, ticketHref,
   useBoard, useToday,
 } from "@/components/console/persona-parts";
-import { SectionHead, Status, dueWords, span } from "@/components/console/sync-parts";
+import { Status, dueWords, span } from "@/components/console/sync-parts";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { usePerson } from "@/lib/view-as";
 import { incidentService } from "@/services/incident-service";
 import { pipelineService } from "@/services/pipeline-service";
@@ -38,7 +37,7 @@ const SECTIONS: { title: string; has: (t: BoardTicket) => boolean }[] = [
 const TILE = "h-auto min-w-0 flex-col items-start justify-start gap-0 whitespace-normal rounded-[14px] px-3 py-2.5 text-left";
 
 // Close to breaching the SLA, or past it: the tickets to act on first.
-const atRisk = (t: BoardTicket) => t.sla_state === "breach_likely" || t.sla_state === "breached";
+export const atRisk = (t: BoardTicket) => t.sla_state === "breach_likely" || t.sla_state === "breached";
 
 const never = () => () => {};
 const thisMinute = () => Math.floor(Date.now() / 60000) * 60000;
@@ -86,7 +85,7 @@ const clock = (iso: string) => new Date(iso).toLocaleTimeString("en-GB", { hour:
  * A major incident on top of the Overview (19 Nov canvas): declared storms in red with who declared it and the last
  * update to stakeholders; a storm nobody declared yet in amber, with a way to the Incidents page to decide.
  */
-function MajorIncidents({ attention, tickets, now }: { attention: Attention | null; tickets: BoardTicket[]; now: number | null }) {
+export function MajorIncidents({ attention, tickets, now }: { attention: Attention | null; tickets: BoardTicket[]; now: number | null }) {
   if (!attention) return null;
   const summary = (id: string) => tickets.find((t) => t.id === id)?.summary ?? attention.p1_p2.find((i) => i.ticket_id === id)?.summary ?? id;
   const declared = attention.storms.filter((s) => s.status === "declared");
@@ -157,7 +156,7 @@ function MajorIncidents({ attention, tickets, now }: { attention: Attention | nu
 
 /**
  * The Overview (19 Nov review, design canvas): every open ticket for every role, by work status. The lead also
- * runs the agents and sees who has what. My worklist (my-worklist.tsx) is the viewer's own work.
+ * runs the agents; who has what is on the Lead desk (lead-desk.tsx). My worklist (my-worklist.tsx) is the viewer's own work.
  */
 export function PersonaOverview({ lead, admin = false }: { lead: boolean; admin?: boolean }) {
   // An engineer sees only the tickets assigned to them, and the figures for those; a lead and the admin see all.
@@ -447,36 +446,7 @@ export function PersonaOverview({ lead, admin = false }: { lead: boolean; admin?
         })
       )}
 
-      <div className="grid items-start gap-4 lg:grid-cols-2 lg:[&>*:first-child:nth-last-child(odd)]:col-span-full">
-        {lead && board && board.people.length > 0 && (
-          <Card className="gap-0 py-0">
-            <SectionHead title="Workload by engineer" />
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="pl-4">Engineer</TableHead>
-                  <TableHead className="text-right">Open</TableHead>
-                  <TableHead className="text-right">P1 and P2</TableHead>
-                  <TableHead className="text-right">SLA breached</TableHead>
-                  <TableHead className="pr-4 text-right">Priorities to review</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {board.people.map((p) => (
-                  <TableRow key={p.name ?? ""}>
-                    <TableCell className={p.name ? "pl-4 font-medium" : "pl-4 text-muted-foreground"}>{p.name ?? NO_ENGINEER}</TableCell>
-                    <TableCell className="text-right tabular-nums">{p.open}</TableCell>
-                    <TableCell className="text-right tabular-nums">{p.p1_p2}</TableCell>
-                    <TableCell className="text-right tabular-nums">{p.breached}</TableCell>
-                    <TableCell className="pr-4 text-right tabular-nums">{p.waiting_review}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </Card>
-        )}
-        {board && <ActivityCard title="Recent activity · today" asOf={board} />}
-      </div>
+      {board && <ActivityCard title="Recent activity · today" asOf={board} />}
       {admin && <SyncsCard />}
     </AppShell>
   );

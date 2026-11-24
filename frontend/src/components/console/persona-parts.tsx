@@ -121,9 +121,9 @@ export const AGES: { key: string; label: string; has: (minutes: number) => boole
   { key: "older", label: "> 7 days", has: (m) => m >= 10080 },
 ];
 
-/** What the ticket waits for, as a short next step; every step is done in the console except assigning. */
+/** What the ticket waits for, as a short next step; every step is done in the console. */
 export function nextStep(t: BoardTicket, toAssign = false) {
-  if (toAssign) return "Assign an engineer in Jira";
+  if (toAssign) return "Assign an engineer";
   switch (t.stage) {
     case "pending":
     case "dq_passed":
@@ -318,6 +318,8 @@ function sentence(a: Activity): string | null {
         : a.action === "approved"
           ? `${who} approved the closure note on ${on}.`
           : `${who} returned the closure note on ${on}.`;
+    case "assigned":
+      return a.action ? `${who} assigned ${on} to ${a.action}.` : `${who} unassigned ${on}.`;
     case "closure_decision":
       return `${who} recorded a decision on the closure note of ${on}.`;
     case "closed":

@@ -2,10 +2,11 @@
 
 import { Fragment, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Bot, Check, CircleCheck, LoaderCircle, Search, Send, Sparkles } from "lucide-react";
+import { Bot, Check, CircleCheck, LoaderCircle, RotateCw, Search, Send, Sparkles, Trash2 } from "lucide-react";
 import { RunbookButton } from "@/components/console/runbook-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { usePerson } from "@/lib/view-as";
 import { pipelineService } from "@/services/pipeline-service";
@@ -13,7 +14,17 @@ import { AgentRun, PipelineTicket } from "@/types/pipeline";
 import { cn } from "cn";
 
 type Proposal = { root_cause: string; steps: string[]; check: string };
+/** What running an agent again from the chat did (backend: endpoints/tickets._chat_rerun). */
+type Rerun = { agent: string; note: string; ran: boolean; detail?: string; run_id?: number | null };
 
+const AGENT_NAMES: Record<string, string> = {
+  data_quality: "Data Quality",
+  triage: "Triage",
+  resolution: "Resolution",
+  closure_quality: "Closure Quality",
+};
+
+const OPEN_EVENT = "ams-assistant"; // sent by AskAssistant, heard by FixChat
 const STARTERS = ["What should I check first?", "Has this happened before?", "Which runbook article fits?"];
 const INLINE = /(`[^`]+`|\*\*[^*]+\*\*|\bKB-[A-Z]+-\d+\b|\b(?:AMS|MBX|INC)-\d+\b)/g;
 const BULLET = /^\s*[-*•]\s+/;
@@ -136,28 +147,65 @@ function ProposalCard({ proposal, used, action }: { proposal: Proposal; used: bo
   );
 }
 
+/** The row in the Resolution step that opens the assistant. */
+export function AskAssistant({ noRunbook }: { noRunbook: boolean }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 border-t border-border px-4 py-3">
+      <Button size="sm" variant="secondary" onClick={() => window.dispatchEvent(new Event(OPEN_EVENT))}>
+        <Sparkles />
+        Ask the AI assistant
+      </Button>
+      <span className="text-xs text-muted-foreground">
+        {noRunbook ? "No runbook covers this. Work out a fix with the AI assistant." : "Get a second opinion on the fix, or help when the runbook steps don’t apply."}
+      </span>
+    </div>
+  );
+}
+
 /**
- * Work out a fix with the AI assistant (POST /tickets/{id}/chat). Open by itself when no runbook covers the ticket.
- * The conversation scrolls in its own box; a proposal can become the suggested fix and the usual loop follows.
+ * Work out a fix with the AI assistant (POST /tickets/{id}/chat), in a chat window that pops out over the bottom right
+ * of the page; the ticket behind it stays usable. A proposal can become the suggested fix and the usual loop follows.
  */
-export function FixChat({ ticket, noRunbook, onDone }: { ticket: PipelineTicket; noRunbook: boolean; onDone: () => unknown }) {
+export function FixChat({
+  ticket,
+  noRunbook,
+  renderRun,
+  onDone,
+}: {
+  ticket: PipelineTicket;
+  noRunbook: boolean;
+  /** One stored agent result, as the ticket page shows it: the chat prints these, it does not retype them. */
+  renderRun: (run: AgentRun) => React.ReactNode;
+  onDone: () => unknown;
+}) {
   const person = usePerson();
-  const [open, setOpen] = useState(noRunbook);
+  const [open, setOpen] = useState(false);
   const [message, setMessage] = useState("");
   const [asking, setAsking] = useState<string | null>(null); // the message being answered
   const [using, setUsing] = useState<number | null>(null);
+  const [clearing, setClearing] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
   const box = useRef<HTMLDivElement>(null);
-  const turns = ticket.agent_runs.filter((r) => r.agent === "fix_chat");
+  const turns = ticket.agent_runs.filter((r) => r.agent === "fix_chat" && !r.output.cleared);
   const fix = ticket.agent_runs.findLast((r) => r.agent === "resolution");
   const usedId = fix?.output.source === "chat" ? (fix.output.chat_run_id as number) : null;
   const canUse = ["reviewed", "needs_lead"].includes(ticket.pipeline_status) && ticket.status !== "closed";
+  const stored = (id?: number | null) => {
+    const run = ticket.agent_runs.find((r) => r.id === id);
+    return run ? <div className="overflow-hidden rounded-xl border border-border bg-card">{renderRun(run)}</div> : null;
+  };
 
   // Keep the newest message in view inside the box; the page itself does not move.
   useEffect(() => {
     const el = box.current;
     if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }, [open, turns.length, asking]);
+
+  useEffect(() => {
+    const show = () => setOpen(true);
+    window.addEventListener(OPEN_EVENT, show);
+    return () => window.removeEventListener(OPEN_EVENT, show);
+  }, []);
 
   const send = (text = message.trim()) => {
     if (!text) return;
@@ -173,6 +221,15 @@ export function FixChat({ ticket, noRunbook, onDone }: { ticket: PipelineTicket;
       })
       .finally(() => setAsking(null));
   };
+  const clear = () => {
+    setClearing(true);
+    setFailed(null);
+    pipelineService
+      .clearChat(ticket.id)
+      .then(onDone)
+      .catch((e: unknown) => setFailed(e instanceof Error ? e.message : "Couldn't clear the chat. Try again."))
+      .finally(() => setClearing(false));
+  };
   const use = (run: AgentRun) => {
     setUsing(run.id);
     setFailed(null);
@@ -183,33 +240,32 @@ export function FixChat({ ticket, noRunbook, onDone }: { ticket: PipelineTicket;
       .finally(() => setUsing(null));
   };
 
-  if (!open)
-    return (
-      <div className="flex flex-wrap items-center gap-2 border-t border-border px-4 py-3">
-        <Button size="sm" variant="secondary" onClick={() => setOpen(true)}>
-          <Sparkles />
-          Ask the AI assistant{turns.length ? ` · ${turns.length}` : ""}
-        </Button>
-        <span className="text-xs text-muted-foreground">Get a second opinion on the fix, or help when the runbook steps don&rsquo;t apply.</span>
-      </div>
-    );
-
   return (
-    <section aria-label="AI assistant" className="flex flex-col gap-3 border-t border-border bg-muted/40 px-4 py-3 animate-in fade-in duration-300">
-      <div className="flex flex-wrap items-center gap-2">
+    <>
+      {!open && (
+        <Button className="fixed right-4 bottom-4 z-30 rounded-full shadow-[0_8px_24px_-8px_rgba(22,19,14,0.45)]" onClick={() => setOpen(true)}>
+          <Bot />
+          AI assistant{turns.length ? ` · ${turns.length}` : ""}
+        </Button>
+      )}
+      {/* Not modal: the ticket stays readable and usable while the chat is open; only its close button closes it. */}
+      <Dialog open={open} onOpenChange={setOpen} modal={false} disablePointerDismissal>
+        <DialogContent
+          showOverlay={false}
+          className="top-auto right-4 bottom-4 left-auto flex h-[min(42rem,calc(100dvh-2rem))] w-[28rem] translate-x-0 translate-y-0 flex-col gap-3 overflow-hidden rounded-2xl p-3 sm:max-w-[28rem]"
+        >
+      <div className="flex flex-wrap items-center gap-2 pr-8">
         <span aria-hidden="true" className="flex size-8 items-center justify-center rounded-full bg-primary text-primary-foreground">
           <Bot className="size-4" />
         </span>
-        <div className="flex min-w-0 flex-col">
-          <h3 className="text-sm font-semibold">{noRunbook ? "No runbook covers this. Work out a fix with the AI assistant" : "AI assistant"}</h3>
-          <p className="text-xs text-muted-foreground">Uses the ticket, team notes, similar closed tickets and the knowledge base. Personal data is masked.</p>
+        <div className="flex min-w-0 flex-1 flex-col">
+          <DialogTitle>{noRunbook ? "No runbook covers this. Work out a fix with the AI assistant" : "AI assistant"}</DialogTitle>
+          <DialogDescription className="text-xs">Uses the ticket, team notes, similar closed tickets and the knowledge base. Personal data is masked.</DialogDescription>
         </div>
-        <Badge variant="outline" className="ml-auto">
-          AI suggestion, not from a runbook
-        </Badge>
+        <Badge variant="outline">AI suggestion, not from a runbook</Badge>
       </div>
 
-      <div ref={box} aria-live="polite" className="scroll-thin flex max-h-[30rem] min-h-40 flex-col gap-4 overflow-y-auto overscroll-contain rounded-xl border border-border bg-card p-3">
+      <div ref={box} aria-live="polite" className="scroll-thin flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain rounded-xl border border-border bg-card p-3">
         {turns.length === 0 && !asking && (
           <div className="m-auto flex flex-col items-center gap-3 py-4 text-center">
             <Sparkles className="size-6 text-primary" aria-hidden="true" />
@@ -226,6 +282,8 @@ export function FixChat({ ticket, noRunbook, onDone }: { ticket: PipelineTicket;
 
         {turns.map((t) => {
           const proposal = t.output.fix as Proposal | null;
+          const shown = Object.values((t.output.shown ?? {}) as Record<string, number>);
+          const rerun = t.output.rerun as Rerun | null | undefined;
           const who = String(t.output.asked_by ?? "Engineer");
           return (
             <div key={t.id} className="flex flex-col gap-3">
@@ -249,6 +307,23 @@ export function FixChat({ ticket, noRunbook, onDone }: { ticket: PipelineTicket;
                   <div className="rounded-2xl rounded-tl-sm bg-muted px-3 py-2.5">
                     <Rich text={String(t.output.reply ?? "")} />
                   </div>
+                  {shown.map((id) => (
+                    <Fragment key={id}>{stored(id)}</Fragment>
+                  ))}
+                  {rerun && (
+                    <div className="flex flex-col gap-2">
+                      <p className="flex flex-wrap items-center gap-1.5 text-xs font-semibold">
+                        <RotateCw className="size-3.5 text-primary" aria-hidden="true" />
+                        {rerun.ran
+                          ? rerun.run_id
+                            ? `${AGENT_NAMES[rerun.agent] ?? rerun.agent} ran again`
+                            : `${AGENT_NAMES[rerun.agent] ?? rerun.agent} is running again. The new result will appear in its step.`
+                          : `${AGENT_NAMES[rerun.agent] ?? rerun.agent} did not run: ${rerun.detail ?? "not available now"}.`}
+                      </p>
+                      {rerun.ran && rerun.note && <p className="text-xs break-words text-muted-foreground">Saved as a note for the agents: {rerun.note}</p>}
+                      {rerun.ran && stored(rerun.run_id)}
+                    </div>
+                  )}
                   {proposal && (
                     <ProposalCard
                       proposal={proposal}
@@ -319,9 +394,10 @@ export function FixChat({ ticket, noRunbook, onDone }: { ticket: PipelineTicket;
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <span>Press Ctrl+Enter to send</span>
           {canUse && <span>· Select a proposed fix to make it the suggested fix, then apply it and confirm the outcome.</span>}
-          {!noRunbook && (
-            <Button size="xs" variant="ghost" className="ml-auto" onClick={() => setOpen(false)}>
-              Hide
+          {turns.length > 0 && (
+            <Button size="xs" variant="ghost" className="ml-auto" disabled={clearing || asking !== null} onClick={clear}>
+              {clearing ? <LoaderCircle className="animate-spin" /> : <Trash2 />}
+              Clear chat
             </Button>
           )}
         </div>
@@ -331,6 +407,8 @@ export function FixChat({ ticket, noRunbook, onDone }: { ticket: PipelineTicket;
           </p>
         )}
       </div>
-    </section>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

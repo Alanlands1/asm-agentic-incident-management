@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 // Every page in the admin menu, and the ticket page of the seeded ticket.
 const PAGES = [
-  "/", "/team", "/my-tickets", "/incidents", "/trends", "/reports", "/tickets", "/review", "/dq-rules", "/dq-rules/execute",
+  "/", "/lead", "/team", "/my-tickets", "/incidents", "/trends", "/reports", "/tickets", "/review", "/dq-rules", "/dq-rules/execute",
   "/agents/data-quality", "/agents/triage", "/agents/resolution", "/agents/closure", "/agents/knowledge",
   "/settings/jira", "/settings/confluence", "/settings/reference", "/settings/history", "/tickets/AMS-1209",
 ];
@@ -79,7 +79,7 @@ test.describe("reports", () => {
   test("is for admins only", async ({ page }) => {
     await viewAs(page, "lead");
     await page.goto("/reports");
-    await expect(page).toHaveURL(/\/team$/); // a page outside the lead's menu sends them home
+    await expect(page).toHaveURL(/\/lead$/); // a page outside the lead's menu sends them home
     await expect(page.getByRole("link", { name: "Reports" })).toHaveCount(0);
   });
 });

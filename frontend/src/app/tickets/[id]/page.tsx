@@ -4,13 +4,14 @@ import { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } f
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { AppShell } from "@/components/console/app-shell";
+import { AssignControl } from "@/components/console/assign-control";
 import { PageHeader } from "@/components/console/page-header";
 import { PriorityChip } from "@/components/console/priority-chip";
 import { FeedbackThumbs } from "@/components/console/feedback-thumbs";
 import { RequesterEmail } from "@/components/console/requester-email";
 import { ReviewActions } from "@/components/console/review-actions";
 import { RunbookButton } from "@/components/console/runbook-button";
-import { FixChat } from "@/components/console/fix-chat";
+import { AskAssistant, FixChat } from "@/components/console/fix-chat";
 import { SectionHead, SlaClock } from "@/components/console/sync-parts";
 import { STAGES } from "@/components/console/dashboard";
 import { humanize } from "@/components/console/document-hints";
@@ -238,7 +239,6 @@ function Run({ run, action, children }: { run: AgentRun; action?: React.ReactNod
           </dl>
         </details>
       )}
-      {children}
     </>
   );
   return (
@@ -295,6 +295,7 @@ function Run({ run, action, children }: { run: AgentRun; action?: React.ReactNod
       ) : (
         more
       )}
+      {children}
     </li>
   );
 }
@@ -581,8 +582,8 @@ function Activity({ ticket }: { ticket: PipelineTicket }) {
     ...ticket.agent_runs.map((r) => ({
       key: `r${r.id}`,
       at: r.created_at,
-      who: AGENTS[r.agent] ?? humanize(r.agent),
-      what: /^P\d$/.test(r.verdict) ? `recommends ${r.verdict}` : (VERDICTS[r.verdict] ?? humanize(r.verdict)),
+      who: r.agent === "assignment" ? String(r.output.by) : (AGENTS[r.agent] ?? humanize(r.agent)),
+      what: r.agent === "assignment" ? (r.output.to ? `assigned the ticket to ${String(r.output.to)}` : "unassigned the ticket") : /^P\d$/.test(r.verdict) ? `recommends ${r.verdict}` : (VERDICTS[r.verdict] ?? humanize(r.verdict)),
     })),
     ...(decided ? [{ key: "decided", at: decided.created_at, who: decided.reviewer, what: `confirmed the priority: P${decided.final_priority}` }] : []),
     // Ratings from use repeat what is listed already (agreed with the priority, the fix worked): only thumbs given by hand.
@@ -1040,6 +1041,7 @@ function Ticket() {
   const [running, setRunning] = useState<Agent | null>(null);
   const [runFailed, setRunFailed] = useState<string | null>(null);
   const person = usePerson();
+  const role = useViewAs();
   const [openStep, setOpenStep] = useState<StepKey | null>(null);
   const [openCards, setOpenCards] = useState<Set<CardKey>>(new Set());
   const [doneOpen, setDoneOpen] = useState(false);
@@ -1408,7 +1410,7 @@ function Ticket() {
           <p className="px-4 py-3 text-[13px] text-muted-foreground">{key === "triage" ? "Not triaged yet." : (WAITS[key] ?? "Not run yet.")}</p>
         )}
         {key === "resolution" && !closed && (
-          <FixChat ticket={ticket!} noRunbook={latestRun?.verdict === "no_match"} onDone={load} />
+          <AskAssistant noRunbook={latestRun?.verdict === "no_match"} />
         )}
         {key === "resolution" && references.length > 0 && (
           <div className="flex flex-wrap items-center gap-2 border-t border-border px-4 py-3">
@@ -1836,7 +1838,17 @@ function Ticket() {
                       ),
                     ],
                     ["Requester", /^<[A-Z_]+_\d+>$/.test(ticket.reporter_name ?? "") ? "Name masked" : (ticket.reporter_name ?? "—")],
-                    ["Assigned to", [ticket.assignment_group, ticket.assignee].filter(Boolean).join(" · ") || "—"],
+                    [
+                      "Assigned to",
+                      role !== "engineer" && !closed ? (
+                        <span className="inline-flex flex-wrap items-center gap-2">
+                          {ticket.assignment_group}
+                          <AssignControl ticketId={ticket.id} assignee={ticket.assignee} onDone={load} />
+                        </span>
+                      ) : (
+                        [ticket.assignment_group, ticket.assignee].filter(Boolean).join(" · ") || "—"
+                      ),
+                    ],
                     ["Opened", when(ticket.opened_at)],
                     ...(closed ? ([["Closed", when(ticket.closed_at)]] as [string, React.ReactNode][]) : []),
                     ["Source status", ticket.source_status ?? ticket.status],
@@ -1874,6 +1886,16 @@ function Ticket() {
           {sheet.resolution_notes && <Text title="Resolution notes" text={sheet.resolution_notes} />}
         </>
       )}
+      {ticket && !closed && <FixChat
+          ticket={ticket}
+          noRunbook={runOf("resolution")?.verdict === "no_match"}
+          renderRun={(run) => (
+            <ul role="list">
+              <Run run={run} />
+            </ul>
+          )}
+          onDone={load}
+        />}
     </>
   );
 }

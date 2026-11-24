@@ -14,9 +14,10 @@ from app.core.config import settings
 from app.db.session import get_db
 from app.llm import ModelError, call_model
 from app.models.ticket import AgentRun, Feedback, PipelineStatus, Review, Ticket
+from app.personas.service import ASSIGNMENT
 from app.privacy.masking import Masker
 from app.schemas.ticket import (
-    AgentRunOut, ChatCreate, ChatUse, CommentCreate, CommentOut, FeedbackCreate, FeedbackOut, FixOutcomeCreate,
+    AgentRunOut, AssignCreate, ChatCreate, ChatUse, CommentCreate, CommentOut, FeedbackCreate, FeedbackOut, FixOutcomeCreate,
     IngestResponse, LeadReviewCreate, ReviewStepCreate, TicketDetail, TicketList, TicketSummary,
 )
 from app.schemas.closure import ClosureReviewOut
@@ -319,7 +320,18 @@ async def chat(ticket_id: str, payload: ChatCreate, db: AsyncSession = Depends(g
         answer, audit = await asyncio.to_thread(lambda: call_model(fix_chat.chat_spec(), masker.mask(text), masker))
     except ModelError as exc:
         raise HTTPException(status_code=502, detail=f"The assistant gave no answer ({type(exc).__name__}). Try again.") from exc
-    return await db.run_sync(_chat_saved, ticket_id, payload, answer, asdict(audit))
+    rerun = None
+    if answer.rerun is not None:  # the engineer said to run an agent again
+        started = datetime.now(UTC)
+        rerun = await db.run_sync(_chat_rerun, ticket_id, answer.rerun)
+        if rerun["ran"] and rerun["agent"] == "resolution":
+            jira.start_resolution(ticket_id)  # several model calls: in the background, as after a fix that did not work
+        elif rerun["ran"] and rerun["agent"] in ("data_quality", "triage"):  # as the Run buttons do
+            await jira.announce(db, started)
+            await jira.move_triaged(db)
+            if rerun["stage"] == PipelineStatus.REVIEWED:
+                jira.start_resolution()
+    return await db.run_sync(_chat_saved, ticket_id, payload, answer, asdict(audit), rerun)
 
 
 def _chat_input(db: Session, ticket_id: str, message: str, kb: str):
@@ -330,12 +342,54 @@ def _chat_input(db: Session, ticket_id: str, message: str, kb: str):
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
-def _chat_saved(db: Session, ticket_id: str, payload: ChatCreate, answer, audit: dict) -> AgentRunOut:
+def _chat_rerun(db: Session, ticket_id: str, asked: fix_chat.Rerun) -> dict:
+    """Run one agent again because the engineer said so in the chat, with their extra details kept as the note to the
+    agents. Returns what happened, for the turn: ran or why not, and the new result's run id."""
     ticket = _get_or_404(db, ticket_id)
-    run = fix_chat.save_turn(db, ticket, payload.message.strip(), payload.author.strip(), answer, audit)
+    note = asked.note.strip()
+    result = {"agent": asked.agent, "note": note, "ran": False, "stage": ticket.pipeline_status}
+    if (why := fix_chat.cannot_rerun(ticket, asked.agent)) is not None:
+        return {**result, "detail": why}
+    if note:
+        if settings.PII_MASKING_ENABLED:  # stored masked, like the note
+            note = str(_masker(ticket, note).mask(note))
+        ticket.guidance = "\n".join(filter(None, [ticket.guidance, note]))
+    run = None
+    try:
+        if asked.agent == "closure_quality":
+            run, _ = check_closure(db, ticket)
+        elif asked.agent == "data_quality":
+            run = check_ticket(db, ticket)
+        if asked.agent == "triage" or (asked.agent == "data_quality" and ticket.pipeline_status == PipelineStatus.DQ_PASSED):
+            triaged, _ = triage_ticket(db, ticket)
+            run = run or triaged
+    except ModelError as exc:
+        db.commit()  # keep the rules verdict and the note
+        return {**result, "stage": ticket.pipeline_status, "detail": f"the model gave no usable answer ({type(exc).__name__})"}
+    db.commit()
+    return {**result, "ran": True, "stage": ticket.pipeline_status, "run_id": run.id if run else None}
+
+
+def _chat_saved(db: Session, ticket_id: str, payload: ChatCreate, answer, audit: dict, rerun: dict | None) -> AgentRunOut:
+    ticket = _get_or_404(db, ticket_id)
+    run = fix_chat.save_turn(db, ticket, payload.message.strip(), payload.author.strip(), answer, audit, rerun)
     db.commit()
     db.refresh(run)
     return AgentRunOut.model_validate(run)
+
+
+@router.delete("/tickets/{ticket_id}/chat", response_model=TicketSummary, summary="Clear the ticket's chat")
+async def clear_chat(ticket_id: str, db: AsyncSession = Depends(get_db)) -> TicketSummary:
+    """The chat with the AI assistant starts afresh for this ticket. The turns stay in the activity log."""
+    return await db.run_sync(_chat_cleared, ticket_id)
+
+
+def _chat_cleared(db: Session, ticket_id: str) -> TicketSummary:
+    ticket = _get_or_404(db, ticket_id)
+    fix_chat.clear(ticket)
+    db.commit()
+    db.refresh(ticket)
+    return TicketSummary.model_validate(ticket)
 
 
 @router.post("/tickets/{ticket_id}/chat/use", response_model=TicketSummary, summary="Use the assistant's fix")
@@ -357,6 +411,34 @@ def _chat_used(db: Session, ticket_id: str, payload: ChatUse, seen: str) -> Tick
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     db.commit()
     db.refresh(ticket)
+    return TicketSummary.model_validate(ticket)
+
+
+@router.post("/tickets/{ticket_id}/assign", response_model=TicketSummary, summary="Assign the ticket to an engineer")
+async def assign(ticket_id: str, payload: AssignCreate, db: AsyncSession = Depends(get_db)) -> TicketSummary:
+    """The lead assigns or reassigns the ticket here. A Jira issue is assigned in Jira first, so the next sync agrees;
+    a ticket from another source is assigned in the console only."""
+    ticket = await db.run_sync(_get_or_404, ticket_id)
+    name = (payload.assignee or "").strip() or None
+    if ticket.closed_at is not None:
+        raise HTTPException(status_code=409, detail=f"Ticket {ticket_id} is closed")
+    if name != ticket.assignee and ticket.source == "JIRA":
+        await db.commit()  # no transaction open while Jira answers
+        try:
+            await jira.assign_issue(ticket_id, name)
+        except AtlassianError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return await db.run_sync(_assigned, ticket_id, name, payload.by.strip())
+
+
+def _assigned(db: Session, ticket_id: str, name: str | None, by: str) -> TicketSummary:
+    ticket = _get_or_404(db, ticket_id)
+    if name != ticket.assignee:  # who gave it to whom, for the activity log
+        db.add(AgentRun(ticket_id=ticket.id, agent=ASSIGNMENT, verdict="assigned" if name else "unassigned",
+                        output={"to": name, "from": ticket.assignee, "by": by}))
+        ticket.assignee = name
+        db.commit()
+        db.refresh(ticket)
     return TicketSummary.model_validate(ticket)
 
 

@@ -1,13 +1,14 @@
 """One board for every persona page: the open tickets with the priority in force, SLA state, engineer and Jira link.
 
-P1/P2 and SLA come from the same functions Incidents uses, so the pages cannot disagree. Read-only: assigning is done
-in Jira, through the ticket's link.
+P1/P2 and SLA come from the same functions Incidents uses, so the pages cannot disagree. Read-only: the lead assigns
+through POST /tickets/{id}/assign.
 """
 
 import re
+from collections import Counter
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.agents.triage.config import get_config
@@ -17,7 +18,8 @@ from app.models.incident import FirstMessage
 from app.models.jira import JiraSync
 from app.models.knowledge import ResolvedCase
 from app.models.ticket import AgentRun, Comment, Feedback, PipelineStatus, Review, Ticket
-from app.services import lead_review
+from app.personas import availability
+from app.services import jira, lead_review
 from app.services.data_quality import AGENT as DATA_QUALITY
 from app.services.data_quality import last_run
 from app.services.jira import COMMAND_BOT, EARLIER, SAID, SLA_BOT
@@ -26,6 +28,9 @@ from app.services.triage.run import AGENT as TRIAGE
 
 TRIAGED = sla.TRIAGED
 FIX = "resolution"
+RECENT = 90  # days of resolved tickets that count as knowing an application
+ROOM = 3  # open tickets an engineer who knows the application may hold above the least loaded one and still get it
+ASSIGNMENT = "assignment"  # an agent_runs row per assignment: who gave the ticket to whom
 AUTO = "AMS agents (auto)"  # services/triage/run.AUTO_REVIEWER
 KB_ID = re.compile(r"KB-[A-Z]+-\d+")
 
@@ -98,6 +103,96 @@ def board(db: Session, person: str | None = None, at: datetime | None = None) ->
         "people": sorted(people.values(), key=lambda p: (p["name"] is None, -p["open"])),
         "tickets": rows,
     }
+
+
+def people(db: Session) -> list[str]:
+    """Every engineer a ticket was ever assigned to, by name."""
+    return sorted(db.scalars(select(Ticket.assignee).where(Ticket.assignee.is_not(None)).distinct()))
+
+
+def roster(db: Session) -> list[dict]:
+    """Everyone a ticket can go to: who Jira lets be assigned, and who has held a ticket here. `member` says who is on
+    the team, so gets suggestions and a shift status: whoever the lead put on it; else someone who has held a ticket,
+    unless Jira no longer lets them be assigned; never someone the lead took off."""
+    team, held, in_jira = availability.config(), set(people(db)), jira.known_people
+    rows = []
+    for name in sorted(held | set(in_jira or [])):
+        known = None if in_jira is None else name in in_jira
+        member = name not in team.not_members and (name in team.members or (name in held and known is not False))
+        rows.append({"name": name, "in_jira": known, "held": name in held, "member": member})
+    return rows
+
+
+def members(db: Session) -> list[str]:
+    return [r["name"] for r in roster(db) if r["member"]]
+
+
+def _resolved(db: Session, at: datetime) -> Counter:
+    """(application, person) -> tickets that person resolved in the last RECENT days: they confirmed the fix or sent
+    the closure note here, or the ticket was closed in its source while assigned to them. A person is who the page or
+    Jira named: a step recorded under an email address does not count for the same person's Jira name."""
+    since = at - timedelta(days=RECENT)
+    done = or_(and_(Review.agent == FIX, Review.action.in_(("worked", "partly"))), Review.agent == lead_review.CLOSE)
+    pairs = {(r.ticket_id, r.reviewer) for r in db.scalars(select(Review).where(Review.created_at >= _utc(since), done))}
+    undated = and_(Ticket.closed_at.is_(None), Ticket.pipeline_status == PipelineStatus.HISTORICAL)
+    in_source = or_(Ticket.closed_at >= since, undated)
+    closed = db.scalars(select(Ticket).where(Ticket.assignee.is_not(None), in_source)
+                        .options(selectinload(Ticket.agent_runs))).all()
+    pairs |= {(t.id, t.assignee) for t in closed}
+    tickets = {t.id: t for t in closed}
+    others = {i for i, _ in pairs} - set(tickets)
+    for t in db.scalars(select(Ticket).where(Ticket.id.in_(others)).options(selectinload(Ticket.agent_runs))):
+        tickets[t.id] = t
+    counts: Counter = Counter()
+    for ticket_id, person in pairs:
+        app = _application(tickets[ticket_id]) if ticket_id in tickets else None
+        if app:
+            counts[(app, person)] += 1
+    return counts
+
+
+def suggestions(db: Session, at: datetime | None = None) -> list[dict]:
+    """An engineer for each open ticket nobody has, most at risk first: of those who have resolved tickets of the
+    ticket's application, the one with the fewest open tickets now; when nobody has, or they all hold more than ROOM
+    tickets above the least loaded engineer, whoever has the fewest. Nobody on leave is suggested, and someone off
+    shift only when nobody is on shift. Each suggestion counts as a ticket for the next one, so a batch spreads over
+    the team. Nobody holding the team's max_open tickets gets another, so a ticket may get no suggestion; a P1 or P2
+    goes over the limit rather than wait."""
+    at = at or sla.now()
+    rows = board(db, at=at)["tickets"]
+    team = availability.config()
+    state = {e: availability.status(e, at, team)["state"] for e in members(db)}
+    here = [e for e, s in state.items() if s != availability.ON_LEAVE]
+    engineers = [e for e in here if state[e] == availability.ON_SHIFT] or here
+    holds = Counter(r["assignee"] for r in rows if r["assignee"])  # before this batch
+    load = Counter(holds)
+    resolved = _resolved(db, at)
+
+    picked = []  # (ticket, engineer, what they know of the application, anything unusual about the pick)
+    for r in rows:
+        urgent = r["priority"] is not None and r["priority"] <= 2
+        free = engineers if urgent else [e for e in engineers if load[e] < team.max_open]
+        if r["assignee"] or not free:
+            continue
+        app = r["application"]
+        room = min(load[e] for e in free) + ROOM
+        pool = [e for e in free if resolved[(app, e)] and load[e] <= room] or free
+        name = min(pool, key=lambda e: (load[e], -resolved[(app, e)], e))
+        n = resolved[(app, name)]
+        knows = f"resolved {n} {app} {'ticket' if n == 1 else 'tickets'}" if n else app and f"no resolved {app} tickets yet"
+        flags = [load[name] >= team.max_open and "over the limit, urgent",
+                 state[name] == availability.OFF_SHIFT and "off shift now"]
+        picked.append((r["id"], name, knows, flags))
+        load[name] += 1
+    return [{"id": ticket, "name": name, "reason": " · ".join(
+        part for part in (knows, f"holds {holds[name]} now, {load[name]} after this batch", *flags) if part)}
+            for ticket, name, knows, flags in picked]
+
+
+def team_status(db: Session, at: datetime | None = None) -> dict[str, dict]:
+    """Each team member's state now: on_shift, off_shift, or on_leave with its last day."""
+    team = availability.config()
+    return {e: availability.status(e, at or sla.now(), team) for e in members(db)}
 
 
 def _application(t: Ticket) -> str | None:
@@ -215,6 +310,10 @@ def activity(db: Session, person: str | None = None, since: datetime | None = No
                                {"priority": run.output.get("priority"), "previous_priority": before}))
             else:
                 events.append((run.created_at, agent, ticket_id, {}))
+
+    for run in recent(AgentRun, AgentRun.created_at, AgentRun.agent == ASSIGNMENT):
+        who = {"actor": run.output.get("by"), "action": run.output.get("to")}
+        events.append((run.created_at, "assigned", run.ticket_id, who))
 
     bots = {SLA_BOT: "sla_warning", COMMAND_BOT: "command_answered"}
     said = or_(Comment.body.startswith(SAID), Comment.body.startswith(EARLIER[0]))  # the agents' answers, now and before

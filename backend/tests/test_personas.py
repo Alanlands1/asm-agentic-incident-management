@@ -232,3 +232,154 @@ def test_a_ticket_without_an_application_shows_the_one_triage_found(session):  #
                          output={"priority": 2, "application": "BillingEngine", "reason": "x", "rule": "r"}))
     session.commit()
     assert service.board(session, at=AT)["tickets"][0]["application"] == "BillingEngine"
+
+
+def test_an_unassigned_ticket_is_suggested_to_who_knows_the_application_and_has_room(session):  # noqa: F811
+    def t(i, app, who=None, closed=False):
+        return Ticket(id=f"AMS-{i}", source="JIRA", summary="s", application=app, assignee=who,
+                      status="closed" if closed else "new", pipeline_status="historical" if closed else "pending",
+                      closed_at=AT if closed else None, opened_at=AT - timedelta(hours=20 - i))
+
+    session.add_all([
+        t(1, "OrderHub", "Ravi", closed=True), t(2, "OrderHub", "Ravi", closed=True), t(3, "PayrollPro", "Priya", closed=True),
+        t(4, "OrderHub"), t(5, "OrderHub"), t(6, "PayrollPro"), t(7, None), t(8, "PayrollPro", "Priya"),
+    ])
+    session.commit()
+    got = {s["id"]: (s["name"], s["reason"]) for s in service.suggestions(session, at=AT)}
+    assert got == {
+        "AMS-4": ("Ravi", "resolved 2 OrderHub tickets · holds 0 now, 2 after this batch"),
+        "AMS-5": ("Ravi", "resolved 2 OrderHub tickets · holds 0 now, 2 after this batch"),  # nobody else knows OrderHub
+        # the open one she holds is not resolved yet
+        "AMS-6": ("Priya", "resolved 1 PayrollPro ticket · holds 1 now, 3 after this batch"),
+        "AMS-7": ("Priya", "holds 1 now, 3 after this batch"),  # no application: both would hold 2, the name decides
+    }
+    session.add_all([t(i, "OrderHub", "Ravi") for i in range(10, 16)])  # Ravi is loaded now
+    session.commit()
+    assert service.suggestions(session, at=AT)[0]["name"] == "Priya"  # knowing OrderHub does not outweigh six more tickets
+
+
+def test_nobody_at_the_limit_is_suggested_another_ticket_unless_it_is_urgent(session, monkeypatch):  # noqa: F811
+    from datetime import time
+
+    from app.personas import availability
+    from app.personas.availability import Hours, Team
+
+    team = Team(timedelta(0), Hours(frozenset(range(7)), time(0), time(23, 59)), {}, (), max_open=2)
+    monkeypatch.setattr(availability, "config", lambda: team)
+
+    def t(i, stage="pending", who=None):
+        return Ticket(id=f"AMS-{i}", source="JIRA", summary="s", status="new", pipeline_status=stage, assignee=who,
+                      opened_at=AT - timedelta(minutes=i))
+
+    session.add_all([t(1, who="Ravi"), t(2, who="Ravi"), t(3), t(4, "triaged")])  # Ravi is the team, and is full
+    session.flush()
+    session.add(AgentRun(ticket_id="AMS-4", agent="triage", verdict="P1", output={
+        "ai": "used", "priority": 1, "rule": "r", "reason": "x", "stage": "model", "needs_review": False}))
+    session.commit()
+    got = service.suggestions(session, at=AT)
+    # the P1 goes over the limit; the untriaged ticket waits for the lead
+    assert got == [{"id": "AMS-4", "name": "Ravi", "reason": "holds 2 now, 3 after this batch · over the limit, urgent"}]
+
+
+def test_who_resolved_a_ticket_counts_not_who_was_given_it_and_only_recently(session):  # noqa: F811
+    def t(i, who, closed_days_ago):
+        return Ticket(id=f"AMS-{i}", source="JIRA", summary="s", application="OrderHub", assignee=who, status="closed",
+                      pipeline_status="historical", closed_at=AT - timedelta(days=closed_days_ago))
+
+    session.add_all([t(1, "Ravi", 200), t(2, "Ravi", 5), t(3, "Ravi", 5)])  # one too long ago to count
+    session.flush()
+    fix = AgentRun(ticket_id="AMS-3", agent="resolution", verdict="resolved", output={})
+    session.add(fix)
+    session.flush()
+    session.add(Review(ticket_id="AMS-3", agent_run_id=fix.id, agent="resolution", action="worked", reviewer="Priya",
+                       created_at=AT - timedelta(days=5)))  # Priya fixed the ticket Ravi held
+    session.commit()
+    assert service._resolved(session, AT) == {("OrderHub", "Ravi"): 2, ("OrderHub", "Priya"): 1}
+
+
+def test_nobody_on_leave_is_suggested_and_off_shift_only_when_nobody_is_on_shift(session, monkeypatch):  # noqa: F811
+    from datetime import date, time
+
+    from app.personas import availability
+    from app.personas.availability import Hours, Team
+
+    days = frozenset(range(5))
+    office, night = Hours(days, time(9), time(18)), Hours(days, time(22), time(6))
+    team = Team(timedelta(hours=5, minutes=30), office, {"Ravi": night}, (("Priya", date(2026, 11, 9), date(2026, 11, 11)),))
+    monkeypatch.setattr(availability, "config", lambda: team)
+    session.add_all([Ticket(id=f"AMS-{i}", source="JIRA", summary="s", status="closed", pipeline_status="historical",
+                            assignee=who, closed_at=AT) for i, who in enumerate(("Ravi", "Priya", "Meera"), 1)])
+    session.add(Ticket(id="AMS-9", source="JIRA", summary="s", status="new", pipeline_status="pending", opened_at=AT))
+    session.commit()
+
+    # AT is Tuesday 17:30 for the team: Meera in the office, Ravi before his night shift, Priya on leave
+    assert service.team_status(session, AT) == {
+        "Meera": {"state": "on_shift", "until": None}, "Priya": {"state": "on_leave", "until": date(2026, 11, 11)},
+        "Ravi": {"state": "off_shift", "until": None}}
+    assert [s["name"] for s in service.suggestions(session, at=AT)] == ["Meera"]
+    night_time = AT + timedelta(hours=7)  # Wednesday 00:30 for the team: only Ravi works
+    assert service.team_status(session, night_time)["Ravi"]["state"] == "on_shift"
+    assert [s["name"] for s in service.suggestions(session, at=night_time)] == ["Ravi"]
+    weekend = AT + timedelta(days=4)  # Saturday: nobody on shift, so someone off shift is suggested and it says so
+    assert service.suggestions(session, at=weekend)[0]["reason"].endswith("off shift now")
+
+
+async def test_the_team_document_is_checked_before_it_is_saved(client, monkeypatch):
+    monkeypatch.setattr(settings, "ADMIN_API_KEY", "test-key")
+    key, url = {"X-Admin-Key": "test-key", "X-Admin-User": "lead"}, "/api/v1/admin/documents/team"
+    team = (await client.get(url, headers=key)).json()["document"]
+    leave = {"name": "Ravi", "from": "2026-11-26", "to": "2026-11-27"}
+    assert (await client.put(url, headers=key, json={"document": {**team, "leave": [leave]}})).status_code == 200
+    backwards = {**leave, "from": "2026-11-28"}
+    assert (await client.put(url, headers=key, json={"document": {**team, "leave": [backwards]}})).status_code == 422
+    assert (await client.get(url, headers=key)).json()["document"]["leave"] == [leave]  # the refused one changed nothing
+    await client.delete(url, headers=key)
+
+
+async def test_the_engineer_list_adds_who_jira_can_assign(client, monkeypatch):
+    from pydantic import SecretStr
+
+    from app.core.config import settings
+    from app.db.session import get_db
+    from app.main import app
+    from app.models.jira import JiraProject
+    from app.services import jira
+
+    async def assignable(keys):
+        assert keys == ["AMS"]
+        return ["Meera Nair", "Ravi"]
+
+    monkeypatch.setattr(jira, "assignable", assignable)
+    for name in ("ATLASSIAN_BASE_URL", "ATLASSIAN_EMAIL"):
+        monkeypatch.setattr(settings, name, "https://x.atlassian.net")
+    monkeypatch.setattr(settings, "ATLASSIAN_API_TOKEN", SecretStr("t"))
+    async for db in app.dependency_overrides[get_db]():
+        db.add_all([JiraProject(key="AMS", name="AMS Support"),
+                    Ticket(id="AMS-1", source="JIRA", summary="s", status="new", pipeline_status="pending", assignee="Ravi")])
+        await db.commit()
+    assert (await client.get("/api/v1/personas/people")).json() == ["Meera Nair", "Ravi"]
+    on_team = {p["name"]: p["member"] for p in (await client.get("/api/v1/personas/roster")).json()}
+    assert on_team == {"Meera Nair": False, "Ravi": True}  # someone only Jira knows waits for the lead
+    assert list((await client.get("/api/v1/personas/availability")).json()) == ["Ravi"]
+
+
+def test_the_lead_decides_who_is_on_the_team(session, monkeypatch):  # noqa: F811
+    from datetime import time
+
+    from app.personas import availability
+    from app.personas.availability import Hours, Team
+    from app.services import jira
+
+    hours = Hours(frozenset(range(7)), time(0), time(23, 59))
+    session.add_all([Ticket(id=f"AMS-{i}", source="JIRA", summary="s", status="closed", pipeline_status="historical",
+                            assignee=who, closed_at=AT) for i, who in enumerate(("Ravi", "Priya", "Gone"), 1)])
+    session.add(Ticket(id="AMS-9", source="JIRA", summary="s", status="new", pipeline_status="pending", opened_at=AT))
+    session.commit()
+    monkeypatch.setattr(jira, "known_people", ["Meera", "New", "Priya", "Ravi"])  # Gone has left Jira
+    team = Team(timedelta(0), hours, {}, (), members=frozenset({"New"}), not_members=frozenset({"Priya"}))
+    monkeypatch.setattr(availability, "config", lambda: team)
+
+    assert service.members(session) == ["New", "Ravi"]  # put on by the lead; held a ticket and still in Jira
+    assert {r["name"] for r in service.roster(session)} == {"Gone", "Meera", "New", "Priya", "Ravi"}
+    # someone new has no history, so the fewest open tickets decides, and the name between equals
+    assert [(s["name"], s["reason"]) for s in service.suggestions(session, at=AT)] == [("New", "holds 0 now, 1 after this batch")]

@@ -46,6 +46,8 @@ export const pipelineService = {
   /** A draft email telling the requester the ticket is resolved, from the saved closure note. Nothing is sent. */
   draftEmail: (ticketId: string) =>
     apiClient<{ subject: string; body: string }>(`/closure/tickets/${id(ticketId)}/email`, { method: "POST" }),
+  /** Starts the ticket's chat with the AI assistant afresh; the turns stay in the activity log. */
+  clearChat: (ticketId: string) => apiClient(`/tickets/${id(ticketId)}/chat`, { method: "DELETE" }),
   /** One turn with the AI assistant about the fix; returns the stored turn. */
   chat: (ticketId: string, body: { message: string; author: string }) =>
     apiClient<AgentRun>(`/tickets/${id(ticketId)}/chat`, { method: "POST", body: JSON.stringify(body) }),
@@ -58,6 +60,15 @@ export const pipelineService = {
   /** The lead approves the closure note, or sends it back with what to change. */
   leadReview: (ticketId: string, body: { action: "approved" | "sent_back"; note?: string; reviewer: string }) =>
     apiClient(`/tickets/${id(ticketId)}/lead-review`, { method: "POST", body: JSON.stringify(body) }),
+  /** Everyone a ticket can go to: who Jira lets be assigned and who has held a ticket; `member` is on the team. */
+  roster: () => apiClient<{ name: string; in_jira: boolean | null; held: boolean; member: boolean }[]>("/personas/roster"),
+  /** Each engineer's state now: on shift, off shift, or on leave with its last day. */
+  availability: () => apiClient<Record<string, { state: "on_shift" | "off_shift" | "on_leave"; until: string | null }>>("/personas/availability"),
+  /** An engineer for each unassigned open ticket, with the reason; a ticket left out has no one under the limit. */
+  suggestions: () => apiClient<{ limit: number; suggestions: { id: string; name: string; reason: string }[] }>("/personas/suggestions"),
+  /** The lead gives the ticket to an engineer (null: nobody); a Jira issue is assigned in Jira too. */
+  assign: (ticketId: string, assignee: string | null, by: string) =>
+    apiClient(`/tickets/${id(ticketId)}/assign`, { method: "POST", body: JSON.stringify({ assignee, by }) }),
   /** Posts the closure note on the Jira issue and moves the issue to done. */
   closeInJira: (ticketId: string, author: string) =>
     apiClient(`/tickets/${id(ticketId)}/close`, { method: "POST", body: JSON.stringify({ author_email: author }) }),
