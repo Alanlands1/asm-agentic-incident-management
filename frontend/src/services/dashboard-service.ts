@@ -1,5 +1,6 @@
 import { apiClient } from "@/lib/api-client";
 import { DashboardSummary, Trends } from "@/types/dashboard";
+import { Reports } from "@/types/reports";
 
 export const dashboardService = {
   /** Counts "today" from the viewer's local midnight. */
@@ -15,4 +16,6 @@ export const dashboardService = {
     first.setDate(first.getDate() - (days - 1));
     return apiClient<Trends>(`/dashboard/trends?days=${days}&since=${encodeURIComponent(first.toISOString())}`);
   },
+  /** Admin reports for the last `days` days. */
+  getReports: (days: number) => apiClient<Reports>(`/dashboard/reports?days=${days}`),
 };

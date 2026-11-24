@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  BookOpen, CheckCheck, CheckCircle2, ClipboardList, Database, FileSearch, FileText, History, Layers, LayoutDashboard,
+  BookOpen, CheckCheck, CheckCircle2, ClipboardList, Database, FileBarChart, FileSearch, FileText, History, Layers, LayoutDashboard,
   Library, ListChecks, MessageSquare, Plug, ShieldCheck, SlidersHorizontal, Ticket, TrendingUp, TriangleAlert, Users,
   type LucideIcon,
 } from "lucide-react";
@@ -34,6 +34,7 @@ const ADMIN_GROUPS: { label: string; items: NavItem[] }[] = [
     items: [{ label: "Home", href: "/", match: (p) => p === "/" },
       INCIDENTS,
       { label: "Trends", href: "/trends", match: (p) => p.startsWith("/trends") },
+      { label: "Reports", href: "/reports", match: (p) => p.startsWith("/reports") },
     ],
   },
   {
@@ -74,7 +75,7 @@ const ADMIN_GROUPS: { label: string; items: NavItem[] }[] = [
 ];
 
 const ICONS: Record<string, LucideIcon> = {
-  "/": LayoutDashboard, "/incidents": TriangleAlert, "/trends": TrendingUp, "/tickets": Ticket, "/review": CheckCircle2,
+  "/": LayoutDashboard, "/incidents": TriangleAlert, "/trends": TrendingUp, "/reports": FileBarChart, "/tickets": Ticket, "/review": CheckCircle2,
   "/dq-rules": ListChecks, "/agents/data-quality": ShieldCheck, "/agents/triage": SlidersHorizontal,
   "/agents/resolution": BookOpen, "/agents/closure": CheckCheck, "/agents/knowledge": Library,"/settings/jira": Plug, "/settings/confluence": FileText,
   "/settings/reference": Database, "/settings/history": History, "/team": Users, "/my-tickets": ClipboardList,

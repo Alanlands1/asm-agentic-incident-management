@@ -4,11 +4,11 @@ from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.services import dashboard
+from app.services import dashboard, reports
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
@@ -83,3 +83,63 @@ async def trends(
 ) -> TrendsOut:
     start = since or datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=days - 1)
     return TrendsOut(**await db.run_sync(dashboard.trends, start, days))
+
+
+class ApplicationReport(BaseModel):
+    application: str
+    opened: int
+    open: int = Field(description="Open now, whenever opened")
+    resolved: int = Field(description="Resolved or closed in the period")
+    p1_p2: int
+    sla_met: float | None = Field(description="Share of tickets opened in the period whose SLA is decided and was met")
+    mean_hours_to_resolve: float | None
+    runbook_fix: float | None = Field(description="Share of tickets with a Resolution answer that found a runbook fix")
+    kb_covered: float | None = Field(description="Share of saved cases a knowledge article covers")
+
+
+class AgentReport(BaseModel):
+    agent: str
+    runs: int
+    model_used: float | None
+    model_failed: int
+    tokens: int
+    rated: int
+    correct: float | None
+    partially_correct: float | None
+    incorrect: float | None
+
+
+class OutcomeReport(BaseModel):
+    application: str
+    fixes_confirmed: int
+    first_fix: float | None = Field(description="Share of confirmed fixes that worked on the first suggestion")
+    mean_attempts: float | None
+    escalated: int = Field(description="Tickets escalated to the lead after repeated failed fixes")
+    mean_closure_score: float | None = Field(description="Out of 6")
+    closure_needs_work: float | None
+    lead_approved: int
+    lead_returned: int
+
+
+class EngineerReport(BaseModel):
+    engineer: str
+    open: int
+    closed: int
+    mean_hours_to_resolve: float | None
+    sla_breached: int
+    priority_changes: int
+
+
+class ReportsOut(BaseModel):
+    days: int
+    since: datetime
+    applications: list[ApplicationReport]
+    agents: list[AgentReport]
+    outcomes: list[OutcomeReport]
+    engineers: list[EngineerReport]
+
+
+@router.get("/reports", response_model=ReportsOut, summary="Admin reports for a period")
+async def get_reports(days: int = Query(30, ge=1, le=365), db: AsyncSession = Depends(get_db)) -> ReportsOut:
+    """Tickets by application, agent performance, fix and closure outcomes, and engineers, for the last `days` days."""
+    return ReportsOut(**await db.run_sync(reports.reports, days))
