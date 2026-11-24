@@ -1,5 +1,7 @@
 """Feedback from use: what people already do on a ticket is stored as a rating of the agent's result."""
 
+from datetime import timedelta
+
 from sqlalchemy import select
 
 from app.models.ticket import AgentRun, Comment, Feedback, PipelineStatus, Ticket
@@ -56,7 +58,9 @@ def test_a_reporter_supplying_what_was_asked_rates_data_quality_right(db, monkey
     ticket.application, ticket.description = "PayrollPro", "Payslips do not open."
     db.add(Comment(ticket_id="AMS-1209", author_email="reporter@contoso.com", from_reporter=True,
                    body="Since 09:00 today every payslip PDF in PayrollPro opens blank for all 40 staff in Pune, with error "
-                        "PDF-GEN-500 when I open it from the portal. Steps: Payslips > November > Download."))
+                        "PDF-GEN-500 when I open it from the portal. Steps: Payslips > November > Download.",
+                   created_at=asked.created_at + timedelta(minutes=5)))  # the reply comes after the ask; on Windows two
+    # rows written back to back can share a timestamp (the clock ticks every 15.6 ms)
     db.flush()
     db.refresh(ticket)
     assert check_ticket(db, ticket).verdict == "passed"
