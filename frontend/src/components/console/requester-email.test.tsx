@@ -50,12 +50,21 @@ describe("RequesterEmail", () => {
     expect(screen.getByRole("button", { name: "Posted on Jira" })).toBeDisabled();
   });
 
-  it("copies subject and message", async () => {
+  it("copies the subject and the message separately, or both at once", async () => {
     const user = userEvent.setup();
     show(null, false);
     await user.click(screen.getByRole("button", { name: "Draft email" }));
     expect(screen.queryByRole("button", { name: "Post as reply on Jira" })).not.toBeInTheDocument(); // writing to Jira is off
-    await user.click(screen.getByRole("button", { name: "Copy" }));
+
+    await user.click(screen.getByRole("button", { name: "Copy subject" }));
+    expect(await navigator.clipboard.readText()).toBe("Resolved: payslips & PDFs");
+    expect(screen.getByRole("button", { name: "Copy subject" })).toHaveTextContent("Copied");
+
+    await user.click(screen.getByRole("button", { name: "Copy message" }));
+    expect(await navigator.clipboard.readText()).toBe("Hello Meera,\n\nFixed.\n\nIT Support");
+    expect(screen.getByRole("button", { name: "Copy subject" })).toHaveTextContent("Copy"); // only the last copy is marked
+
+    await user.click(screen.getByRole("button", { name: "Copy all" }));
     expect(await navigator.clipboard.readText()).toBe("Subject: Resolved: payslips & PDFs\n\nHello Meera,\n\nFixed.\n\nIT Support");
     expect(screen.getByRole("button", { name: "Copied" })).toBeInTheDocument();
   });

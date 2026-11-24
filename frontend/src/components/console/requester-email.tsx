@@ -30,7 +30,7 @@ export function RequesterEmail({
   const person = usePerson();
   const [email, setEmail] = useState<{ subject: string; body: string } | null>(null);
   const [doing, setDoing] = useState<"draft" | "send" | null>(null);
-  const [done, setDone] = useState<"copied" | "sent" | null>(null);
+  const [done, setDone] = useState<"subject" | "body" | "all" | "sent" | null>(null); // the last thing copied or sent
   const [error, setError] = useState<string | null>(null);
 
   const run = (what: "draft" | "send", work: () => Promise<unknown>) => {
@@ -48,10 +48,17 @@ export function RequesterEmail({
       setDone("sent");
       onSent();
     });
-  const copy = () =>
+  const copy = (what: "subject" | "body" | "all") =>
     navigator.clipboard
-      .writeText(`Subject: ${email!.subject}\n\n${email!.body}`)
-      .then(() => setDone("copied"), () => setError("Copying is blocked in this browser. Select the text instead."));
+      .writeText(what === "subject" ? email!.subject : what === "body" ? email!.body : `Subject: ${email!.subject}\n\n${email!.body}`)
+      .then(() => setDone(what), () => setError("Copying is blocked in this browser. Select the text instead."));
+  // A copy button beside each field, so the subject and the message paste into their own boxes in the email app.
+  const copyButton = (what: "subject" | "body", label: string) => (
+    <Button size="xs" variant="ghost" disabled={!email?.[what].trim()} onClick={() => copy(what)} aria-label={`Copy ${label.toLowerCase()}`}>
+      {done === what ? <Check /> : <Copy />}
+      {done === what ? "Copied" : "Copy"}
+    </Button>
+  );
   const mailto =
     email && ticket.reporter_email
       ? `mailto:${ticket.reporter_email}?subject=${encodeURIComponent(email.subject)}&body=${encodeURIComponent(email.body)}`
@@ -75,13 +82,19 @@ export function RequesterEmail({
             To: {ticket.reporter_name ?? "Requester"}
             {ticket.reporter_email ? ` <${ticket.reporter_email}>` : ""}
           </p>
-          <label htmlFor={`${id}-subject`} className="text-xs font-semibold">
-            Subject
-          </label>
+          <div className="flex items-center justify-between gap-2">
+            <label htmlFor={`${id}-subject`} className="text-xs font-semibold">
+              Subject
+            </label>
+            {copyButton("subject", "Subject")}
+          </div>
           <Input id={`${id}-subject`} value={email.subject} onChange={(e) => setEmail({ ...email, subject: e.target.value })} disabled={doing !== null} />
-          <label htmlFor={`${id}-body`} className="text-xs font-semibold">
-            Message
-          </label>
+          <div className="flex items-center justify-between gap-2">
+            <label htmlFor={`${id}-body`} className="text-xs font-semibold">
+              Message
+            </label>
+            {copyButton("body", "Message")}
+          </div>
           <Textarea id={`${id}-body`} rows={9} value={email.body} onChange={(e) => setEmail({ ...email, body: e.target.value })} disabled={doing !== null} />
           <div className="flex flex-wrap items-center gap-2">
             {mailto && (
@@ -90,9 +103,9 @@ export function RequesterEmail({
                 Open in email app
               </a>
             )}
-            <Button size="sm" variant="secondary" disabled={doing !== null || !email.body.trim()} onClick={copy}>
-              {done === "copied" ? <Check /> : <Copy />}
-              {done === "copied" ? "Copied" : "Copy"}
+            <Button size="sm" variant="secondary" disabled={doing !== null || !email.body.trim()} onClick={() => copy("all")}>
+              {done === "all" ? <Check /> : <Copy />}
+              {done === "all" ? "Copied" : "Copy all"}
             </Button>
             {toJira && (
               <Button size="sm" variant="secondary" disabled={doing !== null || done === "sent" || !email.body.trim()} onClick={send}>
