@@ -34,7 +34,7 @@ export default function JiraSettingsPage() {
     try {
       setConn(await jiraService.getConnection());
     } catch (e) {
-      setConn({ site: "", email_set: false, token_set: false, connected: false, error: message(e, "Couldn't reach the backend"), sync_minutes: 0 });
+      setConn({ site: "", email_set: false, token_set: false, connected: false, error: message(e, "Couldn't reach the backend. Try again."), sync_minutes: 0 });
     } finally {
       setTesting(false);
     }
@@ -44,7 +44,7 @@ export default function JiraSettingsPage() {
     try {
       setSyncs(await jiraService.getSyncs());
     } catch (e) {
-      setSyncError(message(e, "Couldn't load sync history"));
+      setSyncError(message(e, "Couldn't load the sync history. Try again."));
     }
   }, []);
 
@@ -53,16 +53,16 @@ export default function JiraSettingsPage() {
       .getConnection()
       .then(setConn)
       .catch((e: unknown) =>
-        setConn({ site: "", email_set: false, token_set: false, connected: false, error: message(e, "Couldn't reach the backend"), sync_minutes: 0 }),
+        setConn({ site: "", email_set: false, token_set: false, connected: false, error: message(e, "Couldn't reach the backend. Try again."), sync_minutes: 0 }),
       );
     jiraService
       .getProjects()
       .then(setProjects)
-      .catch((e: unknown) => setProjectsError(message(e, "Couldn't load Jira projects")));
+      .catch((e: unknown) => setProjectsError(message(e, "Couldn't load Jira projects. Try again.")));
     jiraService
       .getSyncs()
       .then(setSyncs)
-      .catch((e: unknown) => setSyncError(message(e, "Couldn't load sync history")));
+      .catch((e: unknown) => setSyncError(message(e, "Couldn't load the sync history. Try again.")));
   }, []);
 
   const edit = (key: string, change: Partial<JiraProject>) => {
@@ -80,7 +80,7 @@ export default function JiraSettingsPage() {
       setDirty(false);
       setSaved(true);
     } catch (e) {
-      setProjectsError(message(e, "Couldn't save projects"));
+      setProjectsError(message(e, "Couldn't save the projects. Try again."));
     } finally {
       setSaving(false);
     }
@@ -108,10 +108,10 @@ export default function JiraSettingsPage() {
         title="Jira"
         context={`Pull tickets from Jira into the ticket list. New open tickets go through Data Quality, then Triage. ${
           !conn?.write_back
-            ? "Nothing is written back to Jira (JIRA_WRITE_BACK is off)."
+            ? "Jira write-back is disabled (JIRA_WRITE_BACK is off)."
             : conn.agent_writes
-              ? "The agents comment, label and set the priority on the Jira issue; what a person sets in Jira stays final."
-              : "Only what an engineer sends goes to Jira: a reply to the caller, and the closure note with the decided priority. The agents write nothing on their own."
+              ? "The agents comment on, label and set the priority of Jira issues; values set by a person in Jira take precedence."
+              : "Only what an engineer sends reaches Jira: replies to the requester, and the closure note with the confirmed priority. The agents never write to Jira automatically."
         }`}
         actions={
           <Button variant="secondary" onClick={testConnection} disabled={testing}>
@@ -162,7 +162,7 @@ export default function JiraSettingsPage() {
         {!projects ? (
           !projectsError && <p className="px-4 py-6 text-muted-foreground">Loading Jira projects…</p>
         ) : projects.length === 0 ? (
-          <p className="px-4 py-6 text-muted-foreground">This Jira site has no projects you can see.</p>
+          <p className="px-4 py-6 text-muted-foreground">No projects are visible to this account on this Jira site.</p>
         ) : (
           <ul role="list">
             {projects.map((p) => (
@@ -196,7 +196,7 @@ export default function JiraSettingsPage() {
         )}
         {projects && projects.length > 0 && (
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-4 py-3">
-            <p className="text-xs text-muted-foreground">Tickets from a project go to its team. Leave Team empty to use the project name.</p>
+            <p className="text-xs text-muted-foreground">Tickets from a project are assigned to its team. Leave Team empty to use the project name.</p>
             <Button onClick={save} disabled={!dirty || saving}>
               {saving ? "Saving…" : "Save projects"}
             </Button>
@@ -223,12 +223,12 @@ export default function JiraSettingsPage() {
             <AlertDescription>{syncError}</AlertDescription>
           </Alert>
         )}
-        <SyncHistory runs={syncs} empty="No syncs yet. Pick your projects, save, then select Sync now." changed={(s) => s.pulled}>
+        <SyncHistory runs={syncs} empty="No syncs yet. Select your projects, save, then select Sync now." changed={(s) => s.pulled}>
           {(s) => (
             <SyncHistoryRow
               key={s.id}
               run={s}
-              summary={`Pulled ${s.pulled} · ${s.created} new · ${s.updated} updated${s.queued ? ` · ${s.queued} sent to the agents` : ""}`}
+              summary={`Pulled ${s.pulled} · ${s.created} new · ${s.updated} updated${s.queued ? ` · ${s.queued} queued for the agents` : ""}`}
               scope={s.projects || "No projects"}
             />
           )}

@@ -24,7 +24,7 @@ function Swatch({ index }: { index: number }) {
 /** Stacked columns, one per day. Hover or focus a day for its numbers; the same numbers are in the table underneath. */
 export function TrendChart({ days, series }: { days: string[]; series: [string, number[]][] }) {
   const totals = days.map((_, i) => sum(series.map(([, values]) => values[i])));
-  if (sum(totals) === 0) return <p className="px-4 py-6 text-muted-foreground">Nothing in this period.</p>;
+  if (sum(totals) === 0) return <p className="px-4 py-6 text-muted-foreground">No data for this period.</p>;
   const top = ceiling(Math.max(...totals));
   const many = series.length > 1;
 
@@ -106,7 +106,7 @@ export function TrendChart({ days, series }: { days: string[]; series: [string, 
 
       <details className="text-xs">
         <summary className="w-fit cursor-pointer rounded-sm text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
-          Show the numbers
+          Show data table
         </summary>
         <div className="mt-2 max-h-72 overflow-auto">
           <Table>

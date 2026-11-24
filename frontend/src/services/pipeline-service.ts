@@ -43,7 +43,9 @@ export const pipelineService = {
   /** Keeps the closure note in the console; Closure Quality checks it again. */
   saveClosureNote: (ticketId: string, text: string) =>
     apiClient(`/tickets/${id(ticketId)}/closure-note`, { method: "PUT", body: JSON.stringify({ text }) }),
-  /** Posts the closure note on the Jira issue and moves the issue to done. */
+  /** A draft email telling the requester the ticket is resolved, from the saved closure note. Nothing is sent. */
+  draftEmail: (ticketId: string) =>
+    apiClient<{ subject: string; body: string }>(`/closure/tickets/${id(ticketId)}/email`, { method: "POST" }),
   /** One turn with the AI assistant about the fix; returns the stored turn. */
   chat: (ticketId: string, body: { message: string; author: string }) =>
     apiClient<AgentRun>(`/tickets/${id(ticketId)}/chat`, { method: "POST", body: JSON.stringify(body) }),
@@ -56,6 +58,7 @@ export const pipelineService = {
   /** The lead approves the closure note, or sends it back with what to change. */
   leadReview: (ticketId: string, body: { action: "approved" | "sent_back"; note?: string; reviewer: string }) =>
     apiClient(`/tickets/${id(ticketId)}/lead-review`, { method: "POST", body: JSON.stringify(body) }),
+  /** Posts the closure note on the Jira issue and moves the issue to done. */
   closeInJira: (ticketId: string, author: string) =>
     apiClient(`/tickets/${id(ticketId)}/close`, { method: "POST", body: JSON.stringify({ author_email: author }) }),
 };

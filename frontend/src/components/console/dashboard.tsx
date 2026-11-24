@@ -10,15 +10,15 @@ import { AgentStats, DashboardSummary, SyncHealth } from "@/types/dashboard";
 const POLL_MS = 30_000;
 
 export const STAGES: [string, string][] = [
-  ["pending", "Waiting for Data Quality"],
-  ["awaiting_info", "Needs details from the reporter"],
+  ["pending", "Awaiting Data Quality"],
+  ["awaiting_info", "Awaiting information from requester"],
   ["dq_passed", "Ready for Triage"],
-  ["triaged", "Waiting for an engineer"],
-  ["reviewed", "Fixing"],
-  ["fix_confirmed", "Fix worked · closure note"],
-  ["in_review", "Closure note with the lead"],
-  ["approved", "Approved · ready to send"],
-  ["needs_lead", "Needs the lead"],
+  ["triaged", "Awaiting priority review"],
+  ["reviewed", "In progress"],
+  ["fix_confirmed", "Fix confirmed · closure note"],
+  ["in_review", "Awaiting lead approval"],
+  ["approved", "Approved · ready to close"],
+  ["needs_lead", "Escalated to lead"],
   ["rejected", "Rejected"],
   ["error", "Error"],
 ];
@@ -76,7 +76,7 @@ export function AgentCard({
         <dd className="text-right tabular-nums font-semibold">{stats.checked}</dd>
         <dt className="text-muted-foreground">Outcome</dt>
         <dd className="text-right">{verdicts || "—"}</dd>
-        <dt className="text-muted-foreground">Needed the model</dt>
+        <dt className="text-muted-foreground">Model used</dt>
         <dd className="text-right tabular-nums">
           {stats.model_used}
           {stats.checked ? ` of ${stats.checked}` : ""}
@@ -91,9 +91,9 @@ export function AgentCard({
 function syncWords(s: SyncHealth): { ok: boolean; text: string } {
   if (s.last_error) return { ok: false, text: `Last sync failed: ${s.last_error}` };
   if (s.state === "stale") return { ok: false, text: `Stale: last ran ${s.last_started_at ? ago(s.last_started_at) : "never"}` };
-  if (s.state === "never") return { ok: false, text: "Never ran" };
+  if (s.state === "never") return { ok: false, text: "Never run" };
   if (s.state === "off") return { ok: true, text: "Manual only" };
-  return { ok: true, text: `Running every ${s.minutes === 1 ? "minute" : `${s.minutes} minutes`}` };
+  return { ok: true, text: `Runs every ${s.minutes === 1 ? "minute" : `${s.minutes} minutes`}` };
 }
 
 function SyncRow({ name, href, sync }: { name: string; href: string; sync: SyncHealth }) {

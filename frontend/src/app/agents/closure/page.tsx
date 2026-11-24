@@ -20,7 +20,7 @@ function Queue() {
     pipelineService
       .closureQueue()
       .then(setItems)
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : "The queue could not be loaded"));
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : "Couldn't load the queue. Try again."));
   }, []);
   useEffect(() => {
     load();
@@ -30,13 +30,13 @@ function Queue() {
 
   return (
     <Card className="gap-0 py-0">
-      <SectionHead title={`Close notes that need work${items ? ` (${items.length})` : ""}`} />
+      <SectionHead title={`Closure notes that need work${items ? ` (${items.length})` : ""}`} />
       {error && (
         <Alert variant="destructive" className="m-4 w-auto">
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
-      {items?.length === 0 && <p className="px-4 py-3 text-[13px] text-muted-foreground">None. Every checked close note is good enough.</p>}
+      {items?.length === 0 && <p className="px-4 py-3 text-[13px] text-muted-foreground">No closure notes need work.</p>}
       <ul role="list">
         {items?.map((t) => (
           <li key={t.ticket_id} className="flex flex-col gap-1.5 border-b border-border px-4 py-3 text-[13px] last:border-b-0">
@@ -46,7 +46,7 @@ function Queue() {
               </Link>
               <span className="min-w-0 break-words">{t.summary}</span>
               <span className="ml-auto text-xs text-muted-foreground">
-                {[t.application, t.score === null ? "Stopped by the rules" : `Score ${t.score} of 6`].filter(Boolean).join(" · ")}
+                {[t.application, t.score === null ? "Failed the rule checks" : `Score ${t.score} of 6`].filter(Boolean).join(" · ")}
               </span>
             </div>
             <p className="break-words">{t.reason}</p>
@@ -58,8 +58,8 @@ function Queue() {
               </ul>
             )}
             {[
-              ["Close notes as written", t.notes],
-              ["Draft close notes", t.draft_notes],
+              ["Closure note as written", t.notes],
+              ["Draft closure note", t.draft_notes],
             ].map(
               ([title, text]) =>
                 text && (
@@ -81,7 +81,7 @@ export default function ClosureAgentPage() {
     <AppShell>
       <PageHeader
         title="Closure Quality"
-        context="Checks the close notes of resolved tickets: what caused it, what fixed it and how the fix was confirmed."
+        context="Checks the closure notes of resolved tickets for the root cause, the fix applied and how the fix was verified."
       />
       <AgentRunPanel agent="closure" />
       <Queue />

@@ -20,7 +20,7 @@ type Filter = "all" | "setting" | "document";
 const LABELS: Record<string, string> = {
   // Settings
   LOG_LEVEL: "Log level",
-  PII_MASKING_ENABLED: "Masking of personal details",
+  PII_MASKING_ENABLED: "Personal data masking",
   LLM_ENABLED: "Model calls",
   LLM_PROVIDER: "Model provider",
   LLM_MODEL: "Shared model",
@@ -32,7 +32,7 @@ const LABELS: Record<string, string> = {
   LLM_REFUSAL_FALLBACK: "Fallback when the model refuses",
   LLM_TIMEOUT_S: "Model timeout (seconds)",
   LLM_TRANSPORT_RETRIES: "Model retries",
-  LLM_VALIDATION_ATTEMPTS: "Attempts at a valid answer",
+  LLM_VALIDATION_ATTEMPTS: "Valid response attempts",
   AWS_REGION: "AWS region",
   DQ_OUTAGE_BREAKER: "Data Quality: stop after failures",
   TRIAGE_OUTAGE_BREAKER: "Triage: stop after failures",
@@ -81,11 +81,11 @@ function Details({ change: c }: { change: AdminChange }) {
     return (
       <div className="grid gap-3 md:grid-cols-2">
         <Value label="Before" value={show(c.old_value)} />
-        <Value label="After" value={c.new_value === null ? "(the default from backend/.env)" : show(c.new_value)} />
+        <Value label="After" value={c.new_value === null ? "(default from backend/.env)" : show(c.new_value)} />
       </div>
     );
   }
-  if (c.new_value === null) return <p className="text-[13px]">The admin version was removed. The file in the repo is in use again.</p>;
+  if (c.new_value === null) return <p className="text-[13px]">The admin version was removed. The repository file is in use again.</p>;
   const changes = jsonDiff(c.old_value, c.new_value);
   if (changes.length === 0) return <p className="text-[13px]">Saved with no differences.</p>;
   return (
@@ -119,7 +119,7 @@ export default function ChangeHistoryPage() {
       adminService
         .listChanges(200)
         .then(setChanges)
-        .catch((e: unknown) => setError(e instanceof Error ? e.message : "Couldn't load the change history")),
+        .catch((e: unknown) => setError(e instanceof Error ? e.message : "Couldn't load the change history. Try again.")),
     [],
   );
   useEffect(() => {
@@ -149,7 +149,7 @@ export default function ChangeHistoryPage() {
 
   return (
     <AppShell>
-      <PageHeader title="Change history" context="Who changed which setting or reference file, and when. Names come from the demo role until there is sign-in." />
+      <PageHeader title="Change history" context="Who changed which setting or reference file, and when. Names reflect the demo role until sign-in is available." />
       <Tabs value={filter} onValueChange={(v) => setFilter(v as Filter)}>
         <TabsList aria-label="Kind of change">
           {(

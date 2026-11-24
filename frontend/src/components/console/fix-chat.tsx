@@ -96,7 +96,7 @@ function Rich({ text }: { text: string }) {
   );
 }
 
-/** A proposed fix: the cause, numbered steps and how to check it, with Use as the fix. */
+/** A proposed fix: the cause, numbered steps and how to check it, with Use as suggested fix. */
 function ProposalCard({ proposal, used, action }: { proposal: Proposal; used: boolean; action: React.ReactNode }) {
   return (
     <div className={cn("flex flex-col gap-3 rounded-xl border bg-card p-3", used ? "border-2 border-p3" : "border-border")}>
@@ -127,7 +127,7 @@ function ProposalCard({ proposal, used, action }: { proposal: Proposal; used: bo
       <div className="flex gap-2.5 rounded-lg bg-muted px-2.5 py-2">
         <CircleCheck className="mt-0.5 size-4 shrink-0 text-p3" aria-hidden="true" />
         <div>
-          <p className="text-xs font-semibold text-muted-foreground">How to check it worked</p>
+          <p className="text-xs font-semibold text-muted-foreground">How to verify the fix</p>
           <Inline text={proposal.check} />
         </div>
       </div>
@@ -168,7 +168,7 @@ export function FixChat({ ticket, noRunbook, onDone }: { ticket: PipelineTicket;
       .chat(ticket.id, { message: text, author: person })
       .then(onDone)
       .catch((e: unknown) => {
-        setFailed(e instanceof Error ? e.message : "The assistant gave no answer. Try again.");
+        setFailed(e instanceof Error ? e.message : "The assistant did not respond. Try again.");
         setMessage(text);
       })
       .finally(() => setAsking(null));
@@ -179,7 +179,7 @@ export function FixChat({ ticket, noRunbook, onDone }: { ticket: PipelineTicket;
     pipelineService
       .useChatFix(ticket.id, { run_id: run.id, reviewer: person })
       .then(onDone)
-      .catch((e: unknown) => setFailed(e instanceof Error ? e.message : "Couldn't use that fix"))
+      .catch((e: unknown) => setFailed(e instanceof Error ? e.message : "Couldn't apply that fix. Try again."))
       .finally(() => setUsing(null));
   };
 
@@ -190,7 +190,7 @@ export function FixChat({ ticket, noRunbook, onDone }: { ticket: PipelineTicket;
           <Sparkles />
           Ask the AI assistant{turns.length ? ` · ${turns.length}` : ""}
         </Button>
-        <span className="text-xs text-muted-foreground">A second opinion on the fix, or help when the runbook steps don&rsquo;t fit.</span>
+        <span className="text-xs text-muted-foreground">Get a second opinion on the fix, or help when the runbook steps don&rsquo;t apply.</span>
       </div>
     );
 
@@ -201,8 +201,8 @@ export function FixChat({ ticket, noRunbook, onDone }: { ticket: PipelineTicket;
           <Bot className="size-4" />
         </span>
         <div className="flex min-w-0 flex-col">
-          <h3 className="text-sm font-semibold">{noRunbook ? "No runbook covers this. Work it out with the AI assistant" : "AI assistant"}</h3>
-          <p className="text-xs text-muted-foreground">Reads the ticket, team notes, similar closed tickets and the knowledge base. Personal details are masked.</p>
+          <h3 className="text-sm font-semibold">{noRunbook ? "No runbook covers this. Work out a fix with the AI assistant" : "AI assistant"}</h3>
+          <p className="text-xs text-muted-foreground">Uses the ticket, team notes, similar closed tickets and the knowledge base. Personal data is masked.</p>
         </div>
         <Badge variant="outline" className="ml-auto">
           AI suggestion, not from a runbook
@@ -213,7 +213,7 @@ export function FixChat({ ticket, noRunbook, onDone }: { ticket: PipelineTicket;
         {turns.length === 0 && !asking && (
           <div className="m-auto flex flex-col items-center gap-3 py-4 text-center">
             <Sparkles className="size-6 text-primary" aria-hidden="true" />
-            <p className="max-w-sm text-muted-foreground">Tell it what you see: the error, a log line, when it started, what changed. Or start with:</p>
+            <p className="max-w-sm text-muted-foreground">Describe what you see: the error, a log line, when it started, what changed. Or start with:</p>
             <div className="flex flex-wrap justify-center gap-2">
               {STARTERS.map((s) => (
                 <Button key={s} size="sm" variant="secondary" onClick={() => send(s)}>
@@ -257,13 +257,13 @@ export function FixChat({ ticket, noRunbook, onDone }: { ticket: PipelineTicket;
                         usedId === t.id ? (
                           <Badge variant="outline" className="border-p3 text-p3">
                             <Check aria-hidden="true" />
-                            This is the suggested fix
+                            Current suggested fix
                           </Badge>
                         ) : (
                           canUse && (
                             <Button size="sm" disabled={using !== null || asking !== null} onClick={() => use(t)}>
                               {using === t.id ? <LoaderCircle className="animate-spin" /> : <Check />}
-                              Use as the fix
+                              Use as suggested fix
                             </Button>
                           )
                         )
@@ -303,7 +303,7 @@ export function FixChat({ ticket, noRunbook, onDone }: { ticket: PipelineTicket;
             id="fix-chat"
             rows={2}
             value={message}
-            placeholder={turns.length ? "Answer the assistant, or ask something else…" : "What do you see? The error message, a log line, what changed…"}
+            placeholder={turns.length ? "Reply to the assistant, or ask something else…" : "What do you see? The error message, a log line, what changed…"}
             onChange={(e) => setMessage(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) send();
@@ -317,8 +317,8 @@ export function FixChat({ ticket, noRunbook, onDone }: { ticket: PipelineTicket;
           </Button>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-          <span>Ctrl+Enter sends</span>
-          {canUse && <span>· Use a proposed fix to make it the suggested fix, then try it and say if it worked.</span>}
+          <span>Press Ctrl+Enter to send</span>
+          {canUse && <span>· Select a proposed fix to make it the suggested fix, then apply it and confirm the outcome.</span>}
           {!noRunbook && (
             <Button size="xs" variant="ghost" className="ml-auto" onClick={() => setOpen(false)}>
               Hide

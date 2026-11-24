@@ -36,7 +36,7 @@ export default function ReviewPage() {
           setItems(q);
           setError(null);
         })
-        .catch((e: unknown) => setError(e instanceof Error ? e.message : "Couldn't load the review queue")),
+        .catch((e: unknown) => setError(e instanceof Error ? e.message : "Couldn't load the review queue. Try again.")),
     []
   );
   useEffect(() => {
@@ -49,8 +49,8 @@ export default function ReviewPage() {
         title="Review queue"
         context={
           items
-            ? `${items.length} ${items.length === 1 ? "recommendation" : "recommendations"} waiting. Agree, or change the priority and say why: the answers show where the rules need fixing.`
-            : "Recommendations waiting for an engineer."
+            ? `${items.length} ${items.length === 1 ? "recommendation" : "recommendations"} awaiting review. Accept the priority, or change it and give a reason: your decisions show where the rules need tuning.`
+            : "Priority recommendations awaiting engineer review."
         }
       />
       {error && (
@@ -60,10 +60,10 @@ export default function ReviewPage() {
       )}
       {items && (
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          <StatTile variant="primary" label="Waiting for a decision" value={items.length} />
+          <StatTile variant="primary" label="Awaiting decision" value={items.length} />
           <StatTile label="P1 and P2" value={items.filter((i) => i.recommended_priority <= 2).length} window="recommended by Triage" />
           <StatTile label="Flagged" value={items.filter((i) => i.flags.length > 0).length} window="shown first" />
-          <StatTile label="Priority would change" value={items.filter((i) => i.reported_priority !== null && i.reported_priority !== i.recommended_priority).length} window="against the reported one" />
+          <StatTile label="Priority change proposed" value={items.filter((i) => i.reported_priority !== null && i.reported_priority !== i.recommended_priority).length} window="compared with the requested priority" />
         </div>
       )}
       {lead && notes && notes.length > 0 && (
@@ -79,7 +79,7 @@ export default function ReviewPage() {
                 meta={[t.application, t.source].filter(Boolean).join(" · ")}
                 actions={
                   <Button size="sm" nativeButton={false} render={<Link href={`/tickets/${encodeURIComponent(t.id)}`} />}>
-                    Review the note
+                    Review closure note
                   </Button>
                 }
               />
@@ -91,7 +91,7 @@ export default function ReviewPage() {
         {!items ? (
           !error && <p className="px-4 py-3 text-[13px] text-muted-foreground">Loading…</p>
         ) : items.length === 0 ? (
-          <p className="px-4 py-3 text-[13px] text-muted-foreground">Nothing is waiting. New recommendations appear here after Triage runs.</p>
+          <p className="px-4 py-3 text-[13px] text-muted-foreground">No items awaiting review. New recommendations appear here after Triage runs.</p>
         ) : (
           <ul role="list">
             {items.map((i) => (
@@ -107,7 +107,7 @@ export default function ReviewPage() {
                 meta={
                   <>
                     <span>
-                      {[i.application, i.reported_priority && `reporter asked for P${i.reported_priority}`].filter(Boolean).join(" · ")}
+                      {[i.application, i.reported_priority && `requester asked for P${i.reported_priority}`].filter(Boolean).join(" · ")}
                     </span>
                     {i.flags.map((f) => (
                       <Badge key={f}>{FLAGS[f] ?? f}</Badge>

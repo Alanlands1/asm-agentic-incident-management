@@ -95,7 +95,7 @@ export function RunbookButton({ id, label, panel = false }: { id: string; label?
               {runbook
                 ? [runbook.id, runbook.application, "from the knowledge base"].filter(Boolean).join(" · ")
                 : failed
-                  ? "This runbook could not be opened. Close this and try again in a moment."
+                  ? "Couldn't open this runbook. Close this panel and try again shortly."
                   : "Loading…"}
             </DialogDescription>
           </DialogHeader>

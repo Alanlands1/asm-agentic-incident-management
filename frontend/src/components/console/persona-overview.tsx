@@ -66,7 +66,7 @@ function TicketCard({ ticket, now }: { ticket: BoardTicket; now: number | null }
         <div className="mt-auto flex flex-wrap items-center gap-x-2 gap-y-1 pt-1">
           <StagePill ticket={ticket} />
           {ticket.fix_verdict === "no_match" && (
-            <Badge variant="destructive" className="border-dashed text-[11px] font-semibold" title="Resolution found no knowledge article for this ticket. Work the fix out with AI on the ticket page.">
+            <Badge variant="destructive" className="border-dashed text-[11px] font-semibold" title="Resolution found no knowledge article for this ticket. Use the AI assistant on the ticket page to work out a fix.">
               <BookX aria-hidden="true" />
               No knowledge article
             </Badge>
@@ -132,7 +132,7 @@ function MajorIncidents({ attention, tickets, now }: { attention: Attention | nu
                 nativeButton={false}
                 render={<Link href={ticketHref({ id: s.main_ticket_id })} />}
               >
-                Open the ticket
+                Open ticket
               </Button>
             </div>
           </Card>
@@ -143,7 +143,7 @@ function MajorIncidents({ attention, tickets, now }: { attention: Attention | nu
           <AlertDescription className="flex flex-wrap items-center justify-between gap-2">
             <span>
               <span className="font-semibold">Possible major incident: </span>
-              {`${count(s.ticket_count, "ticket", "tickets")} about ${s.application ?? "the same problem"} since ${clock(s.opened_at)}, like ${s.main_ticket_id} “${summary(s.main_ticket_id)}”. Nobody has declared it yet.`}
+              {`${count(s.ticket_count, "ticket", "tickets")} about ${s.application ?? "the same problem"} since ${clock(s.opened_at)}, like ${s.main_ticket_id} “${summary(s.main_ticket_id)}”. Not yet declared.`}
             </span>
             <Button size="sm" variant="secondary" nativeButton={false} render={<Link href="/incidents" />}>
               Decide on Incidents
@@ -195,7 +195,7 @@ export function PersonaOverview({ lead, admin = false }: { lead: boolean; admin?
       );
       load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn't run the agents");
+      setError(e instanceof Error ? e.message : "Couldn't run the agents. Try again.");
     } finally {
       setRunning(false);
     }
@@ -208,8 +208,8 @@ export function PersonaOverview({ lead, admin = false }: { lead: boolean; admin?
   const noRunbook = tickets.filter((x) => x.fix_verdict === "no_match" && x.fix_answer !== "partly" && x.fix_answer !== "worked");
   const wrong = [
     t?.sla_breached && `${count(t.sla_breached, "ticket has", "tickets have")} breached SLA`,
-    t?.sla_at_risk && `${count(t.sla_at_risk, "ticket is", "tickets are")} close to breach`,
-    lead && t?.unassigned && `${count(t.unassigned, "ticket has", "tickets have")} no engineer`,
+    t?.sla_at_risk && `${count(t.sla_at_risk, "ticket is", "tickets are")} near breach`,
+    lead && t?.unassigned && `${count(t.unassigned, "ticket is", "tickets are")} unassigned`,
   ].filter((part): part is string => !!part);
   const nearest = tickets.reduce<BoardTicket | null>(
     (first, x) => (x.minutes_left !== null && (!first || x.minutes_left < first.minutes_left!) ? x : first),
@@ -253,7 +253,7 @@ export function PersonaOverview({ lead, admin = false }: { lead: boolean; admin?
             `${new Date(now).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })} · ` +
             (mine
               ? `${count(t.open, "open ticket", "open tickets")} assigned to you`
-              : `${count(t.open, "open ticket", "open tickets")} from Jira and the mailbox${t.unassigned ? ` · ${t.unassigned} with no engineer` : ""}`)
+              : `${count(t.open, "open ticket", "open tickets")} from Jira and the mailbox${t.unassigned ? ` · ${t.unassigned} unassigned` : ""}`)
           )
         }
         actions={
@@ -294,7 +294,7 @@ export function PersonaOverview({ lead, admin = false }: { lead: boolean; admin?
         <p role="status" className="text-[13px]">
           <Status ok={wrong.length === 0}>
             <span>
-              <span className="font-semibold">{wrong.length ? `${and.format(wrong)}.` : "All clear on SLA."}</span>
+              <span className="font-semibold">{wrong.length ? `${and.format(wrong)}.` : "No SLA risks."}</span>
               {nearest &&
                 (nearest.minutes_left! < 0
                   ? ` The most overdue is ${span(nearest.minutes_left!)} over.`
@@ -358,7 +358,7 @@ export function PersonaOverview({ lead, admin = false }: { lead: boolean; admin?
             <span className="font-mono text-[10.5px] font-medium tracking-[0.08em] text-muted-foreground uppercase">Search</span>
             <span className="relative">
               <Search className="pointer-events-none absolute top-2 left-2.5 size-4 text-muted-foreground" aria-hidden="true" />
-              <Input placeholder="Ticket ID, summary, application or engineer" value={query} onChange={(e) => setQuery(e.target.value)} className="pl-8" />
+              <Input placeholder="Search by ticket ID, summary, application or engineer" value={query} onChange={(e) => setQuery(e.target.value)} className="pl-8" />
             </span>
           </label>
           <label className="flex flex-[1_1_11rem] flex-col gap-1.5">
@@ -390,10 +390,10 @@ export function PersonaOverview({ lead, admin = false }: { lead: boolean; admin?
           <AlertDescription className="flex flex-wrap items-center justify-between gap-2">
             <span>
               <span className="font-semibold">{count(needDetails.length, "ticket needs", "tickets need")} details.</span>{" "}
-              {drafted ? `Data Quality drafted the question for ${drafted}; the engineer sends it.` : "The reporter has to say more."}
+              {drafted ? `Data Quality drafted the request for ${drafted}; the engineer sends it.` : "Awaiting information from the requester."}
             </span>
             <Button size="sm" variant="secondary" onClick={() => pick("needs")}>
-              Show them
+              Show
             </Button>
           </AlertDescription>
         </Alert>
@@ -404,12 +404,12 @@ export function PersonaOverview({ lead, admin = false }: { lead: boolean; admin?
           <AlertDescription className="flex flex-wrap items-center justify-between gap-2">
             <span>
               <span className="font-semibold">
-                {noRunbook.length ? `${count(noRunbook.length, "ticket has", "tickets have")} no runbook fix.` : "No ticket is without a runbook fix now."}
+                {noRunbook.length ? `${count(noRunbook.length, "ticket has", "tickets have")} no runbook fix.` : "Every open ticket has a runbook fix."}
               </span>{" "}
               The knowledge base doesn&rsquo;t cover {noRunbook.length === 1 ? "it" : "them"}: work it out with AI on the ticket page; the fix becomes a knowledge article after it is closed.
             </span>
             <Button size="sm" variant={noKb ? "default" : "secondary"} aria-pressed={noKb} onClick={() => setNoKb(!noKb)}>
-              {noKb ? "Show all" : "Show them"}
+              {noKb ? "Show all" : "Show"}
             </Button>
           </AlertDescription>
         </Alert>
@@ -458,7 +458,7 @@ export function PersonaOverview({ lead, admin = false }: { lead: boolean; admin?
                   <TableHead className="text-right">Open</TableHead>
                   <TableHead className="text-right">P1 and P2</TableHead>
                   <TableHead className="text-right">SLA breached</TableHead>
-                  <TableHead className="pr-4 text-right">Priority to review</TableHead>
+                  <TableHead className="pr-4 text-right">Priorities to review</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>

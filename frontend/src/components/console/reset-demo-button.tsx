@@ -42,7 +42,7 @@ export function ResetDemoButton({
     try {
       setDone(await apiClient<ResetResult>("/demo/reset", { method: "POST" }));
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "The reset failed");
+      setError(e instanceof Error ? e.message : "The reset failed. Try again.");
     } finally {
       setBusy(false);
     }
@@ -65,7 +65,7 @@ export function ResetDemoButton({
       <Dialog open={open} onOpenChange={close}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{done ? "Reset done" : "Reset every open ticket?"}</DialogTitle>
+            <DialogTitle>{done ? "Reset complete" : "Reset all open tickets?"}</DialogTitle>
             <DialogDescription>
               {done
                 ? `${done.tickets} open tickets start again with fresh SLA clocks. In Jira: ${done.jira_issues} issues cleaned, ${done.jira_comments_deleted} agent comments deleted, ${done.jira_moved_back} moved back, ${done.jira_priorities_restored} priorities restored. The agents are running again now.`
@@ -85,7 +85,7 @@ export function ResetDemoButton({
                   Cancel
                 </Button>
                 <Button variant="destructive" onClick={reset} disabled={busy}>
-                  {busy ? "Resetting…" : "Reset everything"}
+                  {busy ? "Resetting…" : "Reset all"}
                 </Button>
               </>
             )}

@@ -18,7 +18,7 @@ import { Play } from "lucide-react";
 
 type View = "drafts" | "problems" | "coverage";
 
-const message = (e: unknown, what: string) => (e instanceof Error ? e.message : `${what} could not be loaded`);
+const message = (e: unknown, what: string) => (e instanceof Error ? e.message : `Couldn't load ${what}. Try again.`);
 const counts = (byKey: Record<string, number>) => Object.entries(byKey).map(([k, n]) => `${n} ${k.replace(/_/g, " ")}`).join(", ");
 const day = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
 
@@ -51,13 +51,13 @@ function Problem({ error }: { error: string | null }) {
 function Drafts({ version }: { version: number }) {
   const [status, setStatus] = useState<DraftStatus>("draft");
   const load = useCallback(() => knowledgeService.drafts(status), [status]);
-  const { items, error, reload } = useList<KBDraft>(load, "The drafts", version);
+  const { items, error, reload } = useList<KBDraft>(load, "the drafts", version);
   return (
     <Card className="gap-0 py-0">
       <SectionHead title={`Drafted articles${items ? ` (${items.length})` : ""}`}>
         <Tabs value={status} onValueChange={(v) => setStatus(v as DraftStatus)}>
-          <TabsList variant="pill" aria-label="Which drafts">
-            <TabsTrigger value="draft">Waiting</TabsTrigger>
+          <TabsList variant="pill" aria-label="Draft status">
+            <TabsTrigger value="draft">Pending review</TabsTrigger>
             <TabsTrigger value="approved">Approved</TabsTrigger>
             <TabsTrigger value="rejected">Rejected</TabsTrigger>
             <TabsIndicator />
@@ -67,7 +67,7 @@ function Drafts({ version }: { version: number }) {
       <Problem error={error} />
       {items?.length === 0 && (
         <p className="px-4 py-3 text-[13px] text-muted-foreground">
-          {status === "draft" ? "Nothing waiting. A draft appears when a fixed issue has no article yet." : `No ${status} drafts.`}
+          {status === "draft" ? "No drafts pending review. A draft is created when a resolved issue has no knowledge article." : `No ${status} drafts.`}
         </p>
       )}
       <ul role="list">
@@ -81,18 +81,18 @@ function Drafts({ version }: { version: number }) {
 
 function RepeatIssues({ version }: { version: number }) {
   const person = usePerson();
-  const { items, error, reload } = useList<ProblemCandidate>(knowledgeService.problems, "The repeat issues", version);
+  const { items, error, reload } = useList<ProblemCandidate>(knowledgeService.problems, "the repeat issues", version);
   const [failed, setFailed] = useState<string | null>(null);
   const decide = (id: number, action: "accepted" | "dismissed") =>
     knowledgeService
       .decide(id, action, person)
       .then(reload)
-      .catch((e: unknown) => setFailed(e instanceof Error ? e.message : "Couldn't save the decision"));
+      .catch((e: unknown) => setFailed(e instanceof Error ? e.message : "Couldn't save the decision. Try again."));
   return (
     <Card className="gap-0 py-0">
       <SectionHead title={`Repeat issues${items ? ` (${items.length})` : ""}`} />
       <Problem error={error ?? failed} />
-      {items?.length === 0 && <p className="px-4 py-3 text-[13px] text-muted-foreground">None. No issue keeps coming back.</p>}
+      {items?.length === 0 && <p className="px-4 py-3 text-[13px] text-muted-foreground">No recurring issues detected.</p>}
       <ul role="list">
         {items?.map((p) => (
           <li key={p.id} className="flex flex-col gap-1.5 border-b border-border px-4 py-3 text-[13px] last:border-b-0">
@@ -113,12 +113,12 @@ function RepeatIssues({ version }: { version: number }) {
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Button size="sm" onClick={() => decide(p.id, "accepted")}>
-                Open a problem record
+                Raise problem record
               </Button>
               <Button size="sm" variant="ghost" onClick={() => decide(p.id, "dismissed")}>
                 Dismiss
               </Button>
-              <span className="text-xs text-muted-foreground">Nothing is created in ServiceNow or Jira; the decision is recorded.</span>
+              <span className="text-xs text-muted-foreground">Only the decision is recorded; nothing is created in ServiceNow or Jira.</span>
             </div>
           </li>
         ))}
@@ -128,7 +128,7 @@ function RepeatIssues({ version }: { version: number }) {
 }
 
 function Coverage({ version }: { version: number }) {
-  const { items, error } = useList<AppCoverage>(knowledgeService.coverage, "The coverage", version);
+  const { items, error } = useList<AppCoverage>(knowledgeService.coverage, "the coverage", version);
   return (
     <Card className="gap-0 py-0">
       <SectionHead title="Coverage per application" />
@@ -142,8 +142,8 @@ function Coverage({ version }: { version: number }) {
               <TableHead className="text-right">Cases</TableHead>
               <TableHead className="text-right">Covered</TableHead>
               <TableHead className="text-right">No article</TableHead>
-              <TableHead className="text-right">Not for the KB</TableHead>
-              <TableHead className="text-right">Drafts waiting</TableHead>
+              <TableHead className="text-right">Out of KB scope</TableHead>
+              <TableHead className="text-right">Drafts pending</TableHead>
               <TableHead>Articles never used</TableHead>
             </TableRow>
           </TableHeader>
@@ -182,7 +182,7 @@ export default function KnowledgeAgentPage() {
       setRan(await knowledgeService.run());
       setVersion((v) => v + 1);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "The agent could not be reached");
+      setError(e instanceof Error ? e.message : "The agent could not be reached. Try again.");
     } finally {
       setBusy(false);
     }
@@ -192,7 +192,7 @@ export default function KnowledgeAgentPage() {
     <AppShell>
       <PageHeader
         title="Knowledge Builder"
-        context="Learns from close notes that passed Closure Quality: matches each fix to an article, drafts one where none exists, and spots issues that keep coming back. It runs after Closure Quality and after each sync."
+        context="Learns from closure notes that passed Closure Quality: matches each fix to a knowledge article, drafts an article where none exists, and detects recurring issues. Runs after Closure Quality and after each sync."
         actions={
           <Button onClick={run} disabled={busy}>
             <Play />
@@ -204,7 +204,7 @@ export default function KnowledgeAgentPage() {
         <p className="text-xs text-muted-foreground" aria-live="polite">
           {error ??
             (ran!.evaluated === 0
-              ? `Nothing new. ${ran!.skipped} cases already saved and unchanged.`
+              ? `No new cases. ${ran!.skipped} already saved and unchanged.`
               : `Saved ${ran!.evaluated}: ${counts(ran!.by_status)}.${Object.keys(ran!.drafts).length ? ` Drafts: ${counts(ran!.drafts)}.` : ""}${
                   ran!.model_errors ? ` The model failed on ${ran!.model_errors}.` : ""
                 }`)}

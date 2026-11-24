@@ -15,9 +15,9 @@ const selectClass =
 
 const MODELS = ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5", "claude-fable-5-2"];
 const EFFORTS: [string, string][] = [
-  ["low", "Low: quick checks"],
+  ["low", "Low: fastest"],
   ["medium", "Medium"],
-  ["high", "High: thinks harder"],
+  ["high", "High: more thorough"],
   ["xhigh", "Extra high"],
   ["max", "Maximum: slowest"],
 ];
@@ -55,7 +55,7 @@ export function AgentSettings({ prefix, breakerKey }: { prefix: "DQ" | "TRIAGE";
         setS(map);
         setBreaker(String(map[breakerKey]?.value ?? ""));
       })
-      .catch((e: unknown) => setLoadError(e instanceof Error ? e.message : "Couldn't load settings"));
+      .catch((e: unknown) => setLoadError(e instanceof Error ? e.message : "Couldn't load settings. Try again."));
   }, [breakerKey]);
 
   const apply = async (key: string, value: SettingValue | undefined) => {
@@ -65,7 +65,7 @@ export function AgentSettings({ prefix, breakerKey }: { prefix: "DQ" | "TRIAGE";
       setS((cur) => (cur ? { ...cur, [key]: row } : cur));
       setNotes((n) => ({ ...n, [key]: { ok: true, text: "Saved" } }));
     } catch (e) {
-      setNotes((n) => ({ ...n, [key]: { ok: false, text: e instanceof Error ? e.message : "Couldn't save" } }));
+      setNotes((n) => ({ ...n, [key]: { ok: false, text: e instanceof Error ? e.message : "Couldn't save. Try again." } }));
     }
   };
 
@@ -92,7 +92,7 @@ export function AgentSettings({ prefix, breakerKey }: { prefix: "DQ" | "TRIAGE";
     <>
       <Card className="gap-0 py-0">
         <SectionHead title="This agent" />
-        <Row label="Model" hint="Which Claude model this agent calls">
+        <Row label="Model" hint="The Claude model this agent uses">
           <select
             id={id(modelKey)}
             aria-label="Model"
@@ -109,7 +109,7 @@ export function AgentSettings({ prefix, breakerKey }: { prefix: "DQ" | "TRIAGE";
           </select>
           {note(modelKey)}
         </Row>
-        <Row label="Effort" hint="How hard the model thinks. Higher is slower and costs more.">
+        <Row label="Effort" hint="How much reasoning the model applies. Higher is slower and costs more.">
           <select
             id={id(effortKey)}
             aria-label="Effort"
@@ -126,7 +126,7 @@ export function AgentSettings({ prefix, breakerKey }: { prefix: "DQ" | "TRIAGE";
           </select>
           {note(effortKey)}
         </Row>
-        <Row label="Stop after failures" hint="Model failures in a row before a run stops calling the model">
+        <Row label="Stop after failures" hint="Consecutive model failures before a run stops calling the model">
           <form
             className="flex gap-2"
             onSubmit={(e) => {
@@ -137,7 +137,7 @@ export function AgentSettings({ prefix, breakerKey }: { prefix: "DQ" | "TRIAGE";
             <Input
               type="number"
               min={1}
-              aria-label="Failures in a row"
+              aria-label="Consecutive failures"
               value={breaker}
               onChange={(e) => setBreaker(e.target.value)}
               className="max-w-28"
@@ -152,9 +152,9 @@ export function AgentSettings({ prefix, breakerKey }: { prefix: "DQ" | "TRIAGE";
 
       <Card className="gap-0 py-0">
         <SectionHead title="Model access">
-          <span className="text-xs text-muted-foreground">These apply to every agent</span>
+          <span className="text-xs text-muted-foreground">Applies to all agents</span>
         </SectionHead>
-        <Row label="Model calls" hint="Off: agents use their rules only">
+        <Row label="Model calls" hint="When off, agents use rules only">
           <label className="flex items-center gap-2 text-[13px]">
             <input
               type="checkbox"
@@ -162,7 +162,7 @@ export function AgentSettings({ prefix, breakerKey }: { prefix: "DQ" | "TRIAGE";
               checked={Boolean(s.LLM_ENABLED?.value)}
               onChange={(e) => apply("LLM_ENABLED", e.target.checked)}
             />
-            Model calls on for every agent
+            Model calls enabled for all agents
           </label>
           {note("LLM_ENABLED")}
         </Row>

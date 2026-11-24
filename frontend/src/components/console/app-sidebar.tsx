@@ -190,7 +190,7 @@ export function AppSidebar({ onNavigate, className }: AppSidebarProps) {
                     <Icon className="size-4 shrink-0" aria-hidden="true" />
                     <span>{label}</span>
                   </span>
-                  <span className="ml-auto rounded-full border border-sidebar-foreground/40 px-1.5 py-px font-mono text-[9.5px] tracking-[0.06em] uppercase">Soon</span>
+                  <span className="ml-auto rounded-full border border-sidebar-foreground/40 px-1.5 py-px font-mono text-[9.5px] tracking-[0.06em] uppercase">Coming soon</span>
                 </span>
               </li>
             ))}
