@@ -156,7 +156,14 @@
   .cap p { font-size: 13.5px; }
   .cap .mono { margin-top: auto; color: var(--red); font-size: 10.5px; }
 
-  /* 7 measured */
+  /* 7 architecture */
+  .arch { display: grid; grid-template-columns: 1fr 34px 1.25fr 34px 1fr; column-gap: 10px; flex: 1; min-height: 0; align-items: center; }
+  .arch .arrow { position: static; background: var(--red); }
+  .archcol { display: flex; flex-direction: column; gap: 12px; align-self: stretch; }
+  .archcol .control { flex: 1; display: flex; flex-direction: column; justify-content: center; }
+  .archcol .dark { border-left-color: var(--gold); } .archcol .dark h3 { color: #fff; } .archcol .dark p { color: rgba(255, 255, 255, 0.8); } .archcol .dark .ic { stroke: var(--gold); }
+
+  /* 8 measured */
   .measured { display: grid; grid-template-columns: 1.15fr 1fr 1fr; gap: 14px; flex: 1; min-height: 0; }
   .measure { padding: 22px 24px; display: flex; flex-direction: column; gap: 10px; }
   .bignum { font-family: var(--serif); font-weight: 600; font-size: 76px; line-height: 0.95; letter-spacing: -0.02em; }
@@ -300,7 +307,7 @@
       <div><h2>Five intelligent agents. One connected system.</h2><p class="mono">Specialised agents that hand their results to each other</p></div></div>
     <div class="five">
       <div class="card agentcard"><div class="top"><span class="tagbox">A1</span><h3>Data Quality</h3></div><p class="key">Key capability: checks the ticket before any work starts</p><p>Checks every ticket against rules the team writes. It flags an incomplete ticket with the reason and drafts the email asking the requester for what is missing.</p></div>
-      <div class="card agentcard"><div class="top"><span class="tagbox">A2</span><h3>Triage</h3></div><p class="key">Key capability: priority from the rulebook, not the requester</p><p>Reads the ticket, applies the business rulebook and sets the priority and application. A lowered P1 or a large change is flagged for an engineer’s review.</p></div>
+      <div class="card agentcard"><div class="top"><span class="tagbox">A2</span><h3>Triage</h3></div><p class="key">Key capability: priority from the rulebook, not the requester</p><p>Reads the ticket, applies the business rulebook and sets the priority and application. A lowered P1 or a large change is flagged for an engineer’s review. The model reports regulatory, financial and system impact beside it.</p></div>
       <div class="card agentcard"><div class="top"><span class="tagbox">A3</span><h3>Resolution</h3></div><p class="key">Key capability: a suggested fix grounded in sources</p><p>Searches the runbooks and similar closed tickets by meaning and by keyword, then proposes steps and shows where each came from.</p></div>
       <div class="card agentcard"><div class="top"><span class="tagbox">A4</span><h3>Closure Quality</h3></div><p class="key">Key capability: complete, consistent closure notes</p><p>Scores the closure note for cause, action and check. It asks the engineer short questions and drafts the note with the gaps marked.</p></div>
       <div class="card agentcard"><div class="top"><span class="tagbox">A5</span><h3>Knowledge Builder</h3></div><p class="key">Key capability: turns good fixes into knowledge</p><p>Matches each resolved ticket to an article, drafts a new article where none covers it, and suggests a problem record for repeat issues.</p></div>
@@ -375,7 +382,7 @@
       <div class="card cap"><h3>Rule builder</h3><p>Ten operators, applied to existing or new tickets, with run history and revert.</p><span class="mono">Team-owned quality rules</span></div>
       <div class="card cap"><h3>Quote check</h3><p>A model’s finding counts only when its exact quote is found in the ticket.</p><span class="mono">Quality gate control</span></div>
       <div class="card cap"><h3>Incident grouping</h3><p>A burst of related tickets becomes one incident with a main ticket.</p><span class="mono">Recurring incident signals</span></div>
-      <div class="card cap"><h3>Rules first, model second</h3><p>Rules settle what is certain. The model is asked once, for the rest.</p><span class="mono">Speed + cost control</span></div>
+      <div class="card cap"><h3>Rules first, model second</h3><p>Rules settle what they can. The model fills in the rest, and the rulebook sets the priority.</p><span class="mono">Speed + cost control</span></div>
       <div class="card cap"><h3>SLA clock</h3><p>Time left on every ticket, a watch state at 50% used, and a breach flag.</p><span class="mono">Deadlines in view</span></div>
       <div class="card cap"><h3>Assignment suggestions</h3><p>Uses shift hours, leave and each engineer’s open load, up to a limit.</p><span class="mono">Fair assignment</span></div>
       <div class="card cap"><h3>Personal data masking</h3><p>Presidio masks names, emails, phones and IDs before any model call.</p><span class="mono">Data privacy controls</span></div>
@@ -384,7 +391,34 @@
     </div>
   </section>
 
-  <!-- 7 measured -->
+  <!-- 7 architecture -->
+  <section class="slide" data-steps="1">
+    <div class="head"><div class="brand"><i></i>AMS Console</div>
+      <div><h2>How it is built</h2><p class="mono">Four sources in · personal data masked twice · one door to the model</p></div></div>
+    <div class="arch">
+      <div class="archcol"><p class="mono red">Sources</p>
+        <div class="card control"><h3>Jira</h3><p>Live sync of issues and comments.</p></div>
+        <div class="card control"><h3>ServiceNow</h3><p>Spreadsheet upload today.</p></div>
+        <div class="card control"><h3>Support mailbox</h3><p>Sample emails today.</p></div>
+        <div class="card control"><h3>Confluence</h3><p>Runbook pages, synced into the knowledge base. Approved articles can be published back.</p></div>
+      </div>
+      <span class="arrow" aria-hidden="true"></span>
+      <div class="archcol"><p class="mono red">AMS Console</p>
+        <div class="card control"><h3>Console</h3><p>Next.js. One console for the engineer, the lead and the admin.</p></div>
+        <div class="card control"><h3>Backend</h3><p>FastAPI. Masks personal data with Presidio before a ticket is saved, then runs the five agents: rules first, then the model.</p></div>
+        <div class="card control"><h3>Registry</h3><p>Prompts, rules, SLA and masking settings kept in files. An admin can override them while the system runs.</p></div>
+        <div class="card control"><h3>PostgreSQL</h3><p>Tickets, every agent result, runbook sections with embeddings, and settings.</p></div>
+      </div>
+      <span class="arrow" aria-hidden="true"></span>
+      <div class="archcol"><p class="mono red">Model</p>
+        <div class="card control"><h3>Model gateway</h3><p>Every model call goes through one function. It masks personal data again and puts the real values back in the answer.</p></div>
+        <div class="card control"><h3>Outage breaker</h3><p>A run stops after five failed calls in a row when the model is unavailable.</p></div>
+        <div class="card control dark"><h3>Claude API</h3><p>The model. It only ever sees masked text.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 8 measured -->
   <section class="slide" data-steps="1">
     <div class="head"><div class="brand"><i></i>AMS Console</div>
       <div><h2>Measured. Validated.</h2><p class="mono">Agent scoring · Open items · Build health</p></div></div>
@@ -433,7 +467,7 @@
       <div><h2>AI with controls at every layer</h2><p class="mono">Governance · Every layer has a control designed in from day one</p></div></div>
     <div class="gov">
       <div class="pyramid">
-        <div class="tier one"><h3>Data</h3><p>Personal data is masked before any model call. The model receives placeholders only.</p></div>
+        <div class="tier one"><h3>Data</h3><p>Personal data is masked before a ticket is saved, and again before any model call. The model receives placeholders only.</p></div>
         <span class="down">▼</span>
         <div class="tier two"><h3>Governance controls</h3><p>Sign-in, three roles, a role check on every API route, and a history of every settings change.</p></div>
         <span class="down">▼</span>
@@ -441,7 +475,7 @@
       </div>
       <div class="controls">
         <div class="card control"><h3>Personal data auto-masking</h3><p>Names, emails, phones, employee IDs, bank and card numbers become numbered placeholders. Real values are put back locally.</p></div>
-        <div class="card control"><h3>One write to the source system</h3><p>The closure note goes to Jira once, at the end, and only when the engineer sends it. Nothing else is written back.</p></div>
+        <div class="card control"><h3>Only what a person sends reaches Jira</h3><p>The closure note and replies go to Jira when the engineer sends them. The agents’ own comments and labels stay off unless an admin switches them on.</p></div>
         <div class="card control"><h3>Full record of agent results</h3><p>Each agent’s verdict and reason is stored with the ticket, next to the engineer’s decision on it.</p></div>
         <div class="card control"><h3>Human review path</h3><p>Engineers accept, edit or reject each recommendation. A lead approves P1 and P2 closures. A kill switch turns the model off.</p></div>
       </div>
@@ -471,7 +505,7 @@
         <div class="item"><b>Ask a question</b><span>Shown as “Soon” in the menu</span></div>
         <div class="item"><b>Log analyzer</b><span>Shown as “Soon” in the menu</span></div>
         <div class="item"><b>Problem records</b><span>Repeat issues are already suggested</span></div>
-        <div class="item"><b>Major-incident agent</b><span>Needs an on-call roster</span></div>
+        <div class="item"><b>Major-incident agent</b><span>One root cause per group of tickets first; needs an on-call roster</span></div>
       </div></div>
       <div class="card col mid-col"><header><b>4</b><div><span class="mono">In progress</span><small>Built, running on sample or provisional data</small></div></header><div class="items">
         <div class="item"><b>ServiceNow connection</b><span>Loads from a spreadsheet today</span></div>
@@ -582,7 +616,8 @@
     "Knowledge scattered": "book", "Data quality": "clip", "Triage and troubleshooting inconsistent": "flag", "Communication and reporting": "chat",
     "Engineer": "user", "Lead": "users", "Admin": "sliders", "Lead desk": "users", "Incidents and SLA": "clock", "AI assistant": "chat",
     "Personal data masking": "shield", "SLA clock": "clock", "Feedback": "chat", "Reports": "chart",
-    "Personal data auto-masking": "shield", "One write to the source system": "board", "Full record of agent results": "doc", "Human review path": "user",
+    "Personal data auto-masking": "shield", "Only what a person sends reaches Jira": "board", "Full record of agent results": "doc", "Human review path": "user",
+    "Confluence": "book", "Console": "users", "Backend": "clip", "Registry": "sliders", "PostgreSQL": "table", "Model gateway": "shield", "Outage breaker": "clock", "Claude API": "chat",
     "Hybrid search": "search", "Runbook chunking": "book", "Similar closed tickets": "doc", "Rule builder": "sliders", "Quote check": "clip",
     "Incident grouping": "table", "Rules first, model second": "flag", "Assignment suggestions": "users", "Tracing and change history": "clock",
   };

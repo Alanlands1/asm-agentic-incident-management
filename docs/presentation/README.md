@@ -6,4 +6,4 @@
 
 The fonts load from Google Fonts; offline the deck falls back to system fonts.
 
-Before presenting, check slide 7: the Triage figure is a placeholder, and the scores shown come from the status table in the root `README.md`.
+Before presenting, check slide 8: the Triage figure is a placeholder, and the scores shown come from the status table in the root `README.md`.

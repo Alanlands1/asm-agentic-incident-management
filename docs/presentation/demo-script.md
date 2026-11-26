@@ -1,6 +1,6 @@
 # AMS Console: demo script
 
-For `ams-console-deck.html`. About 8 minutes. Lines in **[brackets]** are actions, not spoken.
+For `ams-console-deck.html`. About 9 minutes. Lines in **[brackets]** are actions, not spoken.
 
 ---
 
@@ -57,7 +57,7 @@ But the obvious question is: who is doing all that work in the middle?
 Five agents. Think of them as five specialists who each do one job and hand it on.
 
 **Data Quality** asks: is there enough here to start?
-**Triage** asks: how urgent is this, really?
+**Triage** asks: how urgent is this, really? And what's the regulatory, financial and system impact?
 **Resolution** asks: have we solved this before?
 **Closure Quality** asks: did we write down what we did?
 **Knowledge Builder** asks: will the next person find it?
@@ -111,7 +111,17 @@ How does it hold together? Twelve capabilities. I won't read all twelve. Here ar
 
 **[Click]**
 
-## Slide 7 · Does it work?
+## Slide 7 · How it is built
+
+Quickly, what's underneath. Tickets come in from Jira, ServiceNow and the mailbox. Runbooks come from Confluence.
+
+In the middle is the console and its backend. And notice this: personal data is masked twice. Once before a ticket is even saved, and again before anything goes to the model.
+
+On the right, every model call goes through one door. So the model only ever sees masked text, and if it goes down, the run stops instead of failing ticket after ticket.
+
+**[Click]**
+
+## Slide 8 · Does it work?
 
 Fair question. Show me.
 
@@ -123,17 +133,17 @@ Now, there's a catch, and I'd rather you hear it from me. These case sets are sm
 
 **[Click]**
 
-## Slide 8 · Control
+## Slide 9 · Control
 
 Which brings up the question every client asks: what stops the AI doing something it shouldn't?
 
-Three layers. First, **data**: personal data is masked before any model call. Second, **access**: sign-in, three roles, a role check on every route, and a history of settings changes. Third, **people**: engineers accept, edit or reject. Nothing goes to Jira unless a person sends it. And there is a kill switch for the model.
+Three layers. First, **data**: personal data is masked before a ticket is saved, and again before any model call. Second, **access**: sign-in, three roles, a role check on every route, and a history of settings changes. Third, **people**: engineers accept, edit or reject. Nothing goes to Jira unless a person sends it. And there is a kill switch for the model.
 
 The agents prepare. People decide.
 
 **[Click]**
 
-## Slide 9 · Three roles
+## Slide 10 · Three roles
 
 Same console, three views.
 
@@ -145,7 +155,7 @@ The **admin** owns the rules and reports, and can view the console as any person
 
 **[Click]**
 
-## Slide 10 · Where we are
+## Slide 11 · Where we are
 
 So where does this stand? Sixteen capabilities.
 
