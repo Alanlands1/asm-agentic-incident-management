@@ -1,6 +1,7 @@
 import { apiClient } from "@/lib/api-client";
 import { DashboardSummary, Trends } from "@/types/dashboard";
 import { Reports } from "@/types/reports";
+import { Period, ServicePerformance } from "@/types/service";
 
 export const dashboardService = {
   /** Counts "today" from the viewer's local midnight. */
@@ -18,4 +19,9 @@ export const dashboardService = {
   },
   /** Admin reports for the last `days` days. */
   getReports: (days: number) => apiClient<Reports>(`/dashboard/reports?days=${days}`),
+  /** Service performance KPIs and monthly trends; application and priority narrow every number. */
+  getService: (period: Period, application?: string, priority?: number) => {
+    const query = new URLSearchParams({ period, ...(application && { application }), ...(priority && { priority: String(priority) }) });
+    return apiClient<ServicePerformance>(`/dashboard/service?${query}`);
+  },
 };

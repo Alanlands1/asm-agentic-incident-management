@@ -90,6 +90,27 @@
   --chart-3: #8f92a6;
   --chart-4: #c3c5d2;
   --chart-5: #e1e2e9;
+  /* Service-performance charts, validated with the dataviz checker (light, on the card):
+     priority is ordinal, one hue, P1 darkest; the accent/grey pair is for emphasis; seq-1..5 for magnitude (heatmap). */
+  --viz-p1: #0d366b;
+  --viz-p2: #1c5cab;
+  --viz-p3: #3987e5;
+  --viz-p4: #86b6ef;
+  --viz-accent: #a20a29;
+  --viz-muted: #8f92a6;
+  --viz-seq-1: #cde2fb;
+  --viz-seq-2: #86b6ef;
+  --viz-seq-3: #3987e5;
+  --viz-seq-4: #1c5cab;
+  --viz-seq-5: #0d366b;
+  --viz-on-seq-1: #191d38;            /* text on each heatmap step */
+  --viz-on-seq-2: #191d38;
+  --viz-on-seq-3: #ffffff;
+  --viz-on-seq-4: #ffffff;
+  --viz-on-seq-5: #ffffff;
+  --viz-grid: rgba(25, 29, 56, 0.08);
+  --viz-good: #1f7a3d;               /* a change for the better (KPI deltas) */
+  --viz-bad: #a20a29;
   --radius: 0.5rem;
   --sidebar: #a20a29;                 /* red menu, white text */
   --sidebar-foreground: #ffffff;
@@ -133,6 +154,26 @@
   --chart-5: #353a5c;
   --sidebar: #b8143a;
   --sidebar-primary-foreground: #b8143a;
+  /* Dark: the ramps flip (most is lightest), each validated against the dark card. */
+  --viz-p1: #b7d3f6;
+  --viz-p2: #6da7ec;
+  --viz-p3: #3987e5;
+  --viz-p4: #1c5cab;
+  --viz-accent: #e8355c;
+  --viz-muted: #8f92a6;
+  --viz-seq-1: #1c5cab;
+  --viz-seq-2: #256abf;
+  --viz-seq-3: #3987e5;
+  --viz-seq-4: #86b6ef;
+  --viz-seq-5: #cde2fb;
+  --viz-on-seq-1: #ffffff;
+  --viz-on-seq-2: #ffffff;
+  --viz-on-seq-3: #ffffff;
+  --viz-on-seq-4: #11142a;
+  --viz-on-seq-5: #11142a;
+  --viz-grid: rgba(255, 255, 255, 0.08);
+  --viz-good: #5fd08a;
+  --viz-bad: #ff6b86;
 }
 
 /* The SLA gauge fills from empty to its share of the half circle (length 264). */
