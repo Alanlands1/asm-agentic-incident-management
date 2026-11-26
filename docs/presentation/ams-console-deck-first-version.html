@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AMS Console: AI in action</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+  /* Colours and type are the console's own (frontend/src/app/globals.css). */
+  :root {
+    --bg: #f3f2f0; --ink: #191d38; --body: #3a3e55; --muted: #5d6077; --card: #ffffff;
+    --red: #a20a29; --red-dark: #850821; --soft: #f9eaed; --line: rgba(25, 29, 56, 0.1); --line-strong: rgba(25, 29, 56, 0.22);
+    --green: #1f7a3d; --amber: #f5b400;
+    --serif: "Cormorant Garamond", Georgia, serif;
+    --sans: Inter, "Segoe UI", Roboto, Arial, sans-serif;
+    --mono: "JetBrains Mono", Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; overflow: hidden; background: var(--ink); font-family: var(--sans); color: var(--ink); }
+  #stage { position: absolute; top: 50%; left: 50%; width: 1600px; height: 900px; transform-origin: 0 0; background: var(--bg); overflow: hidden; }
+  .slide { position: absolute; inset: 0; padding: 64px 80px 76px; display: none; flex-direction: column; }
+  .slide.on { display: flex; }
+
+  .eyebrow { font: 500 14px/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--red); }
+  h1 { font: 600 92px/0.95 var(--serif); letter-spacing: -0.01em; }
+  h2 { font: 600 58px/1 var(--serif); letter-spacing: -0.01em; margin-top: 14px; }
+  h3 { font: 600 21px/1.25 var(--sans); letter-spacing: -0.01em; }
+  .lede { font-size: 21px; line-height: 1.45; color: var(--body); max-width: 1180px; margin-top: 14px; }
+  .rule { width: 96px; height: 3px; background: var(--red); margin: 22px 0 26px; }
+  p { font-size: 17px; line-height: 1.45; color: var(--body); }
+  .small { font-size: 15px; color: var(--muted); }
+
+  .grid { display: grid; gap: 18px; }
+  .c2 { grid-template-columns: repeat(2, 1fr); } .c3 { grid-template-columns: repeat(3, 1fr); }
+  .c4 { grid-template-columns: repeat(4, 1fr); } .c5 { grid-template-columns: repeat(5, 1fr); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 22px 24px; display: flex; flex-direction: column; gap: 8px; }
+  .card.top { border-top: 3px solid var(--red); }
+  .card.side { border-left: 3px solid var(--red); }
+  .key { font-size: 15px; font-weight: 600; color: var(--red); }
+  .tag { font: 500 12px/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--red); margin-top: auto; padding-top: 8px; }
+  .num { font: 500 13px/1 var(--mono); color: var(--red); letter-spacing: 0.08em; }
+  .pill { display: inline-flex; align-items: center; height: 40px; padding: 0 18px; border: 1.5px solid var(--red); border-radius: 999px; font-size: 16px; font-weight: 600; color: var(--red); background: var(--card); }
+  .divider { display: flex; align-items: center; gap: 16px; font: 500 13px/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin: 20px 0 14px; }
+  .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--line-strong); }
+  .soon { background: transparent; border-style: dashed; border-color: var(--line-strong); padding: 16px 20px; }
+  .soon h3 { font-size: 18px; color: var(--muted); } .soon p { font-size: 15px; color: var(--muted); }
+
+  /* cover */
+  .cover { padding: 0; flex-direction: row; }
+  .cover .left { flex: 1; padding: 0 80px; display: flex; flex-direction: column; justify-content: center; gap: 20px; }
+  .cover .right { width: 560px; background: linear-gradient(160deg, var(--red), var(--red-dark) 55%, var(--ink)); display: flex; align-items: center; justify-content: center; color: #fff; }
+  .cover h1 span { display: block; font-size: 44px; line-height: 1.1; margin-top: 10px; }
+
+  /* before / with */
+  .panel { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 22px 26px; display: flex; flex-direction: column; flex: 1; }
+  .panel svg { flex: 1; width: 100%; min-height: 0; }
+  .strip { background: var(--soft); border-radius: 8px; padding: 12px 16px; font-size: 16px; font-weight: 500; text-align: center; color: var(--ink); }
+  .strip.grey { background: #eeedf1; }
+  .trio { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 10px; }
+  .trio .strip { font-size: 14px; padding: 9px; }
+
+  /* flow */
+  .step { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; display: flex; flex-direction: column; gap: 8px; position: relative; }
+  .who { align-self: flex-start; font: 500 12px/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; padding: 5px 8px; border-radius: 6px; }
+  .who.agent { background: var(--soft); color: var(--red); }
+  .who.person { background: var(--ink); color: #fff; }
+  .who.system { background: #eeedf1; color: var(--muted); }
+  .step h3 { font-size: 19px; } .step p { font-size: 15.5px; }
+
+  /* numbers */
+  .big { font: 600 108px/0.9 var(--serif); color: var(--ink); }
+  .bar { background: var(--red); color: #fff; font-size: 15px; font-weight: 600; padding: 7px 14px; border-radius: 6px; }
+  .check { display: flex; align-items: center; gap: 10px; background: #eeedf1; border-radius: 8px; padding: 11px 14px; font-size: 16px; font-weight: 500; }
+  .check::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--red); flex: none; }
+
+  /* board */
+  .col { background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; }
+  .col header { background: var(--ink); color: #fff; padding: 14px 20px; display: flex; align-items: baseline; gap: 12px; font: 500 14px/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; }
+  .col header b { font: 600 30px/1 var(--serif); letter-spacing: 0; }
+  .col .items { padding: 14px; display: flex; flex-direction: column; gap: 9px; }
+  .item { border-radius: 8px; padding: 10px 14px; border: 1px solid var(--line); }
+  .item b { display: block; font-size: 16px; font-weight: 600; } .item span { font-size: 14px; color: var(--muted); }
+  .live .item { background: #edf5ef; border-color: rgba(31, 122, 61, 0.25); }
+  .demo .item { background: #fdf6e0; border-color: rgba(245, 180, 0, 0.45); }
+  .next .item { background: #f4f4f8; }
+
+  /* chrome */
+  #count { position: absolute; right: 28px; bottom: 22px; font: 500 14px/1 var(--mono); color: var(--muted); background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 8px 14px; }
+  #dots { position: absolute; left: 0; right: 0; bottom: 28px; display: flex; justify-content: center; gap: 10px; }
+  #dots button { width: 10px; height: 10px; border-radius: 50%; border: 0; padding: 0; background: var(--line-strong); cursor: pointer; }
+  #dots button.on { background: var(--red); }
+  #dots button:focus-visible { outline: 2px solid var(--red); outline-offset: 3px; }
+</style>
+</head>
+<body>
+<div id="stage">
+
+  <!-- 1 -->
+  <section class="slide cover on">
+    <div class="left">
+      <p class="eyebrow">Application Management Services · Internal demo</p>
+      <h1>AMS Console<span>Agentic incident management</span></h1>
+      <p class="lede">Five AI agents check, prioritise and help resolve every ticket. Engineers and leads stay in control of each decision that leaves the console.</p>
+      <div style="display:flex; gap:12px; margin-top:10px">
+        <span class="pill">Five AI agents</span><span class="pill">People approve</span><span class="pill">Personal data masked</span>
+      </div>
+    </div>
+    <div class="right">
+      <svg viewBox="0 0 400 400" width="400" height="400" fill="none" stroke="#fff" font-family="Inter, Segoe UI, sans-serif" role="img" aria-label="Five agents around one ticket">
+        <g stroke-width="1" opacity="0.5">
+          <line x1="200" y1="200" x2="200" y2="60"/><line x1="200" y1="200" x2="333" y2="157"/><line x1="200" y1="200" x2="282" y2="313"/>
+          <line x1="200" y1="200" x2="118" y2="313"/><line x1="200" y1="200" x2="67" y2="157"/>
+        </g>
+        <circle cx="200" cy="200" r="44" stroke-width="2" fill="#8d0a25"/>
+        <g fill="#fff" stroke="none">
+          <text x="200" y="207" text-anchor="middle" font-size="20" font-weight="600">Ticket</text>
+          <circle cx="200" cy="60" r="8"/><circle cx="333" cy="157" r="8"/><circle cx="282" cy="313" r="8"/><circle cx="118" cy="313" r="8"/><circle cx="67" cy="157" r="8"/>
+          <g font-size="16" text-anchor="middle">
+            <text x="200" y="38">Data Quality</text><text x="340" y="134">Triage</text><text x="290" y="344">Resolution</text>
+            <text x="110" y="344">Closure Quality</text><text x="62" y="134">Knowledge</text>
+          </g>
+        </g>
+      </svg>
+    </div>
+  </section>
+
+  <!-- 2 -->
+  <section class="slide">
+    <p class="eyebrow">The problem</p>
+    <h2>Where support time is lost today</h2>
+    <p class="lede">Four gaps show up on almost every incident. Each one costs minutes before anyone starts on the fix.</p>
+    <div class="rule"></div>
+    <div class="card side" style="flex-direction:row; align-items:center; gap:12px; padding:16px 22px; margin-bottom:18px">
+      <span class="num" style="margin-right:8px">SCOPE</span>
+      <span class="pill" style="background:var(--red); color:#fff">Incident management</span>
+      <span class="pill" style="border-color:var(--line-strong); color:var(--muted)">Problem management · planned</span>
+      <span class="pill" style="border-color:var(--line-strong); color:var(--muted)">Log analysis · planned</span>
+    </div>
+    <div class="grid c4" style="flex:1">
+      <div class="card top"><span class="num">01</span><h3>Tickets arrive incomplete</h3><p>“I can’t log in”, empty descriptions, test tickets. The engineer has to write back and wait before work can start.</p></div>
+      <div class="card top"><span class="num">02</span><h3>Priority is the requester’s guess</h3><p>A profile-photo issue is raised as P1 while a payroll outage sits at Medium. The queue order is wrong from the first minute.</p></div>
+      <div class="card top"><span class="num">03</span><h3>Knowledge is scattered</h3><p>The fix exists in a runbook, a past ticket or a colleague’s head. Finding it depends on who is on shift.</p></div>
+      <div class="card top"><span class="num">04</span><h3>Closure and updates are manual</h3><p>Closure notes, requester emails and stakeholder updates are written by hand, in different styles, often late.</p></div>
+    </div>
+  </section>
+
+  <!-- 3 -->
+  <section class="slide">
+    <p class="eyebrow">Before and after</p>
+    <h2>One place to work a ticket</h2>
+    <p class="lede">The knowledge already exists. The console brings it to the ticket, so the engineer does not go looking for it.</p>
+    <div class="rule"></div>
+    <div style="display:flex; gap:20px; flex:1; min-height:0">
+      <div class="panel">
+        <h3>Today</h3>
+        <svg viewBox="0 0 600 300" role="img" aria-label="An engineer checks six separate sources by hand" font-family="Inter, Segoe UI, sans-serif">
+          <g stroke="#8f92a6" stroke-width="3">
+            <line x1="300" y1="150" x2="90" y2="50"/><line x1="300" y1="150" x2="300" y2="34"/><line x1="300" y1="150" x2="510" y2="50"/>
+            <line x1="300" y1="150" x2="90" y2="250"/><line x1="300" y1="150" x2="300" y2="262"/><line x1="300" y1="150" x2="510" y2="250"/>
+          </g>
+          <circle cx="300" cy="150" r="44" fill="#fff" stroke="#191d38" stroke-width="2"/>
+          <g font-size="14" fill="#191d38" text-anchor="middle" font-weight="600">
+            <text x="300" y="155">Engineer</text>
+            <g font-weight="500" fill="#3a3e55">
+              <rect x="30" y="30" width="120" height="34" rx="8" fill="#eeedf1"/><text x="90" y="52">Jira</text>
+              <rect x="240" y="8" width="120" height="34" rx="8" fill="#eeedf1"/><text x="300" y="30">ServiceNow</text>
+              <rect x="450" y="30" width="120" height="34" rx="8" fill="#eeedf1"/><text x="510" y="52">Mailbox</text>
+              <rect x="30" y="236" width="120" height="34" rx="8" fill="#eeedf1"/><text x="90" y="258">Runbooks</text>
+              <rect x="240" y="258" width="120" height="34" rx="8" fill="#eeedf1"/><text x="300" y="280">Past tickets</text>
+              <rect x="450" y="236" width="120" height="34" rx="8" fill="#eeedf1"/><text x="510" y="258">Colleagues</text>
+            </g>
+          </g>
+        </svg>
+        <div class="strip grey">The engineer joins up six sources by hand before giving an answer.</div>
+        <div class="trio"><div class="strip grey">6 places to look</div><div class="strip grey">Priority guessed</div><div class="strip grey">Notes written by hand</div></div>
+      </div>
+      <div class="panel" style="border-top:3px solid var(--red)">
+        <h3 style="color:var(--red)">With the console</h3>
+        <svg viewBox="0 0 600 300" role="img" aria-label="A ticket goes through the agents and reaches the engineer with a suggested fix" font-family="Inter, Segoe UI, sans-serif">
+          <g font-size="15" text-anchor="middle" font-weight="600">
+            <rect x="200" y="10" width="200" height="50" rx="10" fill="#eeedf1"/><text x="300" y="41" fill="#191d38">Ticket arrives</text>
+            <rect x="170" y="110" width="260" height="62" rx="12" fill="#a20a29"/><text x="300" y="138" fill="#fff">Agents check, prioritise</text><text x="300" y="158" fill="#fff">and suggest a fix</text>
+            <rect x="170" y="224" width="260" height="62" rx="12" fill="#fff" stroke="#191d38" stroke-width="2"/><text x="300" y="252" fill="#191d38">Engineer confirms the fix</text><text x="300" y="272" fill="#3a3e55" font-weight="500">with sources shown</text>
+          </g>
+          <g stroke="#a20a29" stroke-width="3" fill="none"><path d="M300 64v40m-8-10 8 10 8-10"/><path d="M300 176v42m-8-10 8 10 8-10"/></g>
+        </svg>
+        <div class="strip">The ticket reaches the engineer already checked, prioritised and with a suggested fix.</div>
+        <div class="trio"><div class="strip">1 place to look</div><div class="strip">Priority from rules</div><div class="strip">Notes drafted</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4 -->
+  <section class="slide">
+    <p class="eyebrow">The agents</p>
+    <h2>Five agents, one ticket pipeline</h2>
+    <p class="lede">Each agent has one job and passes its result to the next. Every result is saved, so a person can see why a decision was made.</p>
+    <div class="rule" style="margin-bottom:20px"></div>
+    <div class="grid c5">
+      <div class="card top"><span class="num">STEP 1</span><h3>Data Quality</h3><p class="key">Is there enough to act on?</p><p>Flags incomplete tickets using rules the team can edit, and drafts the email asking the requester for what is missing.</p></div>
+      <div class="card top"><span class="num">STEP 2</span><h3>Triage</h3><p class="key">How urgent is it really?</p><p>Sets priority from the business rulebook and names the application, whatever the requester selected.</p></div>
+      <div class="card top"><span class="num">STEP 3</span><h3>Resolution</h3><p class="key">What is the fix?</p><p>Searches the runbooks and similar closed tickets, then proposes steps with the sources it used.</p></div>
+      <div class="card top"><span class="num">STEP 4</span><h3>Closure Quality</h3><p class="key">Is the closure note complete?</p><p>Drafts the closure note and the requester email, and marks any part the engineer still has to fill in.</p></div>
+      <div class="card top"><span class="num">STEP 5</span><h3>Knowledge Builder</h3><p class="key">What did we learn?</p><p>Turns closed tickets into draft knowledge articles, so the next engineer finds the fix faster.</p></div>
+    </div>
+    <div class="divider">Around the agents</div>
+    <div class="grid c3">
+      <div class="card" style="padding:16px 20px"><h3>Lead desk</h3><p>Assign engineers with a suggestion that knows shift hours, leave and current load.</p></div>
+      <div class="card" style="padding:16px 20px"><h3>Incidents</h3><p>Related tickets grouped into one incident, with the SLA clock and stakeholder updates.</p></div>
+      <div class="card" style="padding:16px 20px"><h3>AI assistant</h3><p>A chat on the ticket to work out a fix, reading team notes and past tickets.</p></div>
+    </div>
+    <div class="divider">Planned, shown as “Soon” in the menu</div>
+    <div class="grid c3">
+      <div class="card soon"><h3>Ask a question</h3></div>
+      <div class="card soon"><h3>Log analyzer</h3></div>
+      <div class="card soon"><h3>Problem records</h3></div>
+    </div>
+  </section>
+
+  <!-- 5 -->
+  <section class="slide">
+    <p class="eyebrow">How it works</p>
+    <h2>The path of one ticket</h2>
+    <p class="lede">Agents prepare the work. A person confirms the fix, and a lead approves the closure of high-priority tickets.</p>
+    <div class="rule"></div>
+    <div class="grid c5" style="flex:1; grid-auto-rows:1fr">
+      <div class="step"><span class="who system">System</span><h3>1. Ticket arrives</h3><p>From Jira, ServiceNow or the support mailbox, into one common format.</p></div>
+      <div class="step"><span class="who system">System</span><h3>2. Personal data masked</h3><p>Names, emails and phone numbers are replaced before the ticket is stored.</p></div>
+      <div class="step"><span class="who agent">Agent</span><h3>3. Quality check</h3><p>Incomplete tickets stop here with a drafted request for information.</p></div>
+      <div class="step"><span class="who agent">Agent</span><h3>4. Triage</h3><p>Priority and application are set from the rules. The SLA clock follows.</p></div>
+      <div class="step"><span class="who agent">Agent</span><h3>5. Suggested fix</h3><p>Steps from the runbooks and similar tickets, with sources.</p></div>
+      <div class="step"><span class="who person">Lead</span><h3>6. Assignment</h3><p>The lead assigns the ticket, with a suggested engineer.</p></div>
+      <div class="step"><span class="who person">Engineer</span><h3>7. Fix confirmed</h3><p>The engineer applies the fix and records whether it worked.</p></div>
+      <div class="step"><span class="who agent">Agent</span><h3>8. Closure note</h3><p>Drafted for the engineer, who completes the marked parts.</p></div>
+      <div class="step"><span class="who person">Lead</span><h3>9. Approval</h3><p>P1 and P2 closure notes wait for the lead’s review.</p></div>
+      <div class="step"><span class="who person">Engineer</span><h3>10. Closed</h3><p>The note is sent to Jira only when the engineer sends it. A draft article follows.</p></div>
+    </div>
+  </section>
+
+  <!-- 6 -->
+  <section class="slide">
+    <p class="eyebrow">Who uses it</p>
+    <h2>Three roles, one console</h2>
+    <p class="lede">People sign in with a password or their Atlassian account. The menu and the allowed actions follow the role.</p>
+    <div class="rule"></div>
+    <div class="grid c3" style="flex:1">
+      <div class="card top" style="gap:14px"><span class="num">ENGINEER</span><h3 style="font-size:26px">Works the ticket</h3>
+        <div class="check">My worklist, ordered by SLA time left</div><div class="check">Ticket page with a step bar and the next action</div>
+        <div class="check">Suggested fix and AI assistant</div><div class="check">Closure note to complete and send</div></div>
+      <div class="card top" style="gap:14px"><span class="num">LEAD</span><h3 style="font-size:26px">Runs the team</h3>
+        <div class="check">Lead desk: assign and reassign engineers</div><div class="check">Team hours, leave and a limit on open tickets</div>
+        <div class="check">Review queue for P1 and P2 closure notes</div><div class="check">Incidents and stakeholder updates</div></div>
+      <div class="card top" style="gap:14px"><span class="num">ADMIN</span><h3 style="font-size:26px">Configures and reports</h3>
+        <div class="check">Rule builder with run history and revert</div><div class="check">A page per agent with its results and feedback</div>
+        <div class="check">Reports and trends, with CSV download</div><div class="check">“View as” to see any person’s console</div></div>
+    </div>
+  </section>
+
+  <!-- 7 -->
+  <section class="slide">
+    <p class="eyebrow">Under the hood</p>
+    <h2>Twelve capabilities working together</h2>
+    <p class="lede">What is built and running in the demo today.</p>
+    <div class="rule" style="margin-bottom:20px"></div>
+    <div class="grid c3" style="flex:1; gap:14px">
+      <div class="card side" style="padding:14px 20px; gap:4px"><h3>Hybrid search</h3><p>Meaning-based and keyword search over runbook sections.</p><span class="tag">Finding the fix</span></div>
+      <div class="card side" style="padding:14px 20px; gap:4px"><h3>Similar closed tickets</h3><p>Past resolutions feed the suggested fix.</p><span class="tag">Reuse of history</span></div>
+      <div class="card side" style="padding:14px 20px; gap:4px"><h3>Rule builder</h3><p>Ten operators, run on old or new tickets, revert a run.</p><span class="tag">Team-owned quality rules</span></div>
+      <div class="card side" style="padding:14px 20px; gap:4px"><h3>Personal data masking</h3><p>Before storage and again before any model call.</p><span class="tag">Privacy</span></div>
+      <div class="card side" style="padding:14px 20px; gap:4px"><h3>SLA clock</h3><p>Time left on every ticket, with a watch state at 50% used.</p><span class="tag">Deadlines in view</span></div>
+      <div class="card side" style="padding:14px 20px; gap:4px"><h3>Incident grouping</h3><p>A burst of related tickets becomes one incident.</p><span class="tag">Less duplicate work</span></div>
+      <div class="card side" style="padding:14px 20px; gap:4px"><h3>Assignment suggestions</h3><p>Uses shift hours, leave and each engineer’s open load.</p><span class="tag">Fair, fast assignment</span></div>
+      <div class="card side" style="padding:14px 20px; gap:4px"><h3>Lead review</h3><p>High-priority closure notes need a lead’s approval.</p><span class="tag">Human checkpoint</span></div>
+      <div class="card side" style="padding:14px 20px; gap:4px"><h3>Feedback on every agent</h3><p>One-click thumbs, plus what the engineer actually did.</p><span class="tag">Measured usefulness</span></div>
+      <div class="card side" style="padding:14px 20px; gap:4px"><h3>Jira connection</h3><p>Tickets synced in; the closure note written back on request.</p><span class="tag">Works with the source</span></div>
+      <div class="card side" style="padding:14px 20px; gap:4px"><h3>Reports</h3><p>By application, agent, outcome and engineer, with CSV.</p><span class="tag">Leadership view</span></div>
+      <div class="card side" style="padding:14px 20px; gap:4px"><h3>Tracing and change history</h3><p>Model calls traced; every settings change recorded.</p><span class="tag">Audit</span></div>
+    </div>
+  </section>
+
+  <!-- 8 -->
+  <section class="slide">
+    <p class="eyebrow">Governance</p>
+    <h2>Controls at every layer</h2>
+    <p class="lede">The agents suggest. Nothing leaves the console without a person’s action.</p>
+    <div class="rule"></div>
+    <div style="display:flex; gap:28px; flex:1; align-items:center">
+      <div style="flex:1; display:flex; flex-direction:column; align-items:center; gap:10px">
+        <div class="card" style="background:var(--red); border:0; width:100%; text-align:center"><h3 style="color:#fff">Data</h3><p style="color:#fff">Personal data is masked before storage and before any model call.</p></div>
+        <span style="color:var(--red); font-size:20px">▼</span>
+        <div class="card" style="background:var(--soft); border-color:rgba(162,10,41,0.35); width:86%; text-align:center"><h3>Access</h3><p>Sign-in, three roles, and a role check on every API route.</p></div>
+        <span style="color:var(--red); font-size:20px">▼</span>
+        <div class="card" style="width:72%; text-align:center; border-color:rgba(162,10,41,0.35)"><h3 style="color:var(--red)">Decisions</h3><p>The engineer confirms the fix. The lead approves P1 and P2 closures.</p></div>
+      </div>
+      <div style="flex:1; display:flex; flex-direction:column; gap:14px">
+        <div class="card side"><h3>Masked before the model sees it</h3><p>Names, emails, phone numbers and employee IDs become placeholders. The model receives placeholders only.</p></div>
+        <div class="card side"><h3>One write to the source system</h3><p>The closure note goes to Jira once, at the end, and only when the engineer sends it.</p></div>
+        <div class="card side"><h3>Every agent result is saved</h3><p>Each verdict, its reason and the feedback on it are kept with the ticket.</p></div>
+        <div class="card side"><h3>Sessions that can be ended</h3><p>Hashed passwords, server-side sessions and an HttpOnly cookie. Signing out ends the session at once.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 9 -->
+  <section class="slide">
+    <p class="eyebrow">Evidence</p>
+    <h2>Tested end to end</h2>
+    <p class="lede">Counts from the latest run of the three test suites, on the build shown in this demo.</p>
+    <div class="rule"></div>
+    <div class="grid c3" style="flex:1">
+      <div class="card top" style="gap:14px"><span class="num">BACKEND · PYTEST</span><div class="big">371</div><div class="bar">All passing</div>
+        <p>API, agents, rules, masking, sign-in and role checks, run against an isolated test database.</p></div>
+      <div class="card top" style="gap:14px"><span class="num">BROWSER · PLAYWRIGHT</span><div class="big">28</div><div class="bar">All passing</div>
+        <p>A real browser signs in and works tickets through the console, on a production build.</p></div>
+      <div class="card top" style="gap:14px"><span class="num">FRONTEND UNIT · VITEST</span><div class="big">13</div><div class="bar">All passing</div>
+        <p>The console’s own logic: roles, menus and what each person may open.</p></div>
+    </div>
+    <p class="small" style="margin-top:18px">Agent answer quality is scored separately against an answer key kept outside the pipeline. [Add the latest scores here before presenting.]</p>
+  </section>
+
+  <!-- 10 -->
+  <section class="slide">
+    <p class="eyebrow">Status</p>
+    <h2>Where each capability stands</h2>
+    <p class="lede">What you will see working today, what runs on sample data, and what comes next.</p>
+    <div class="rule" style="margin-bottom:20px"></div>
+    <div class="grid c3" style="flex:1; align-items:start">
+      <div class="col next"><header><b>3</b>Planned</header><div class="items">
+        <div class="item"><b>Ask a question</b><span>Ask the knowledge base outside a ticket</span></div>
+        <div class="item"><b>Log analyzer</b><span>Read logs and link errors to incidents</span></div>
+        <div class="item"><b>Problem records</b><span>Group recurring issues and their root cause</span></div>
+      </div></div>
+      <div class="col demo"><header><b>3</b>On sample data</header><div class="items">
+        <div class="item"><b>ServiceNow tickets</b><span>Loaded from a spreadsheet export, not a live connection</span></div>
+        <div class="item"><b>Support mailbox</b><span>Loaded from sample emails</span></div>
+        <div class="item"><b>Knowledge base</b><span>Seven sample applications, 35 known issues</span></div>
+      </div></div>
+      <div class="col live"><header><b>8</b>Working in the demo</header><div class="items">
+        <div class="item"><b>Data Quality agent and rule builder</b></div>
+        <div class="item"><b>Triage agent</b></div>
+        <div class="item"><b>Resolution agent and AI assistant</b></div>
+        <div class="item"><b>Closure Quality agent and lead review</b></div>
+        <div class="item"><b>Knowledge Builder agent</b></div>
+        <div class="item"><b>Lead desk, incidents and SLA</b></div>
+        <div class="item"><b>Reports and trends</b></div>
+        <div class="item"><b>Sign-in with roles, live Jira connection</b></div>
+      </div></div>
+    </div>
+  </section>
+
+  <div id="dots"></div>
+  <div id="count"></div>
+</div>
+
+<script>
+  const stage = document.getElementById("stage");
+  const slides = [...document.querySelectorAll(".slide")];
+  const dots = document.getElementById("dots");
+  const count = document.getElementById("count");
+  let at = Math.min(slides.length, Math.max(1, parseInt(location.hash.slice(1)) || 1)) - 1;
+
+  function fit() {
+    const s = Math.min(innerWidth / 1600, innerHeight / 900);
+    stage.style.transform = `scale(${s}) translate(-50%, -50%)`;
+  }
+  function show(i) {
+    at = Math.max(0, Math.min(slides.length - 1, i));
+    slides.forEach((el, n) => el.classList.toggle("on", n === at));
+    [...dots.children].forEach((el, n) => el.classList.toggle("on", n === at));
+    count.textContent = `${at + 1} / ${slides.length}`;
+    history.replaceState(null, "", `#${at + 1}`);
+  }
+  slides.forEach((_, n) => {
+    const b = document.createElement("button");
+    b.setAttribute("aria-label", `Slide ${n + 1}`);
+    b.onclick = (e) => { e.stopPropagation(); show(n); };
+    dots.append(b);
+  });
+  addEventListener("keydown", (e) => {
+    if (["ArrowRight", "PageDown", " ", "Enter"].includes(e.key)) show(at + 1);
+    else if (["ArrowLeft", "PageUp", "Backspace"].includes(e.key)) show(at - 1);
+    else if (e.key === "Home") show(0);
+    else if (e.key === "End") show(slides.length - 1);
+    else if (e.key.toLowerCase() === "f") document.documentElement.requestFullscreen?.();
+  });
+  stage.addEventListener("click", (e) => show(at + (e.clientX < innerWidth / 3 ? -1 : 1)));
+  addEventListener("resize", fit);
+  fit();
+  show(at);
+</script>
+</body>
+</html>

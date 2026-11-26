@@ -1,0 +1,26 @@
+<section id="path" data-transition="fade">
+<p class="eyebrow">EACH AGENT HANDS ITS RESULT TO THE NEXT</p>
+<h2>One ticket, five connected agents</h2>
+<div class="body">
+<p class="sources">A ticket arrives from Jira, ServiceNow or the support mailbox</p>
+<div class="flow">
+<div class="node"><h3>A1 · Data Quality</h3><p class="done">✓ Ticket is complete</p></div>
+<div class="hop"><x-shape kind="arrow-right" style="background:#c20f2f; width:44px; height:24px"></x-shape></div>
+<div class="node"><h3>A2 · Triage</h3><p class="done">✓ Priority set, SLA running</p></div>
+<div class="hop"><x-shape kind="arrow-right" style="background:#c20f2f; width:44px; height:24px"></x-shape></div>
+<div class="node"><h3>A3 · Resolution</h3><p class="done">✓ Fix with sources</p></div>
+</div>
+<div class="between">
+<p class="loop">↑ NEW KNOWLEDGE FEEDS THE NEXT SEARCH, BACK TO RESOLUTION ↑</p>
+<div class="hop"><x-shape kind="arrow-down" style="background:#c20f2f; width:24px; height:44px"></x-shape></div>
+</div>
+<div class="flow">
+<div class="node"><h3>A5 · Knowledge Builder</h3><p class="done">✓ Draft article</p></div>
+<div class="hop"><x-shape kind="arrow-left" style="background:#c20f2f; width:44px; height:24px"></x-shape></div>
+<div class="node"><h3>A4 · Closure Quality</h3><p class="done">✓ Approved, closed in Jira</p></div>
+<div class="hop"><x-shape kind="arrow-left" style="background:#c20f2f; width:44px; height:24px"></x-shape></div>
+<div class="node"><h3>Lead and engineer</h3><p class="done">✓ Fix confirmed</p></div>
+</div>
+</div>
+<aside>Walk the ticket clockwise: Data Quality checks it, Triage sets the priority, Resolution proposes a fix, the lead assigns and the engineer confirms the fix, Closure Quality drafts the note that the lead approves, and Knowledge Builder drafts an article that the next search can find.</aside>
+</section>
