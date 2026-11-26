@@ -117,7 +117,6 @@
   .loop polygon { fill: currentColor; }
   .nodes.looped .loop path { animation: march 0.7s linear infinite; }
   @keyframes march { to { stroke-dashoffset: -12; } }
-  @media (prefers-reduced-motion: reduce) { .slide.on, .nodes.looped .loop path { animation: none; } }
   .loop span { position: absolute; left: 50%; top: 8px; transform: translateX(-50%); background: var(--paper); padding: 0 12px; font-family: var(--mono); font-size: 10.5px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; white-space: nowrap; }
   .nodes.looped .loop { color: var(--red); }
   .node { padding: 18px 20px; display: flex; flex-direction: column; gap: 10px; transition: opacity 0.35s, transform 0.35s, box-shadow 0.35s, border-color 0.35s; position: relative; }
@@ -212,6 +211,41 @@
   .progress .track i { display: block; height: 100%; }
   .progress .legend { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--text); }
 
+  /* fill and motion */
+  .slide.on .card, .slide.on .tier { animation: rise 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) backwards; animation-delay: calc(var(--i, 0) * 55ms); }
+  @keyframes rise { from { opacity: 0; transform: translateY(14px); } }
+  .slide.on .track i, .slide.on .bar u i { animation: grow 1s 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) backwards; transform-origin: left; }
+  @keyframes grow { from { transform: scaleX(0); } }
+  .node.active .state { animation: blink 1s ease-in-out infinite; }
+  @keyframes blink { 50% { opacity: 0.35; } }
+  .seek { animation: seek 1.1s linear infinite; }
+  @keyframes seek { to { stroke-dashoffset: -9; } }
+  .eg { margin-top: auto; background: var(--paper); border: 1px dashed #cfc8bd; border-radius: 10px; padding: 12px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.75; color: var(--ink); }
+  .eg b { color: var(--muted); font-weight: 500; margin-right: 8px; } .eg i { color: var(--red); font-style: normal; }
+  .eg.scatter { display: flex; flex-wrap: wrap; gap: 10px 8px; padding: 16px 14px; }
+  .eg.scatter span, .eg.swap span:not(.arrow) { background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 2px 9px; }
+  .eg.scatter span:nth-child(1) { transform: rotate(-5deg); } .eg.scatter span:nth-child(2) { transform: rotate(4deg) translateY(5px); }
+  .eg.scatter span:nth-child(3) { transform: rotate(6deg); } .eg.scatter span:nth-child(4) { transform: rotate(-3deg) translateY(-3px); }
+  .eg.swap { display: flex; align-items: center; gap: 8px; } .eg.swap .arrow { position: static; background: var(--red); flex: none; }
+  .eg.swap span:last-child { background: var(--red); border-color: var(--red); color: #fff; }
+  .challenge .eg + .then { margin-top: 0; }
+  .agentcard .ask { margin-top: auto; background: var(--red-soft); border-radius: 12px; padding: 12px 14px; font-family: var(--serif); font-style: italic; font-size: 17.5px; line-height: 1.3; color: var(--ink); }
+  .gov { align-items: stretch; } .pyramid { justify-content: center; gap: 12px; } .tier { padding: 26px; } .tier h3 { font-size: 23px; } .tier p { font-size: 16.5px; }
+  .controls .control { flex: 1; display: flex; flex-direction: column; justify-content: center; } .controls .control h3 { font-size: 19px; } .controls .control p { font-size: 15.5px; }
+  .role .tick { font-size: 16px; padding: 13px 14px; }
+  .mini { margin-top: auto; background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 11px; }
+  .bar { display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; font-size: 13.5px; font-weight: 600; }
+  .bar em, .tog em { font-style: normal; font-family: var(--mono); font-size: 11px; font-weight: 500; color: var(--muted); }
+  .bar u { grid-column: 1 / -1; display: block; height: 6px; border-radius: 3px; background: #e2ddd4; overflow: hidden; }
+  .bar u i { display: block; height: 100%; width: var(--w); background: var(--c); border-radius: 3px; }
+  .tog { display: flex; justify-content: space-between; align-items: center; font-size: 13.5px; font-weight: 600; }
+  .tog i { width: 30px; height: 17px; border-radius: 9px; background: #d2ccc2; position: relative; flex: none; }
+  .tog i::after { content: ""; position: absolute; top: 2px; left: 2px; width: 13px; height: 13px; border-radius: 50%; background: #fff; }
+  .tog i.on { background: var(--green); } .tog i.on::after { left: 15px; }
+  .board { align-items: stretch; } .col { display: flex; flex-direction: column; } .col .items { flex: 1; } .live-col .items { grid-auto-rows: 1fr; }
+  .item { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 12px 16px; } .item b { font-size: 17px; } .item span { font-size: 14px; }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; } }
+
   /* chrome */
   #rail { position: absolute; right: 22px; bottom: 74px; display: flex; flex-direction: column; gap: 9px; align-items: center; }
   #rail button { width: 6px; height: 6px; border-radius: 3px; border: 0; padding: 0; background: #cfc9bf; cursor: pointer; transition: height 0.25s, background 0.25s; }
@@ -248,10 +282,10 @@
     <div class="card scope"><span class="mono red" style="margin-right:10px">Operations scope</span>
       <span class="opt on">Incident management</span><span class="opt">Knowledge management</span><span class="opt">Problem records · planned</span><span class="opt">Log analysis · planned</span><span class="opt">Ask a question · planned</span></div>
     <div class="four">
-      <div class="card challenge"><span class="tagbox">01</span><h3>Knowledge scattered</h3><p>The fix is split across runbooks, past tickets, emails and colleagues. Engineers spend the first minutes finding context before they can work on the problem.</p><span class="then">→ Resolution · Knowledge Builder</span></div>
-      <div class="card challenge"><span class="tagbox">02</span><h3>Data quality</h3><p>Tickets arrive as “I can’t log in”, with empty descriptions, or as tests. Work waits while the engineer writes back for what is missing.</p><span class="then">→ Data Quality</span></div>
-      <div class="card challenge"><span class="tagbox">03</span><h3>Triage and troubleshooting inconsistent</h3><p>Priority is the requester’s guess, and the first steps depend on who is on shift and what they remember.</p><span class="then">→ Triage · Resolution</span></div>
-      <div class="card challenge"><span class="tagbox">04</span><h3>Communication and reporting</h3><p>Closure notes, requester emails and stakeholder updates are written by hand, in different styles, and often late.</p><span class="then">→ Closure Quality · Reports</span></div>
+      <div class="card challenge"><span class="tagbox">01</span><h3>Knowledge scattered</h3><p>The fix is split across runbooks, past tickets, emails and colleagues. Engineers spend the first minutes finding context before they can work on the problem.</p><div class="eg scatter"><span>Runbook</span><span>Old ticket</span><span>Email thread</span><span>A colleague</span></div><span class="then">→ Resolution · Knowledge Builder</span></div>
+      <div class="card challenge"><span class="tagbox">02</span><h3>Data quality</h3><p>Tickets arrive as “I can’t log in”, with empty descriptions, or as tests. Work waits while the engineer writes back for what is missing.</p><div class="eg"><b>Subject</b>I can’t log in<br><b>Details</b><i>(empty)</i></div><span class="then">→ Data Quality</span></div>
+      <div class="card challenge"><span class="tagbox">03</span><h3>Triage and troubleshooting inconsistent</h3><p>Priority is the requester’s guess, and the first steps depend on who is on shift and what they remember.</p><div class="eg swap"><span>Requester: Medium</span><span class="arrow"></span><span>Rulebook: higher</span></div><span class="then">→ Triage · Resolution</span></div>
+      <div class="card challenge"><span class="tagbox">04</span><h3>Communication and reporting</h3><p>Closure notes, requester emails and stakeholder updates are written by hand, in different styles, and often late.</p><div class="eg"><b>Closure note</b>“Fixed. Closing.”<br><b>Cause, action, check</b><i>missing</i></div><span class="then">→ Closure Quality · Reports</span></div>
     </div>
   </section>
 
@@ -264,7 +298,7 @@
       <div class="card panel">
         <h3>Before the console (current process)</h3>
         <svg viewBox="0 0 600 290" role="img" aria-label="An incident sits between six separate sources that the engineer checks by hand" font-family="Manrope, Segoe UI, sans-serif">
-          <g stroke="#b9b2a7" stroke-width="3" stroke-linecap="round" stroke-dasharray="1 8">
+          <g class="seek" stroke="#b9b2a7" stroke-width="3" stroke-linecap="round" stroke-dasharray="1 8">
             <line x1="300" y1="145" x2="90" y2="48"/><line x1="300" y1="145" x2="300" y2="30"/><line x1="300" y1="145" x2="510" y2="48"/>
             <line x1="300" y1="145" x2="90" y2="244"/><line x1="300" y1="145" x2="300" y2="258"/><line x1="300" y1="145" x2="510" y2="244"/>
           </g>
@@ -306,11 +340,11 @@
     <div class="head"><div class="brand"><i></i>AMS Console</div>
       <div><h2>Five intelligent agents. One connected system.</h2><p class="mono">Specialised agents that hand their results to each other</p></div></div>
     <div class="five">
-      <div class="card agentcard"><div class="top"><span class="tagbox">A1</span><h3>Data Quality</h3></div><p class="key">Key capability: checks the ticket before any work starts</p><p>Checks every ticket against rules the team writes. It flags an incomplete ticket with the reason and drafts the email asking the requester for what is missing.</p></div>
-      <div class="card agentcard"><div class="top"><span class="tagbox">A2</span><h3>Triage</h3></div><p class="key">Key capability: priority from the rulebook, not the requester</p><p>Reads the ticket, applies the business rulebook and sets the priority and application. A lowered P1 or a large change is flagged for an engineer’s review. The model reports regulatory, financial and system impact beside it.</p></div>
-      <div class="card agentcard"><div class="top"><span class="tagbox">A3</span><h3>Resolution</h3></div><p class="key">Key capability: a suggested fix grounded in sources</p><p>Searches the runbooks and similar closed tickets by meaning and by keyword, then proposes steps and shows where each came from.</p></div>
-      <div class="card agentcard"><div class="top"><span class="tagbox">A4</span><h3>Closure Quality</h3></div><p class="key">Key capability: complete, consistent closure notes</p><p>Scores the closure note for cause, action and check. It asks the engineer short questions and drafts the note with the gaps marked.</p></div>
-      <div class="card agentcard"><div class="top"><span class="tagbox">A5</span><h3>Knowledge Builder</h3></div><p class="key">Key capability: turns good fixes into knowledge</p><p>Matches each resolved ticket to an article, drafts a new article where none covers it, and suggests a problem record for repeat issues.</p></div>
+      <div class="card agentcard"><div class="top"><span class="tagbox">A1</span><h3>Data Quality</h3></div><p class="key">Key capability: checks the ticket before any work starts</p><p>Checks every ticket against rules the team writes. It flags an incomplete ticket with the reason and drafts the email asking the requester for what is missing.</p><p class="ask">“Is there enough here to start?”</p></div>
+      <div class="card agentcard"><div class="top"><span class="tagbox">A2</span><h3>Triage</h3></div><p class="key">Key capability: priority from the rulebook, not the requester</p><p>Reads the ticket, applies the business rulebook and sets the priority and application. A lowered P1 or a large change is flagged for an engineer’s review. The model reports regulatory, financial and system impact beside it.</p><p class="ask">“How urgent is this, really?”</p></div>
+      <div class="card agentcard"><div class="top"><span class="tagbox">A3</span><h3>Resolution</h3></div><p class="key">Key capability: a suggested fix grounded in sources</p><p>Searches the runbooks and similar closed tickets by meaning and by keyword, then proposes steps and shows where each came from.</p><p class="ask">“Have we solved this before?”</p></div>
+      <div class="card agentcard"><div class="top"><span class="tagbox">A4</span><h3>Closure Quality</h3></div><p class="key">Key capability: complete, consistent closure notes</p><p>Scores the closure note for cause, action and check. It asks the engineer short questions and drafts the note with the gaps marked.</p><p class="ask">“Did we write down what we did?”</p></div>
+      <div class="card agentcard"><div class="top"><span class="tagbox">A5</span><h3>Knowledge Builder</h3></div><p class="key">Key capability: turns good fixes into knowledge</p><p>Matches each resolved ticket to an article, drafts a new article where none covers it, and suggests a problem record for repeat issues.</p><p class="ask">“Will the next person find it?”</p></div>
     </div>
     <div class="three" style="margin-top:12px">
       <div class="card feature"><p class="mono">Lead desk</p><p class="key">Key value: the right engineer, without a round of messages</p><p>Assignment with a suggestion that knows shift hours, leave and open load. Review queue for P1 and P2 closures.</p></div>
@@ -488,11 +522,11 @@
       <div><h2>Three roles, one console</h2><p class="mono">Sign in with a password or an Atlassian account · The menu follows the role</p></div></div>
     <div class="roles">
       <div class="card role"><p class="mono red">Engineer</p><h3>Works the ticket</h3>
-        <div class="tick">My worklist, ordered by SLA time left</div><div class="tick">Ticket page with a step bar and the next action</div><div class="tick">Suggested fix and AI assistant</div><div class="tick">Closure note to complete and send</div></div>
+        <div class="tick">My worklist, ordered by SLA time left</div><div class="tick">Ticket page with a step bar and the next action</div><div class="tick">Suggested fix and AI assistant</div><div class="tick">Closure note to complete and send</div><div class="mini"><p class="mono">Illustration · my worklist</p><div class="bar"><span>P1 · payroll run blocked</span><em>88% of SLA used</em><u><i style="--w:88%;--c:var(--red)"></i></u></div><div class="bar"><span>P2 · login errors</span><em>50% of SLA used</em><u><i style="--w:50%;--c:#e0b23c"></i></u></div><div class="bar"><span>P3 · slow report</span><em>15% of SLA used</em><u><i style="--w:15%;--c:var(--green)"></i></u></div></div></div>
       <div class="card role"><p class="mono red">Lead</p><h3>Runs the team</h3>
-        <div class="tick">Lead desk: assign and reassign engineers</div><div class="tick">Team hours, leave and a limit on open tickets</div><div class="tick">Review queue for P1 and P2 closure notes</div><div class="tick">Incidents and stakeholder updates</div></div>
+        <div class="tick">Lead desk: assign and reassign engineers</div><div class="tick">Team hours, leave and a limit on open tickets</div><div class="tick">Review queue for P1 and P2 closure notes</div><div class="tick">Incidents and stakeholder updates</div><div class="mini"><p class="mono">Illustration · team load</p><div class="bar"><span>Engineer A</span><em>4 of 5 open</em><u><i style="--w:80%;--c:var(--red)"></i></u></div><div class="bar"><span>Engineer B</span><em>2 of 5 open</em><u><i style="--w:40%;--c:var(--green)"></i></u></div><div class="bar"><span>Engineer C</span><em>on leave</em><u><i style="--w:0%;--c:var(--green)"></i></u></div></div></div>
       <div class="card role"><p class="mono red">Admin</p><h3>Configures and reports</h3>
-        <div class="tick">Rule builder with run history and revert</div><div class="tick">A page per agent with results and feedback</div><div class="tick">Reports and trends, with CSV download</div><div class="tick">“View as” to see any person’s console</div></div>
+        <div class="tick">Rule builder with run history and revert</div><div class="tick">A page per agent with results and feedback</div><div class="tick">Reports and trends, with CSV download</div><div class="tick">“View as” to see any person’s console</div><div class="mini"><p class="mono">Illustration · rules</p><div class="tog"><span>Empty description → stop</span><i class="on"></i></div><div class="tog"><span>Test ticket → reject</span><i class="on"></i></div><div class="tog"><span>Attachment only → ask</span><i></i></div><div class="tog"><span>Last change</span><em>recorded, can be reverted</em></div></div></div>
     </div>
   </section>
 
@@ -626,6 +660,7 @@
     if (icon) el.insertAdjacentHTML("afterbegin", `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${icon}</svg>`);
   });
 
+  slides.forEach((s) => s.querySelectorAll(".card, .tier").forEach((el, i) => el.style.setProperty("--i", i)));  // entrance order
   slides.forEach((_, n) => {
     const b = document.createElement("button");
     b.setAttribute("aria-label", `Slide ${n + 1}`);

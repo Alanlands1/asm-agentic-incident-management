@@ -1,20 +1,58 @@
 {
   "v": 5,
-  "createdOnFiles": { "v": 1, "at": "2026-11-26T16:30:00Z" },
+  "createdOnFiles": {
+    "v": 1,
+    "at": "2026-11-26T16:30:00Z"
+  },
   "lists": "css",
-  "format": { "v": 1, "shared": ["project/deck.css"] },
+  "format": {
+    "v": 1,
+    "shared": [
+      "project/deck.css"
+    ]
+  },
   "title": "AMS Console: AI in action",
   "cover": "cover",
-  "order": ["cover", "problem", "before-after", "agents", "path", "capabilities", "evidence", "governance", "roles", "status"],
+  "order": [
+    "cover",
+    "problem",
+    "before-after",
+    "agents",
+    "path",
+    "capabilities",
+    "architecture",
+    "evidence",
+    "governance",
+    "roles",
+    "status"
+  ],
   "sections": {
-    "why": { "description": "The challenge the console solves and what changes for the engineer.", "start": "cover" },
-    "how": { "description": "The five agents, the path of one ticket and the twelve capabilities behind them.", "start": "agents" },
-    "trust": { "description": "The scores and tests, the controls, the three roles and where each capability stands.", "start": "evidence" }
+    "why": {
+      "description": "The challenge the console solves and what changes for the engineer.",
+      "start": "cover"
+    },
+    "how": {
+      "description": "The five agents, the path of one ticket, the twelve capabilities behind them and how it is built.",
+      "start": "agents"
+    },
+    "trust": {
+      "description": "The scores and tests, the controls, the three roles and where each capability stands.",
+      "start": "evidence"
+    }
   },
   "faces": {
-    "fraunces": { "family": "Fraunces", "href": "https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600&display=swap" },
-    "manrope": { "family": "Manrope", "href": "https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&display=swap" },
-    "jetbrains-mono": { "family": "JetBrains Mono", "href": "https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500&display=swap" }
+    "fraunces": {
+      "family": "Fraunces",
+      "href": "https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600&display=swap"
+    },
+    "manrope": {
+      "family": "Manrope",
+      "href": "https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&display=swap"
+    },
+    "jetbrains-mono": {
+      "family": "JetBrains Mono",
+      "href": "https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500&display=swap"
+    }
   },
   "designSystems": []
 }
