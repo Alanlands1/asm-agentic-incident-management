@@ -1,0 +1,7 @@
+# Evaluation only (evaluation/ragas_report.py). Not needed to run the app.
+-r requirements.txt
+# Pinned: the metric API changes between minor releases. The judges call Anthropic through the SDK
+# (llm_factory), so no langchain-anthropic is needed.
+ragas==0.4.3
+# ragas 0.4.3 imports chat_models.vertexai at load time, which langchain-community 0.4.2 removed.
+langchain-community==0.4.1
