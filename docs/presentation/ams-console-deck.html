@@ -1,0 +1,577 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AMS Console: AI in action</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;1,9..144,500&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<style>
+  :root {
+    --paper: #f9f7f3; --card: #ffffff; --ink: #17130f; --text: #4a4540; --muted: #8a8279; --line: #e6e1d9;
+    --red: #c20f2f; --red-soft: #fdecef; --red-line: #f3c2cb; --dark: #17130f; --gold: #d9b45a;
+    --green: #1d6b43; --green-soft: #eaf4ee; --green-line: #b9d8c6; --amber: #a86a00; --amber-soft: #fbf3df; --amber-line: #e6c97a;
+    --serif: Fraunces, Georgia, serif; --sans: Manrope, "Segoe UI", Arial, sans-serif; --mono: "JetBrains Mono", Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; overflow: hidden; background: #ece8e1; font-family: var(--sans); color: var(--ink); }
+  button { font: inherit; color: inherit; }
+  #stage { position: absolute; top: 50%; left: 50%; width: 1440px; height: 810px; transform-origin: 0 0; overflow: hidden; cursor: pointer;
+    background: radial-gradient(900px 520px at 88% 6%, #f7dfe2 0%, rgba(247, 223, 226, 0) 70%), radial-gradient(700px 420px at 0% 100%, #f3ead9 0%, rgba(243, 234, 217, 0) 70%), var(--paper); }
+  .slide { position: absolute; inset: 0; padding: 26px 62px 34px 40px; display: none; flex-direction: column; }
+  .slide.on { display: flex; animation: in 0.35s ease both; }
+  @keyframes in { from { opacity: 0; transform: translateY(8px); } }
+
+  /* shared pieces */
+  .mono { font-family: var(--mono); font-size: 11px; font-weight: 500; letter-spacing: 0.2em; text-transform: uppercase; color: var(--muted); }
+  .mono.red { color: var(--red); }
+  .head { display: flex; align-items: center; gap: 22px; height: 60px; flex: none; margin-bottom: 18px; }
+  .brand { font-family: var(--serif); font-weight: 600; font-size: 19px; line-height: 1; padding-right: 22px; border-right: 1px solid var(--line); height: 44px; display: flex; align-items: center; gap: 9px; }
+  .brand i { width: 22px; height: 22px; border-radius: 6px; background: var(--red); display: block; }
+  .head h2 { font-family: var(--serif); font-weight: 600; font-size: 28px; line-height: 1.1; letter-spacing: -0.01em; }
+  .head .mono { margin-top: 5px; }
+  .head .right { margin-left: auto; text-align: right; display: flex; align-items: center; gap: 16px; }
+  .intro { font-size: 15.5px; line-height: 1.5; color: var(--text); max-width: 1180px; margin-bottom: 16px; flex: none; }
+  .intro b { color: var(--ink); font-weight: 600; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 1px 2px rgba(23, 19, 15, 0.04); }
+  .tagbox { font-family: var(--mono); font-size: 13px; font-weight: 600; color: var(--red); background: var(--red-soft); border: 1px solid var(--red-line); border-radius: 8px; padding: 6px 10px; flex: none; }
+  h3 { font-size: 19px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.25; }
+  p { font-size: 14.5px; line-height: 1.5; color: var(--text); }
+  .key { font-size: 13.5px; font-weight: 700; color: var(--red); line-height: 1.35; }
+  .dark { background: var(--dark); color: #fff; border-radius: 16px; }
+  .dark .mono { color: var(--gold); }
+  .divider { display: flex; align-items: center; gap: 16px; margin: 12px 0 10px; flex: none; }
+  .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+
+  /* 1 cover */
+  .cover { padding: 0; }
+  .frame { position: absolute; inset: 24px; border: 1px solid var(--line); border-radius: 20px; padding: 44px 84px; display: flex; flex-direction: column; overflow: hidden; }
+  .ghost { position: absolute; right: -30px; top: 150px; font-family: var(--serif); font-weight: 600; font-size: 420px; line-height: 1; letter-spacing: -0.04em; color: rgba(194, 15, 47, 0.07); pointer-events: none; }
+  .cover .brand { border: 0; font-size: 22px; }
+  .cover .mid { margin: auto 0; display: flex; flex-direction: column; gap: 20px; position: relative; }
+  .kicker { display: flex; align-items: center; gap: 14px; }
+  .kicker::before { content: ""; width: 44px; height: 2px; background: var(--red); }
+  h1 { font-family: var(--serif); font-weight: 600; font-size: 100px; line-height: 0.98; letter-spacing: -0.025em; }
+  h1 span { display: block; color: var(--red); font-size: 58px; line-height: 1.15; letter-spacing: -0.015em; margin-top: 6px; }
+  .cover .sub { font-family: var(--serif); font-style: italic; font-weight: 500; font-size: 24px; color: var(--ink); }
+  .cover .lede { font-size: 18px; line-height: 1.55; max-width: 760px; }
+  .pills { display: flex; flex-wrap: wrap; gap: 10px; }
+  .pill { font-family: var(--mono); font-size: 11.5px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 10px 16px; display: flex; align-items: center; gap: 9px; }
+  .pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--red); }
+  .cover .foot { display: flex; justify-content: space-between; position: relative; }
+
+  /* 2 challenge */
+  .scope { padding: 14px 20px; display: flex; align-items: center; gap: 10px; border-left: 3px solid var(--red); margin-bottom: 16px; flex: none; }
+  .scope .opt { flex: 1; text-align: center; font-size: 14px; font-weight: 600; border: 1px solid var(--line); background: var(--paper); border-radius: 9px; padding: 9px 8px; color: var(--muted); }
+  .scope .opt.on { background: var(--red); border-color: var(--red); color: #fff; }
+  .four { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; flex: 1; min-height: 0; }
+  .challenge { padding: 22px 22px 20px; display: flex; flex-direction: column; gap: 10px; border-left: 3px solid var(--red); }
+  .challenge .tagbox { align-self: flex-start; }
+  .challenge h3 { font-size: 23px; margin-top: 6px; }
+  .challenge p { font-size: 17.5px; line-height: 1.55; }
+  .then { margin-top: auto; font-family: var(--mono); font-size: 12px; color: var(--green); background: var(--green-soft); border: 1px solid var(--green-line); border-radius: 8px; padding: 8px 10px; }
+
+  /* 3 before and with */
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; flex: 1; min-height: 0; }
+  .panel { padding: 20px 24px; display: flex; flex-direction: column; min-height: 0; }
+  .panel.with { border-top: 3px solid var(--red); }
+  .panel svg { flex: 1; width: 100%; min-height: 0; }
+  .strip { border-radius: 9px; padding: 11px 14px; font-size: 14.5px; font-weight: 500; text-align: center; background: var(--paper); border: 1px solid var(--line); color: var(--ink); }
+  .with .strip { background: var(--red-soft); border-color: var(--red-line); }
+  .trio { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px; }
+  .trio .strip { font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.06em; padding: 8px; }
+
+  /* 4 agents */
+  .five { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; flex: 1; min-height: 0; }
+  .agentcard { padding: 18px 18px; display: flex; flex-direction: column; gap: 8px; border-top: 3px solid var(--red); }
+  .agentcard .top { display: flex; align-items: center; gap: 10px; }
+  .agentcard h3 { font-family: var(--serif); font-weight: 600; font-size: 21px; }
+  .agentcard p { font-size: 15.5px; line-height: 1.55; }
+  .agentcard .key { font-size: 14.5px; }
+  .three { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; flex: none; }
+  .feature { padding: 14px 18px; display: flex; flex-direction: column; gap: 4px; border-top: 3px solid var(--ink); }
+  .feature .mono { color: var(--ink); font-weight: 600; font-size: 12px; letter-spacing: 0.12em; }
+  .feature p { font-size: 13.5px; }
+  .soon { padding: 11px 16px; border-style: dashed; background: transparent; box-shadow: none; }
+  .soon b { font-size: 14.5px; font-weight: 600; color: var(--text); display: block; }
+  .soon span { font-size: 12.5px; color: var(--muted); }
+
+  /* 5 pipeline */
+  .sources { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; flex: none; }
+  .source { padding: 12px 18px; }
+  .source b { font-size: 15.5px; font-weight: 600; display: block; }
+  .source span { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
+  .nodes { display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: 1fr 1fr; gap: 34px; flex: 1; margin: 34px 0 14px; min-height: 0; }
+  /* the hand-over between two cards: grey until the card it leaves is done */
+  .arrow { position: absolute; width: 26px; height: 26px; border-radius: 50%; background: var(--card); border: 1px solid var(--line); color: #b9b2a7; display: grid; place-items: center; font-size: 15px; line-height: 1; z-index: 3; transition: background 0.35s, color 0.35s, border-color 0.35s; }
+  .arrow.r { right: -31px; top: 50%; margin-top: -13px; } .arrow.l { left: -31px; top: 50%; margin-top: -13px; }
+  .arrow.d { bottom: -31px; left: 50%; margin-left: -13px; } .arrow.t { top: -31px; left: 50%; margin-left: -13px; }
+  .node.done > .arrow, .node.active > .arrow.t { background: var(--red); border-color: var(--red); color: #fff; }
+  .node.dim > .arrow { opacity: 1; }
+  /* the way back: from Knowledge Builder (bottom left) through the gap between the rows, up into Resolution (top right) */
+  .nodes { position: relative; }
+  .loop { position: absolute; left: 150px; width: 870px; top: calc(50% - 17px); height: 34px; pointer-events: none; z-index: 1; color: #c9c2b7; transition: color 0.35s; }
+  .loop::before { content: ""; position: absolute; left: 0; bottom: 0; width: 100%; height: 17px; border-left: 2px dashed currentColor; border-top: 2px dashed currentColor; border-top-left-radius: 8px; }
+  .loop::after { content: ""; position: absolute; right: -2px; top: 4px; height: 13px; border-right: 2px dashed currentColor; }
+  .loop i { position: absolute; right: -8px; top: -5px; width: 0; height: 0; border: 7px solid transparent; border-bottom: 10px solid currentColor; border-top: 0; }
+  .loop span { position: absolute; left: 50%; top: 8px; transform: translateX(-50%); background: var(--paper); padding: 0 12px; font-family: var(--mono); font-size: 10.5px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; white-space: nowrap; }
+  .nodes.looped .loop { color: var(--red); }
+  .node { padding: 18px 20px; display: flex; flex-direction: column; gap: 10px; transition: opacity 0.35s, transform 0.35s, box-shadow 0.35s, border-color 0.35s; position: relative; }
+  .node .top { display: flex; align-items: center; gap: 12px; }
+  .node .state { margin-left: auto; font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em; color: var(--muted); }
+  .node ul { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .node li { font-family: var(--mono); font-size: 12.5px; color: var(--text); display: flex; gap: 9px; }
+  .node li::before { content: "◆"; color: var(--red); font-size: 8px; line-height: 19px; }
+  .node .live, .node .result { display: none; }
+  .chips { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .chip { font-family: var(--mono); font-size: 12.5px; text-align: center; padding: 7px 6px; border-radius: 7px; background: var(--red-soft); border: 1px solid var(--red-line); color: var(--ink); }
+  .chip.person { background: var(--dark); border-color: var(--dark); color: #fff; }
+  .node .live p { font-family: var(--mono); font-size: 12.5px; margin-top: 9px; }
+  .result { font-family: var(--mono); font-size: 12.5px; color: var(--green); background: var(--green-soft); border: 1px solid var(--green-line); border-radius: 8px; padding: 8px 12px; margin-top: auto; }
+  .node.dim, .source.dim { opacity: 0.38; }
+  .node.active { border-color: var(--gold); box-shadow: 0 14px 34px rgba(23, 19, 15, 0.14); transform: scale(1.02); z-index: 2; }
+  .node.active ul { display: none; } .node.active .live { display: block; }
+  .node.active .state { color: var(--amber); }
+  .node.done { border-color: var(--green-line); }
+  .node.done .result { display: block; }
+  .node.done .state { color: var(--green); }
+  .source.active { border-color: var(--gold); box-shadow: 0 10px 26px rgba(23, 19, 15, 0.12); }
+  .around { padding: 12px 18px; display: grid; grid-template-columns: 240px repeat(4, 1fr); gap: 12px; align-items: center; flex: none; }
+  .around .tile { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; }
+  .around .tile b { font-size: 13.5px; font-weight: 600; display: block; }
+  .around .tile span { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .steps { display: flex; gap: 6px; }
+  .steps i { width: 8px; height: 8px; border-radius: 50%; background: #d9d4cb; display: block; }
+  .steps i.past { background: #e59aa8; } .steps i.now { background: var(--red); }
+  #cap { font-size: 13.5px; color: var(--text); margin-top: 4px; max-width: 420px; }
+
+  /* 6 capabilities */
+  .twelve { display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(4, 1fr); gap: 12px; flex: 1; min-height: 0; }
+  .cap { padding: 14px 20px; display: flex; flex-direction: column; gap: 3px; border-left: 3px solid var(--red); }
+  .cap h3 { font-size: 17px; }
+  .cap p { font-size: 13.5px; }
+  .cap .mono { margin-top: auto; color: var(--red); font-size: 10.5px; }
+
+  /* 7 measured */
+  .measured { display: grid; grid-template-columns: 1.15fr 1fr 1fr; gap: 14px; flex: 1; min-height: 0; }
+  .measure { padding: 22px 24px; display: flex; flex-direction: column; gap: 10px; }
+  .bignum { font-family: var(--serif); font-weight: 600; font-size: 76px; line-height: 0.95; letter-spacing: -0.02em; }
+  .bignum small { font-family: var(--sans); font-size: 18px; font-weight: 500; color: var(--muted); letter-spacing: 0; }
+  .band { background: var(--red); color: #fff; font-size: 13.5px; font-weight: 600; border-radius: 7px; padding: 6px 12px; }
+  .score { display: grid; grid-template-columns: 150px 1fr; gap: 10px; align-items: baseline; padding: 11px 0; border-top: 1px solid var(--line); font-size: 14.5px; }
+  .score b { font-weight: 600; } .score span { color: var(--text); }
+  .score em { font-style: normal; font-family: var(--mono); font-weight: 600; color: var(--green); }
+  .score em.todo { color: var(--amber); }
+  .measure ol { padding-left: 20px; display: flex; flex-direction: column; gap: 12px; font-size: 15px; line-height: 1.45; color: var(--text); }
+  .tick { background: var(--paper); border: 1px solid var(--line); border-radius: 9px; padding: 10px 12px; font-size: 14px; font-weight: 600; display: flex; gap: 10px; }
+  .tick::before { content: "✓"; color: var(--red); }
+  .fine { font-size: 12.5px; color: var(--muted); margin-top: auto; line-height: 1.45; }
+
+  /* 8 controls */
+  .gov { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; flex: 1; min-height: 0; align-items: center; }
+  .pyramid { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .tier { border-radius: 14px; padding: 18px 22px; text-align: center; }
+  .tier h3 { margin-bottom: 4px; }
+  .tier.one { background: var(--red); width: 100%; } .tier.one h3, .tier.one p { color: #fff; }
+  .tier.two { background: var(--red-soft); border: 1px solid var(--red-line); width: 86%; }
+  .tier.three { background: var(--card); border: 1.5px solid var(--red); width: 72%; } .tier.three h3 { color: var(--red); }
+  .down { color: var(--red); font-size: 16px; line-height: 1; }
+  .controls { display: flex; flex-direction: column; gap: 12px; }
+  .control { padding: 16px 20px; border-left: 3px solid var(--red); }
+  .control h3 { font-size: 17px; margin-bottom: 3px; }
+
+  /* 9 roles */
+  .roles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; flex: 1; min-height: 0; }
+  .role { padding: 24px 24px; display: flex; flex-direction: column; gap: 10px; border-top: 3px solid var(--red); }
+  .role h3 { font-family: var(--serif); font-weight: 600; font-size: 26px; margin-bottom: 4px; }
+
+  /* 10 backlog */
+  .board { display: grid; grid-template-columns: 1fr 1fr 1.25fr; gap: 14px; flex: 1; align-items: start; min-height: 0; }
+  .col { overflow: hidden; }
+  .col header { background: var(--dark); color: #fff; padding: 12px 18px; display: flex; align-items: center; gap: 12px; }
+  .col header b { font-family: var(--serif); font-weight: 600; font-size: 30px; line-height: 1; }
+  .col header .mono { color: #fff; font-weight: 600; } .col header small { display: block; font-size: 11.5px; color: rgba(255, 255, 255, 0.6); margin-top: 2px; }
+  .col .items { padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .item { border-radius: 10px; padding: 9px 13px; border: 1px solid var(--line); background: var(--paper); }
+  .item b { display: block; font-size: 15px; font-weight: 600; } .item span { font-size: 12.5px; color: var(--text); }
+  .live-col .item { background: var(--green-soft); border-color: var(--green-line); }
+  .mid-col .item { background: var(--amber-soft); border-color: var(--amber-line); }
+  .progress { flex: none; margin-top: 12px; }
+  .progress .track { height: 8px; border-radius: 4px; background: #e2ddd4; overflow: hidden; display: flex; margin: 6px 0; }
+  .progress .track i { display: block; height: 100%; }
+  .progress .legend { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--text); }
+
+  /* chrome */
+  #rail { position: absolute; right: 22px; bottom: 74px; display: flex; flex-direction: column; gap: 9px; align-items: center; }
+  #rail button { width: 6px; height: 6px; border-radius: 3px; border: 0; padding: 0; background: #cfc9bf; cursor: pointer; transition: height 0.25s, background 0.25s; }
+  #rail button.on { height: 18px; background: var(--red); }
+  #rail button:focus-visible, #full:focus-visible { outline: 2px solid var(--red); outline-offset: 3px; }
+  #full { position: absolute; right: 12px; bottom: 30px; width: 26px; height: 26px; border: 1px solid var(--line); background: var(--card); border-radius: 7px; cursor: pointer; font-size: 13px; line-height: 1; padding: 0; }
+  #count { position: absolute; right: 12px; bottom: 8px; width: 46px; text-align: center; font-family: var(--mono); font-size: 10px; color: var(--muted); right: 2px; }
+</style>
+</head>
+<body>
+<div id="stage">
+
+  <!-- 1 cover -->
+  <section class="slide cover on" data-steps="1">
+    <div class="frame">
+      <div class="ghost">AMS</div>
+      <div class="brand"><i></i>AMS Console</div>
+      <div class="mid">
+        <p class="mono kicker">AMS · Application Management Services</p>
+        <h1>AMS Console<span>Agentic incident management</span></h1>
+        <p class="sub">AI-powered operations</p>
+        <p class="lede">This presentation shows how the AMS Console turns scattered support knowledge into checked, prioritised and guided decisions on every ticket. The aim is safer, faster and more repeatable work, with a person approving each decision.</p>
+        <div class="pills"><span class="pill">AI powered</span><span class="pill">People approve</span><span class="pill">Built in house</span></div>
+      </div>
+      <div class="foot"><span class="mono">Internal demo &nbsp;|&nbsp; November 2026</span><span class="mono red">● Click, or press → to begin</span></div>
+    </div>
+  </section>
+
+  <!-- 2 challenge -->
+  <section class="slide" data-steps="1">
+    <div class="head"><div class="brand"><i></i>AMS Console</div>
+      <div><h2>The challenge we set out to solve</h2><p class="mono">Four operational challenges that most affect incident outcomes</p></div></div>
+    <p class="intro">Our review narrowed the focus to four recurring gaps: <b>scattered knowledge, data quality, inconsistent triage and troubleshooting, and communication and reporting</b>. The console is built to steady these four areas on every ticket.</p>
+    <div class="card scope"><span class="mono red" style="margin-right:10px">Operations scope</span>
+      <span class="opt on">Incident management</span><span class="opt">Knowledge management</span><span class="opt">Problem records · planned</span><span class="opt">Log analysis · planned</span><span class="opt">Ask a question · planned</span></div>
+    <div class="four">
+      <div class="card challenge"><span class="tagbox">01</span><h3>Knowledge scattered</h3><p>The fix is split across runbooks, past tickets, emails and colleagues. Engineers spend the first minutes finding context before they can work on the problem.</p><span class="then">→ Resolution · Knowledge Builder</span></div>
+      <div class="card challenge"><span class="tagbox">02</span><h3>Data quality</h3><p>Tickets arrive as “I can’t log in”, with empty descriptions, or as tests. Work waits while the engineer writes back for what is missing.</p><span class="then">→ Data Quality</span></div>
+      <div class="card challenge"><span class="tagbox">03</span><h3>Triage and troubleshooting inconsistent</h3><p>Priority is the requester’s guess, and the first steps depend on who is on shift and what they remember.</p><span class="then">→ Triage · Resolution</span></div>
+      <div class="card challenge"><span class="tagbox">04</span><h3>Communication and reporting</h3><p>Closure notes, requester emails and stakeholder updates are written by hand, in different styles, and often late.</p><span class="then">→ Closure Quality · Reports</span></div>
+    </div>
+  </section>
+
+  <!-- 3 knowledge -->
+  <section class="slide" data-steps="1">
+    <div class="head"><div class="brand"><i></i>AMS Console</div>
+      <div><h2>Every incident carries knowledge</h2><p class="mono">The knowledge exists · Finding it takes too long</p></div></div>
+    <p class="intro">When an incident starts, the team spends real time pulling information from several places. One entry point removes that search, and the difference shows in <b>response speed, consistency and confidence</b>.</p>
+    <div class="pair">
+      <div class="card panel">
+        <h3>Before the console (current process)</h3>
+        <svg viewBox="0 0 600 290" role="img" aria-label="An incident sits between six separate sources that the engineer checks by hand" font-family="Manrope, Segoe UI, sans-serif">
+          <g stroke="#b9b2a7" stroke-width="3">
+            <line x1="300" y1="145" x2="90" y2="48"/><line x1="300" y1="145" x2="300" y2="30"/><line x1="300" y1="145" x2="510" y2="48"/>
+            <line x1="300" y1="145" x2="90" y2="244"/><line x1="300" y1="145" x2="300" y2="258"/><line x1="300" y1="145" x2="510" y2="244"/>
+          </g>
+          <circle cx="300" cy="145" r="46" fill="#fff" stroke="#c20f2f" stroke-width="2"/>
+          <g font-size="13.5" text-anchor="middle" font-weight="600" fill="#17130f">
+            <text x="300" y="141">Incident</text><text x="300" y="158">arrives</text>
+            <g>
+              <rect x="25" y="30" width="130" height="34" rx="9" fill="#f3efe8" stroke="#e6e1d9"/><text x="90" y="52">Jira</text>
+              <rect x="235" y="6" width="130" height="34" rx="9" fill="#f3efe8" stroke="#e6e1d9"/><text x="300" y="28">ServiceNow</text>
+              <rect x="445" y="30" width="130" height="34" rx="9" fill="#f3efe8" stroke="#e6e1d9"/><text x="510" y="52">Mailbox</text>
+              <rect x="25" y="228" width="130" height="34" rx="9" fill="#f3efe8" stroke="#e6e1d9"/><text x="90" y="250">Runbooks</text>
+              <rect x="235" y="250" width="130" height="34" rx="9" fill="#f3efe8" stroke="#e6e1d9"/><text x="300" y="272">Past tickets</text>
+              <rect x="445" y="228" width="130" height="34" rx="9" fill="#f3efe8" stroke="#e6e1d9"/><text x="510" y="250">People</text>
+            </g>
+          </g>
+        </svg>
+        <div class="strip">The engineer joins up information from many sources by hand before giving an answer.</div>
+        <div class="trio"><div class="strip">6 sources</div><div class="strip">Search by hand</div><div class="strip">Delayed action</div></div>
+      </div>
+      <div class="card panel with">
+        <h3 style="color:var(--red)">With the console</h3>
+        <svg viewBox="0 0 600 290" role="img" aria-label="An incident goes through the console's agents and reaches the engineer as a guided response" font-family="Manrope, Segoe UI, sans-serif">
+          <g font-size="14.5" text-anchor="middle" font-weight="600">
+            <rect x="190" y="8" width="220" height="48" rx="10" fill="#f3efe8" stroke="#e6e1d9"/><text x="300" y="38" fill="#17130f">Incident arrives</text>
+            <rect x="160" y="104" width="280" height="62" rx="12" fill="#c20f2f"/><text x="300" y="131" fill="#fff">AMS Console</text><text x="300" y="151" fill="#fff" font-weight="500" font-size="13">five agents, one pipeline</text>
+            <rect x="160" y="216" width="280" height="62" rx="12" fill="#17130f"/><text x="300" y="243" fill="#fff">Guided response</text><text x="300" y="263" fill="#d9b45a" font-weight="500" font-size="13">confirmed by the engineer</text>
+          </g>
+          <g stroke="#c20f2f" stroke-width="3" fill="none"><path d="M300 60v38m-8-10 8 10 8-10"/><path d="M300 170v40m-8-10 8 10 8-10"/></g>
+        </svg>
+        <div class="strip">The ticket reaches the engineer checked, prioritised and with a suggested fix and its sources.</div>
+        <div class="trio"><div class="strip">1 entry point</div><div class="strip">Single flow</div><div class="strip">Faster response</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4 agents -->
+  <section class="slide" data-steps="1">
+    <div class="head"><div class="brand"><i></i>AMS Console</div>
+      <div><h2>Five intelligent agents. One connected system.</h2><p class="mono">Specialised agents that hand their results to each other</p></div></div>
+    <div class="five">
+      <div class="card agentcard"><div class="top"><span class="tagbox">A1</span><h3>Data Quality</h3></div><p class="key">Key capability: checks the ticket before any work starts</p><p>Checks every ticket against rules the team writes. It flags an incomplete ticket with the reason and drafts the email asking the requester for what is missing.</p></div>
+      <div class="card agentcard"><div class="top"><span class="tagbox">A2</span><h3>Triage</h3></div><p class="key">Key capability: priority from the rulebook, not the requester</p><p>Reads the ticket, applies the business rulebook and sets the priority and application. A lowered P1 or a large change is flagged for an engineer’s review.</p></div>
+      <div class="card agentcard"><div class="top"><span class="tagbox">A3</span><h3>Resolution</h3></div><p class="key">Key capability: a suggested fix grounded in sources</p><p>Searches the runbooks and similar closed tickets by meaning and by keyword, then proposes steps and shows where each came from.</p></div>
+      <div class="card agentcard"><div class="top"><span class="tagbox">A4</span><h3>Closure Quality</h3></div><p class="key">Key capability: complete, consistent closure notes</p><p>Scores the closure note for cause, action and check. It asks the engineer short questions and drafts the note with the gaps marked.</p></div>
+      <div class="card agentcard"><div class="top"><span class="tagbox">A5</span><h3>Knowledge Builder</h3></div><p class="key">Key capability: turns good fixes into knowledge</p><p>Matches each resolved ticket to an article, drafts a new article where none covers it, and suggests a problem record for repeat issues.</p></div>
+    </div>
+    <div class="three" style="margin-top:12px">
+      <div class="card feature"><p class="mono">Lead desk</p><p class="key">Key value: the right engineer, without a round of messages</p><p>Assignment with a suggestion that knows shift hours, leave and open load. Review queue for P1 and P2 closures.</p></div>
+      <div class="card feature"><p class="mono">Incidents and SLA</p><p class="key">Key value: one incident, not twenty tickets</p><p>A burst of related tickets is grouped into one incident, with the SLA clock and drafted stakeholder updates.</p></div>
+      <div class="card feature"><p class="mono">AI assistant</p><p class="key">Key value: context-aware help on the ticket</p><p>A chat on the ticket to work out a fix, reading team notes, similar closed tickets and the knowledge base.</p></div>
+    </div>
+    <div class="divider"><span class="mono">Roadmap extensions · shown as “Soon” in the menu</span></div>
+    <div class="three">
+      <div class="card soon"><b>Ask a question</b><span>Planned</span></div>
+      <div class="card soon"><b>Log analyzer</b><span>Planned</span></div>
+      <div class="card soon"><b>Problem records</b><span>Planned · repeat issues are already suggested</span></div>
+    </div>
+  </section>
+
+  <!-- 5 pipeline -->
+  <section class="slide" data-steps="9" id="pipeline">
+    <div class="head"><div class="brand"><i></i>AMS Console</div>
+      <div><h2>One ticket, five connected agents</h2><p class="mono">Each agent hands its result to the next</p></div>
+      <div class="right"><div><p class="mono red" id="capno"></p><p id="cap"></p></div><div class="steps" id="psteps"></div></div></div>
+    <div class="sources">
+      <div class="card source" data-node="1"><b>Jira</b><span>live project · synced</span></div>
+      <div class="card source" data-node="1"><b>ServiceNow</b><span>spreadsheet upload</span></div>
+      <div class="card source" data-node="1"><b>Support mailbox</b><span>emails · no priority field</span></div>
+    </div>
+    <div class="nodes">
+      <div class="loop" aria-hidden="true"><i></i><span>New knowledge feeds the next search</span></div>
+      <div class="card node" data-node="2"><span class="arrow t" aria-hidden="true">↓</span><span class="arrow r" aria-hidden="true">→</span><div class="top"><span class="tagbox">A1</span><h3>Data Quality</h3><span class="state"></span></div>
+        <ul><li>Team-owned rules</li><li>Flags with a reason</li><li>Drafts a request for information</li></ul>
+        <div class="live"><div class="chips"><span class="chip">✓ Rules checked</span><span class="chip">✓ Model check</span></div><p>Enough to act on. If not: stop, and draft the email to the requester.</p></div>
+        <div class="result">✓ Ticket is complete</div></div>
+      <div class="card node" data-node="3"><span class="arrow r" aria-hidden="true">→</span><div class="top"><span class="tagbox">A2</span><h3>Triage</h3><span class="state"></span></div>
+        <ul><li>Priority from the rulebook</li><li>Names the application</li><li>Starts the SLA clock</li></ul>
+        <div class="live"><div class="chips"><span class="chip">✓ Signals read</span><span class="chip">✓ Rulebook applied</span></div><p>Requester said Medium. Payroll run blocked: the rulebook says higher.</p></div>
+        <div class="result">✓ Priority set · SLA clock running</div></div>
+      <div class="card node" data-node="4"><span class="arrow d" aria-hidden="true">↓</span><div class="top"><span class="tagbox">A3</span><h3>Resolution</h3><span class="state"></span></div>
+        <ul><li>Searches the runbooks</li><li>Uses similar closed tickets</li><li>AI assistant on the ticket</li></ul>
+        <div class="live"><div class="chips"><span class="chip">✓ Runbooks searched</span><span class="chip">✓ Past tickets</span></div><p>Steps proposed, each with the source it came from.</p></div>
+        <div class="result">✓ Suggested fix with sources</div></div>
+      <div class="card node" data-node="7"><div class="top"><span class="tagbox">A5</span><h3>Knowledge Builder</h3><span class="state"></span></div>
+        <ul><li>Matches fixes to articles</li><li>Drafts new articles</li><li>Spots repeat issues</li></ul>
+        <div class="live"><div class="chips"><span class="chip">✓ Matched</span><span class="chip">✓ Draft written</span><span class="chip person" style="grid-column:1/-1">Expert reviews before publishing</span></div></div>
+        <div class="result">✓ Draft article · feeds the next search</div></div>
+      <div class="card node" data-node="6"><span class="arrow l" aria-hidden="true">←</span><div class="top"><span class="tagbox">A4</span><h3>Closure Quality</h3><span class="state"></span></div>
+        <ul><li>Drafts the closure note</li><li>Marks what is missing</li><li>Drafts the requester email</li></ul>
+        <div class="live"><div class="chips"><span class="chip">✓ Note drafted</span><span class="chip person">Engineer completes</span><span class="chip person">Lead approves P1, P2</span><span class="chip person">Engineer sends</span></div></div>
+        <div class="result">✓ Approved · closed in Jira</div></div>
+      <div class="card node" data-node="5"><span class="arrow l" aria-hidden="true">←</span><div class="top"><span class="tagbox" style="background:var(--dark);color:#fff;border-color:var(--dark)">P</span><h3>Lead and engineer</h3><span class="state"></span></div>
+        <ul><li>Lead assigns, with a suggestion</li><li>Engineer applies the fix</li><li>Records whether it worked</li></ul>
+        <div class="live"><div class="chips"><span class="chip person">Lead assigns</span><span class="chip person">Engineer applies fix</span></div><p>The suggestion knows shift hours, leave and open load.</p></div>
+        <div class="result">✓ Fix confirmed by the engineer</div></div>
+    </div>
+    <div class="card around">
+      <div><p class="mono red">Around the pipeline</p><p style="font-size:13px">On every ticket, at every step</p></div>
+      <div class="tile"><b>Personal data masking</b><span>before any model call</span></div>
+      <div class="tile"><b>SLA clock</b><span>time left, in view</span></div>
+      <div class="tile"><b>Feedback</b><span>thumbs on each agent result</span></div>
+      <div class="tile"><b>Reports</b><span>by app, agent, engineer</span></div>
+    </div>
+  </section>
+
+  <!-- 6 capabilities -->
+  <section class="slide" data-steps="1">
+    <div class="head"><div class="brand"><i></i>AMS Console</div>
+      <div><h2>Twelve capabilities working together</h2><p class="mono">The stack behind the console’s reliability, speed and governance</p></div></div>
+    <div class="twelve">
+      <div class="card cap"><h3>Hybrid search</h3><p>Meaning-based and keyword search over the runbooks, combined into one ranking.</p><span class="mono">Search + semantic fusion</span></div>
+      <div class="card cap"><h3>Runbook chunking</h3><p>Each known issue is read as its own section, with its application and error codes.</p><span class="mono">Document-aware splits</span></div>
+      <div class="card cap"><h3>Similar closed tickets</h3><p>Resolved cases are saved with names masked and offered to the next search.</p><span class="mono">Reuse of history</span></div>
+      <div class="card cap"><h3>Rule builder</h3><p>Ten operators, applied to existing or new tickets, with run history and revert.</p><span class="mono">Team-owned quality rules</span></div>
+      <div class="card cap"><h3>Quote check</h3><p>A model’s finding counts only when its exact quote is found in the ticket.</p><span class="mono">Quality gate control</span></div>
+      <div class="card cap"><h3>Incident grouping</h3><p>A burst of related tickets becomes one incident with a main ticket.</p><span class="mono">Recurring incident signals</span></div>
+      <div class="card cap"><h3>Rules first, model second</h3><p>Rules settle what is certain. The model is asked once, for the rest.</p><span class="mono">Speed + cost control</span></div>
+      <div class="card cap"><h3>SLA clock</h3><p>Time left on every ticket, a watch state at 50% used, and a breach flag.</p><span class="mono">Deadlines in view</span></div>
+      <div class="card cap"><h3>Assignment suggestions</h3><p>Uses shift hours, leave and each engineer’s open load, up to a limit.</p><span class="mono">Fair assignment</span></div>
+      <div class="card cap"><h3>Personal data masking</h3><p>Presidio masks names, emails, phones and IDs before any model call.</p><span class="mono">Data privacy controls</span></div>
+      <div class="card cap"><h3>Tracing and change history</h3><p>Model calls are traced. Every settings change is recorded with who and when.</p><span class="mono">Operational audit trail</span></div>
+      <div class="card cap"><h3>Reports</h3><p>By application, agent, outcome and engineer, with CSV download.</p><span class="mono">Leadership reporting layer</span></div>
+    </div>
+  </section>
+
+  <!-- 7 measured -->
+  <section class="slide" data-steps="1">
+    <div class="head"><div class="brand"><i></i>AMS Console</div>
+      <div><h2>Measured. Validated.</h2><p class="mono">Agent scoring · Open items · Build health</p></div></div>
+    <div class="measured">
+      <div class="card measure" style="border-top:3px solid var(--red)">
+        <p class="mono red">Agent scoring · against labelled cases</p>
+        <div class="bignum">3 <small>of 5 agents scored with recorded results</small></div>
+        <div class="band">Every scored case passed</div>
+        <div>
+          <div class="score"><b>Data Quality</b><span><em>35/35</em> sample tickets · <em>16/16</em> borderline cases</span></div>
+          <div class="score"><b>Closure Quality</b><span><em>33/33</em> real notes · <em>21/21</em> labelled cases</span></div>
+          <div class="score"><b>Knowledge Builder</b><span><em>33/33</em> matched to the right article · <em>10/10</em> gaps found</span></div>
+          <div class="score"><b>Triage</b><span><em class="todo">[add figure]</em> scored on a tuning set and held-out tickets</span></div>
+          <div class="score"><b>Resolution</b><span><em class="todo">[not yet scored]</em></span></div>
+        </div>
+        <p class="fine">Small case sets written by the team. The support lead still has to confirm the labels.</p>
+      </div>
+      <div class="card measure" style="border-top:3px solid var(--ink)">
+        <p class="mono">Open items · before wider use</p>
+        <div class="bignum" style="font-size:54px">5 <small>actions tracked</small></div>
+        <div class="band" style="background:var(--ink)">None blocks the demo</div>
+        <ol>
+          <li>Support lead confirms the labelled cases used for scoring.</li>
+          <li>Score the Resolution agent’s answers against the answer key.</li>
+          <li>Agree final SLA targets and incident-grouping thresholds; today’s are provisional.</li>
+          <li>Connect ServiceNow and the mailbox live; today they load from files.</li>
+          <li>An expert reads the drafted knowledge articles for quality.</li>
+        </ol>
+      </div>
+      <div class="card measure" style="border-top:3px solid var(--red)">
+        <p class="mono red">Build health · automated tests</p>
+        <div class="bignum">412 <small>tests</small></div>
+        <div class="band">All passing on the demo build</div>
+        <div class="tick">371 backend tests</div>
+        <div class="tick">28 browser tests, end to end</div>
+        <div class="tick">13 frontend unit tests</div>
+        <div class="tick">Personal data leak report</div>
+        <p class="fine">Run by the team on the build shown in this demo.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 8 controls -->
+  <section class="slide" data-steps="1">
+    <div class="head"><div class="brand"><i></i>AMS Console</div>
+      <div><h2>AI with controls at every layer</h2><p class="mono">Governance · Every layer has a control designed in from day one</p></div></div>
+    <div class="gov">
+      <div class="pyramid">
+        <div class="tier one"><h3>Data</h3><p>Personal data is masked before any model call. The model receives placeholders only.</p></div>
+        <span class="down">▼</span>
+        <div class="tier two"><h3>Governance controls</h3><p>Sign-in, three roles, a role check on every API route, and a history of every settings change.</p></div>
+        <span class="down">▼</span>
+        <div class="tier three"><h3>Trusted AI response</h3><p>Every finding needs an exact quote from the ticket. A person confirms before anything is sent.</p></div>
+      </div>
+      <div class="controls">
+        <div class="card control"><h3>Personal data auto-masking</h3><p>Names, emails, phones, employee IDs, bank and card numbers become numbered placeholders. Real values are put back locally.</p></div>
+        <div class="card control"><h3>One write to the source system</h3><p>The closure note goes to Jira once, at the end, and only when the engineer sends it. Nothing else is written back.</p></div>
+        <div class="card control"><h3>Full record of agent results</h3><p>Each agent’s verdict and reason is stored with the ticket, next to the engineer’s decision on it.</p></div>
+        <div class="card control"><h3>Human review path</h3><p>Engineers accept, edit or reject each recommendation. A lead approves P1 and P2 closures. A kill switch turns the model off.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 9 roles -->
+  <section class="slide" data-steps="1">
+    <div class="head"><div class="brand"><i></i>AMS Console</div>
+      <div><h2>Three roles, one console</h2><p class="mono">Sign in with a password or an Atlassian account · The menu follows the role</p></div></div>
+    <div class="roles">
+      <div class="card role"><p class="mono red">Engineer</p><h3>Works the ticket</h3>
+        <div class="tick">My worklist, ordered by SLA time left</div><div class="tick">Ticket page with a step bar and the next action</div><div class="tick">Suggested fix and AI assistant</div><div class="tick">Closure note to complete and send</div></div>
+      <div class="card role"><p class="mono red">Lead</p><h3>Runs the team</h3>
+        <div class="tick">Lead desk: assign and reassign engineers</div><div class="tick">Team hours, leave and a limit on open tickets</div><div class="tick">Review queue for P1 and P2 closure notes</div><div class="tick">Incidents and stakeholder updates</div></div>
+      <div class="card role"><p class="mono red">Admin</p><h3>Configures and reports</h3>
+        <div class="tick">Rule builder with run history and revert</div><div class="tick">A page per agent with results and feedback</div><div class="tick">Reports and trends, with CSV download</div><div class="tick">“View as” to see any person’s console</div></div>
+    </div>
+  </section>
+
+  <!-- 10 backlog -->
+  <section class="slide" data-steps="1">
+    <div class="head"><div class="brand"><i></i>AMS Console</div>
+      <div><h2>Capabilities backlog view</h2><p class="mono">Where each capability sits on the way to live use</p></div></div>
+    <div class="board">
+      <div class="card col"><header><b>4</b><div><span class="mono">Planned · roadmap</span><small>Next wave of capability</small></div></header><div class="items">
+        <div class="item"><b>Ask a question</b><span>Shown as “Soon” in the menu</span></div>
+        <div class="item"><b>Log analyzer</b><span>Shown as “Soon” in the menu</span></div>
+        <div class="item"><b>Problem records</b><span>Repeat issues are already suggested</span></div>
+        <div class="item"><b>Major-incident agent</b><span>Needs an on-call roster</span></div>
+      </div></div>
+      <div class="card col mid-col"><header><b>4</b><div><span class="mono">In progress</span><small>Built, running on sample or provisional data</small></div></header><div class="items">
+        <div class="item"><b>ServiceNow connection</b><span>Loads from a spreadsheet today</span></div>
+        <div class="item"><b>Support mailbox connection</b><span>Loads from sample emails today</span></div>
+        <div class="item"><b>SLA targets and incident thresholds</b><span>Working, values provisional</span></div>
+        <div class="item"><b>Resolution scoring</b><span>Agent works; answers not yet scored</span></div>
+      </div></div>
+      <div class="card col live-col"><header><b>8</b><div><span class="mono">Working in the demo</span><small>Live on the demo build</small></div></header><div class="items" style="display:grid;grid-template-columns:1fr 1fr">
+        <div class="item"><b>Data Quality</b><span>with the rule builder</span></div>
+        <div class="item"><b>Triage</b><span>with engineer review</span></div>
+        <div class="item"><b>Resolution</b><span>with the AI assistant</span></div>
+        <div class="item"><b>Closure Quality</b><span>with lead review</span></div>
+        <div class="item"><b>Knowledge Builder</b><span>drafts and coverage</span></div>
+        <div class="item"><b>Lead desk</b><span>assignment and incidents</span></div>
+        <div class="item"><b>Reports and trends</b><span>with CSV download</span></div>
+        <div class="item"><b>Sign-in and Jira</b><span>three roles, live Jira</span></div>
+      </div></div>
+    </div>
+    <div class="progress"><span class="mono">Overall progress · 8 of 16 capabilities working in the demo</span>
+      <div class="track"><i style="width:50%;background:var(--green)"></i><i style="width:25%;background:#e0b23c"></i></div>
+      <div class="legend"><span>Working: 8</span><span>In progress: 4</span><span>Planned: 4</span></div></div>
+  </section>
+
+  <div id="rail"></div>
+  <button id="full" aria-label="Full screen" title="Full screen (F)">⤢</button>
+  <div id="count"></div>
+</div>
+
+<script>
+  const stage = document.getElementById("stage");
+  const slides = [...document.querySelectorAll(".slide")];
+  const rail = document.getElementById("rail");
+  const CAPTIONS = [
+    ["Overview", "Click to follow one ticket through the pipeline."],
+    ["Step 1 of 7", "A ticket arrives from one of three sources."],
+    ["Step 2 of 7", "Data Quality checks there is enough to act on."],
+    ["Step 3 of 7", "Triage sets the priority from the rulebook. Example: a blocked payroll run."],
+    ["Step 4 of 7", "Resolution proposes a fix with its sources."],
+    ["Step 5 of 7", "The lead assigns; the engineer applies and confirms the fix."],
+    ["Step 6 of 7", "The closure note is drafted, completed, approved and sent."],
+    ["Step 7 of 7", "Knowledge Builder drafts an article from the fix."],
+    ["All connected", "The new article feeds the next search: a closed loop."],
+  ];
+  let at = 0, step = 0;
+
+  function fit() {
+    const s = Math.min(innerWidth / 1440, innerHeight / 810);
+    stage.style.transform = `scale(${s}) translate(-50%, -50%)`;
+  }
+  function draw() {
+    const slide = slides[at];
+    slides.forEach((el, n) => el.classList.toggle("on", n === at));
+    [...rail.children].forEach((el, n) => el.classList.toggle("on", n === at));
+    document.getElementById("count").textContent = `${at + 1} / ${slides.length}`;
+    if (slide.id === "pipeline") {
+      const last = step === CAPTIONS.length - 1;
+      slide.querySelectorAll("[data-node]").forEach((el) => {
+        const n = +el.dataset.node;
+        el.classList.toggle("active", step === n);
+        el.classList.toggle("done", last || (step > n && step > 0));
+        el.classList.toggle("dim", !last && step > 0 && step < n);
+        const state = el.querySelector(".state");
+        if (state) state.textContent = step === n ? "● WORKING" : last || step > n ? "✓ DONE" : "";
+      });
+      slide.querySelector(".nodes").classList.toggle("looped", last);
+      document.getElementById("capno").textContent = CAPTIONS[step][0];
+      document.getElementById("cap").textContent = CAPTIONS[step][1];
+      document.getElementById("psteps").innerHTML = CAPTIONS.map((_, n) => `<i class="${n === step ? "now" : n < step ? "past" : ""}"></i>`).join("");
+    }
+    history.replaceState(null, "", `#${at + 1}${step ? "." + step : ""}`);
+  }
+  function go(slide, s = 0) {
+    at = Math.max(0, Math.min(slides.length - 1, slide));
+    step = Math.max(0, Math.min(+slides[at].dataset.steps - 1, s));
+    draw();
+  }
+  function next() {
+    if (step < +slides[at].dataset.steps - 1) { step++; draw(); }
+    else if (at < slides.length - 1) go(at + 1);
+  }
+  function back() {
+    if (step > 0) { step--; draw(); }
+    else if (at > 0) go(at - 1, +slides[at - 1].dataset.steps - 1);
+  }
+  const full = () => (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.());
+
+  slides.forEach((_, n) => {
+    const b = document.createElement("button");
+    b.setAttribute("aria-label", `Slide ${n + 1}`);
+    b.onclick = (e) => { e.stopPropagation(); go(n); };
+    rail.append(b);
+  });
+  document.getElementById("full").onclick = (e) => { e.stopPropagation(); full(); };
+  stage.addEventListener("click", next);
+  addEventListener("keydown", (e) => {
+    if (["ArrowRight", "ArrowDown", "PageDown", " ", "Enter"].includes(e.key)) { e.preventDefault(); next(); }
+    else if (["ArrowLeft", "ArrowUp", "PageUp", "Backspace"].includes(e.key)) { e.preventDefault(); back(); }
+    else if (e.key === "Home") go(0);
+    else if (e.key === "End") go(slides.length - 1);
+    else if (e.key.toLowerCase() === "f") full();
+  });
+  addEventListener("resize", fit);
+  fit();
+  const [h, s] = location.hash.slice(1).split(".");
+  go((parseInt(h) || 1) - 1, parseInt(s) || 0);
+</script>
+</body>
+</html>
