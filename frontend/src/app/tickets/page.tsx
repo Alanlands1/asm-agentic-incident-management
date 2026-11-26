@@ -100,7 +100,7 @@ export default function TicketsPage() {
           closed_at: t.status === "closed" || t.status === "resolved" ? t.opened_at ?? t.status : null,
           dq_flag: false,
         }));
-      const all = [...data.items, ...extra].sort((a, b) => (b.opened_at ?? "").localeCompare(a.opened_at ?? ""));
+      const all = [...data.items, ...extra].sort((a, b) => (b.opened_at ?? "").localeCompare(a.opened_at ?? "") || a.ticket_id.localeCompare(b.ticket_id));
       setStoreOnly(new Set(extra.map((t) => t.ticket_id)));
       setTickets(all);
       setTotalCount(data.total + extra.length);
@@ -316,9 +316,9 @@ export default function TicketsPage() {
                 }
                 title={ticket.short_description || "No short description"}
                 meta={[
-                  ticket.service || "No service",
+                  ticket.service || null,
                   masked(ticket.caller) ? null : ticket.caller || "Unknown requester",
-                  ticket.priority || "Unassigned priority",
+                  ticket.priority ? `Requester set ${ticket.priority.replace(/^Importance: /, "importance ")}` : null,
                   ticket.closed_at ? "Closed" : "Open",
                 ]
                   .filter(Boolean)

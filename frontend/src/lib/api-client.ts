@@ -34,6 +34,9 @@ export async function apiClient<T>(endpoint: string, options?: RequestInit): Pro
   });
 
   if (!res.ok) {
+    // The session ended: back to the sign-in page (the sign-in calls themselves answer 401 for their own reasons)
+    const elsewhere = typeof window !== "undefined" && window.location.pathname !== "/login"; // a late answer must not reload the form
+    if (res.status === 401 && elsewhere && !endpoint.startsWith("/auth/")) window.location.assign("/login");
     let message = res.statusText;
     try {
       const errJson = await res.json();
@@ -46,5 +49,6 @@ export async function apiClient<T>(endpoint: string, options?: RequestInit): Pro
     throw new ApiError(res.status, message || `HTTP request failed: ${res.status}`);
   }
 
-  return JSON.parse(await res.text(), utc);
+  const text = await res.text();
+  return (text ? JSON.parse(text, utc) : undefined) as T;
 }

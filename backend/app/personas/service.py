@@ -180,7 +180,9 @@ def suggestions(db: Session, at: datetime | None = None) -> list[dict]:
         name = min(pool, key=lambda e: (load[e], -resolved[(app, e)], e))
         n = resolved[(app, name)]
         knows = f"resolved {n} {app} {'ticket' if n == 1 else 'tickets'}" if n else app and f"no resolved {app} tickets yet"
-        flags = [load[name] >= team.max_open and "over the limit, urgent",
+        flags = [len(engineers) < len(here) and "the only one on shift now" if len(engineers) == 1
+                 else len(engineers) < len(here) and "others are off shift",
+                 load[name] >= team.max_open and "over the limit, urgent",
                  state[name] == availability.OFF_SHIFT and "off shift now"]
         picked.append((r["id"], name, knows, flags))
         load[name] += 1

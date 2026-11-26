@@ -81,7 +81,7 @@ export const STATUSES: { key: string; label: string; sub: string; stages: string
   { key: "needs", label: "Needs information", sub: "awaiting requester", stages: ["awaiting_info"] },
   { key: "triage", label: "Triage", sub: "priority to confirm", stages: ["pending", "dq_passed", "triaged"] },
   { key: "fixing", label: "In progress", sub: "fix suggested", stages: ["reviewed", "needs_lead"] },
-  { key: "note", label: "Closure note", sub: "in draft", stages: ["fix_confirmed", "approved"] },
+  { key: "note", label: "Closure note", sub: "to finish or send", stages: ["fix_confirmed", "approved"] },
   { key: "review", label: "In review", sub: "awaiting lead approval", stages: ["in_review"] },
 ];
 export const statusOf = (t: BoardTicket) => STATUSES.find((s) => s.stages.includes(t.stage));

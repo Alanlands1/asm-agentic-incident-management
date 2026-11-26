@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
-// Server side only: the admin key is added here and never reaches the browser.
-// shortcut: no sign-in, so anyone who can open the console can use this until real sessions exist.
+// Server side only: the admin key is added here and never reaches the browser. The caller's session cookie goes
+// along, and the backend lets only a signed-in admin through.
 const BACKEND_URL = process.env.BACKEND_INTERNAL_URL || "http://127.0.0.1:8000/api/v1";
 
 type Ctx = { params: Promise<{ path: string[] }> };
@@ -16,6 +16,8 @@ async function forward(request: NextRequest, { params }: Ctx) {
   const headers: Record<string, string> = { Accept: "application/json", "X-Admin-Key": key };
   const by = request.headers.get("x-admin-user");
   if (by) headers["X-Admin-User"] = by;
+  const cookie = request.headers.get("cookie");
+  if (cookie) headers["Cookie"] = cookie;
   const hasBody = request.method === "PUT" || request.method === "POST";
   if (hasBody) headers["Content-Type"] = "application/json";
   try {

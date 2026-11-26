@@ -69,10 +69,10 @@ const NEXT: Record<string, string> = {
   dq_passed: "No action needed yet. Triage sets the priority next, or you can run it now.",
   triaged: "Review the recommended priority: accept it or change it.",
   reviewed: "Priority confirmed. Resolution is searching for a fix.",
-  fix_confirmed: "Fix confirmed. Complete the closure note, then send it to Jira.",
+  fix_confirmed: "Fix confirmed. Complete the closure note, then close the ticket with it.",
   needs_lead: "Three suggested fixes did not resolve the issue. The ticket is escalated to your lead.",
   in_review: "The closure note is awaiting lead approval.",
-  approved: "The lead approved the closure note. Send it to Jira.",
+  approved: "The lead approved the closure note. Close the ticket with it.",
   rejected: "No action needed. This is not an incident.",
   error: "An agent failed on this ticket. Manual review is required.",
   historical: "No action needed. The ticket was closed before the agents started.",
@@ -894,7 +894,9 @@ function ClosureNote({
       .catch((e: unknown) => setFailed(e instanceof Error ? e.message : what === "save" ? "Couldn't save the note. Try again." : "Couldn't do that. Try again."))
       .finally(() => setDoing(null));
   };
-  const why = !toJira ? whyNotJira : edited ? "Save your changes first." : gap ? "Complete the marked parts first." : null;
+  const fromJira = ticket.source === "JIRA";
+  const blocked = fromJira && !toJira; // a Jira issue is closed by writing to Jira; any other ticket is closed here only
+  const why = blocked ? whyNotJira : edited ? "Save your changes first." : gap ? "Complete the marked parts first." : null;
   return (
     <div className="flex flex-col gap-2 border-t border-border px-4 py-3 text-[13px]">
       {stage === "fix_confirmed" && last?.action === "sent_back" && (
@@ -994,13 +996,17 @@ function ClosureNote({
         </div>
       ) : (
         <div className="flex flex-wrap items-center gap-2 border-t border-border pt-2.5">
-          <Button size="sm" disabled={!toJira || busy || doing !== null || edited || gap || !saved.trim()} onClick={() => call("send", () => pipelineService.closeInJira(ticket.id, person))}>
+          <Button size="sm" disabled={blocked || busy || doing !== null || edited || gap || !saved.trim()} onClick={() => call("send", () => pipelineService.closeInJira(ticket.id, person))}>
             {doing === "send" ? <LoaderCircle className="animate-spin" /> : <Send />}
-            {doing === "send" ? "Sending…" : `Send closure note to ${source}`}
+            {doing === "send" ? (fromJira ? "Sending…" : "Closing…") : fromJira ? `Send closure note to ${source}` : `Mark as closed in ${source}`}
           </Button>
           <span className="text-xs text-muted-foreground">
             {why ??
-              `${stage === "approved" ? `Approved by ${steps.findLast((s) => s.action === "approved")?.reviewer ?? "the lead"}. ` : ""}Posts this note on ${ticket.id} and sets the issue to Done. Nothing else is sent to ${source}.`}
+              `${stage === "approved" ? `Approved by ${steps.findLast((s) => s.action === "approved")?.reviewer ?? "the lead"}. ` : ""}${
+                fromJira
+                  ? `Posts this note on ${ticket.id} and sets the issue to Done. Nothing else is sent to ${source}.`
+                  : `Close the ticket in ${source} with this note first. This closes it in the console; nothing is sent to ${source}.`
+              }`}
           </span>
         </div>
       )}
@@ -1200,7 +1206,7 @@ function Ticket() {
     inReview
       ? { state: "done", summary: "Awaiting lead approval", lines: [`Submitted by ${lastLead?.reviewer ?? "the engineer"}`] }
       : approved
-        ? { state: "attention", summary: "Ready to send", lines: [`Approved by ${approval?.reviewer ?? "the lead"}`, `Sent to ${source} only when you send it`] }
+        ? { state: "attention", summary: jira ? "Ready to send" : "Ready to close", lines: [`Approved by ${approval?.reviewer ?? "the lead"}`, jira ? `Sent to ${source} only when you send it` : "Closed here once you closed it in the source"] }
         : confirmed
       ? {
           state: "attention",
@@ -1851,7 +1857,7 @@ function Ticket() {
                     ],
                     ["Opened", when(ticket.opened_at)],
                     ...(closed ? ([["Closed", when(ticket.closed_at)]] as [string, React.ReactNode][]) : []),
-                    ["Source status", ticket.source_status ?? ticket.status],
+                    ["Source status", (ticket.source_status ?? ticket.status).replace(/^[a-z]/, (c) => c.toUpperCase()).replace(/_/g, " ")],
                   ]}
                 />
               </Card>

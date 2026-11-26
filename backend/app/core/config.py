@@ -110,6 +110,15 @@ class Settings(BaseSettings):
     ADMIN_API_KEY: str = ""
     ALLOWED_AWS_REGIONS: list[str] = ["ca-central-1"]
 
+    # Sign-in (app/services/auth.py). Environment only.
+    SESSION_HOURS: int = Field(12, ge=1)  # how long a sign-in lasts
+    SESSION_COOKIE_SECURE: bool = False  # true = the cookie is sent over HTTPS only; set it wherever the console is on HTTPS
+    # Sign in with Atlassian (app/services/atlassian_login.py). Unset id or secret = that button is switched off.
+    ATLASSIAN_OAUTH_CLIENT_ID: str = ""
+    ATLASSIAN_OAUTH_CLIENT_SECRET: SecretStr = SecretStr("")
+    # The callback URL registered in the Atlassian app: the console's address, which passes /api/v1 on to this API
+    ATLASSIAN_OAUTH_REDIRECT_URI: str = "http://localhost:3000/api/v1/auth/atlassian/callback"
+
     @model_validator(mode="after")
     def region_allowed(self) -> "Settings":
         if self.AWS_REGION not in self.ALLOWED_AWS_REGIONS:

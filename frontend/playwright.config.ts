@@ -34,6 +34,8 @@ export default defineConfig({
         ATLASSIAN_BASE_URL: "",
         ATLASSIAN_EMAIL: "",
         ATLASSIAN_API_TOKEN: "",
+        ATLASSIAN_OAUTH_CLIENT_ID: "",
+        ATLASSIAN_OAUTH_CLIENT_SECRET: "",
         PHOENIX_ENABLED: "false",
       },
     },

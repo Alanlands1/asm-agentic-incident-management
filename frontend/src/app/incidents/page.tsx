@@ -264,7 +264,7 @@ export default function IncidentsPage() {
                       <p className="text-xs text-muted-foreground">
                         {[
                           i.application ?? "No application",
-                          i.priority_from === "reviewed" ? "priority confirmed by an engineer" : "priority recommended by Triage",
+                          i.priority_from === "reviewed" ? "priority confirmed" : "priority recommended by Triage",
                           i.storm_id ? `part of storm ${i.storm_id}` : null,
                         ]
                           .filter(Boolean)

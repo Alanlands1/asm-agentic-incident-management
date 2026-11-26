@@ -11,10 +11,12 @@ from sqlalchemy.pool import StaticPool
 from pydantic import SecretStr
 
 from app.admin import models  # noqa: F401  (config_overrides, config_changes)
+from app.api.v1.endpoints.auth import current_user
 from app.core.config import settings
 from app.db.session import Base, get_db
 from app.main import app
 from app.models import ticket  # noqa: F401  (registers models on Base.metadata)
+from app.models.user import User
 
 os.environ["TZ"] = "UTC"  # texts for people carry the server's local time; the tests expect UTC
 if hasattr(time, "tzset"):  # not on Windows
@@ -66,7 +68,8 @@ def own_confluence_copy(monkeypatch, tmp_path):
 
 @pytest.fixture
 async def client():
-    """API client backed by a fresh in-memory database, so tests never touch ams.db."""
+    """API client backed by a fresh in-memory database, so tests never touch ams.db. Signed in as an admin; a test
+    of the sign-in itself removes that (the `anon` fixture in test_auth.py)."""
     engine = create_async_engine("sqlite+aiosqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -77,6 +80,7 @@ async def client():
             yield db
 
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[current_user] = lambda: User(id=1, email="admin@test", name="Test Admin", role="admin")
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         yield ac
     app.dependency_overrides.clear()

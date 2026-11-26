@@ -8,6 +8,7 @@ from app.models.kb import KBChunk
 from app.models.knowledge import KBDraft, ProblemCandidate, ResolvedCase
 from app.models.servicenow import ServiceNowTicket
 from app.models.ticket import AgentRun, Feedback, Review, Storm, Ticket
+from app.models.user import User, UserSession
 
 __all__ = [
     "Ticket",
@@ -29,4 +30,6 @@ __all__ = [
     "ConfluencePage",
     "ConfluenceSync",
     "FirstMessage",
+    "User",
+    "UserSession",
 ]

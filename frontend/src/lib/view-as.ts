@@ -1,26 +1,25 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
+import { apiClient } from "@/lib/api-client";
 
-// shortcut: demo-only role switch kept in localStorage, no sign-in or server checks; replace with real sessions.
+// Who is signed in (the API's session cookie) and what their role may open.
 export type ViewRole = "admin" | "lead" | "engineer";
 
 /**
- * One entry per persona: who they are, where they land and their menu (hrefs of the sidebar's items).
- * The menu is also every page they may open; no `nav` means every page. The engineer's name is their Jira assignee name.
+ * One entry per role: where they land and their menu (hrefs of the sidebar's items).
+ * The menu is also every page they may open; no `nav` means every page.
  */
 export const ROLES: {
   value: ViewRole;
   label: string;
-  person: string;
   home: string;
   nav?: { label: string; items: string[] }[];
 }[] = [
-  { value: "admin", label: "Admin", person: "Alan Lands", home: "/" },
+  { value: "admin", label: "Admin", home: "/" },
   {
     value: "lead",
     label: "Lead",
-    person: "Alan Lands",
     home: "/lead",
     nav: [
       { label: "Overview", items: ["/lead", "/team", "/my-tickets", "/incidents"] },
@@ -31,7 +30,6 @@ export const ROLES: {
   {
     value: "engineer",
     label: "Engineer",
-    person: "Alan Test",
     home: "/team",
     nav: [
       { label: "My work", items: ["/team", "/my-tickets"] },
@@ -47,44 +45,88 @@ export function mayOpen(role: ViewRole, pathname: string): boolean {
   return !nav || nav.some((g) => g.items.some((href) => pathname === href || pathname.startsWith(`${href}/`)));
 }
 
-const KEY = "ams.viewAs";
-const EVENT = "ams-view-as";
+export type User = { email: string; name: string; role: ViewRole };
 
-function read(): ViewRole {
-  try {
-    const v = localStorage.getItem(KEY);
-    const known = ROLES.find((r) => r.value === v);
-    if (known) return known.value;
-  } catch {
-    // storage blocked: fall back to admin
-  }
-  return "admin";
-}
+// undefined: not asked yet; null: nobody is signed in
+let signedIn: User | null | undefined;
+// The person an admin chose to view the console as. Kept in this browser; the API still sees the admin's own session.
+let persona: User | null = null;
+let shown: User | null | undefined; // what the pages see: the persona for an admin who chose one, else who is signed in
+let asked: Promise<void> | undefined;
+const listeners = new Set<() => void>();
+const PERSONA_KEY = "ams.persona";
 
 function subscribe(onChange: () => void) {
-  window.addEventListener(EVENT, onChange);
-  window.addEventListener("storage", onChange);
+  listeners.add(onChange);
   return () => {
-    window.removeEventListener(EVENT, onChange);
-    window.removeEventListener("storage", onChange);
+    listeners.delete(onChange);
   };
 }
 
-export function setViewAs(role: ViewRole) {
+function publish() {
+  shown = signedIn?.role === "admin" && persona ? persona : signedIn;
+  listeners.forEach((l) => l());
+}
+
+/** Set after signing in or out, so every page follows. */
+export function setUser(next: User | null) {
+  signedIn = next;
+  asked = Promise.resolve();
   try {
-    localStorage.setItem(KEY, role);
+    if (next === null) localStorage.removeItem(PERSONA_KEY); // the next person here starts as themselves
+    persona = JSON.parse(localStorage.getItem(PERSONA_KEY) ?? "null");
   } catch {
-    // storage blocked: the switch lasts until reload
+    persona = null; // storage blocked or unreadable: no persona
   }
-  window.dispatchEvent(new Event(EVENT));
+  publish();
 }
 
+/** An admin views the console as this person; null: as themselves again. */
+export function setPersona(next: User | null) {
+  persona = next;
+  try {
+    if (next) localStorage.setItem(PERSONA_KEY, JSON.stringify(next));
+    else localStorage.removeItem(PERSONA_KEY);
+  } catch {
+    // storage blocked: the choice lasts until reload
+  }
+  publish();
+}
+
+/** Asks the API once who holds the session cookie. */
+export function loadUser(): Promise<void> {
+  asked ??= apiClient<User>("/auth/me").then(setUser, () => setUser(null));
+  return asked;
+}
+
+export async function signOut() {
+  await apiClient("/auth/logout", { method: "POST" });
+  setUser(null);
+}
+
+function useStore(read: () => User | null | undefined) {
+  useEffect(() => {
+    loadUser();
+  }, []);
+  return useSyncExternalStore(subscribe, read, () => undefined);
+}
+
+/** Who really signed in; undefined until the API has answered, null when nobody is signed in. */
+export function useSignedIn(): User | null | undefined {
+  return useStore(() => signedIn);
+}
+
+/** The person the console is shown as: the signed-in person, or the persona an admin chose. */
+export function useUser(): User | null | undefined {
+  return useStore(() => shown);
+}
+
+/** That person's role. The app shell shows a page only once it is known. */
 export function useViewAs(): ViewRole {
-  return useSyncExternalStore(subscribe, read, () => "admin");
+  return useUser()?.role ?? "engineer";
 }
 
-/** The demo person of the current role, sent as "who did it" until there are real logins. */
+/** That person's name, sent as "who did it". shortcut: the API still trusts this name; take it from the session there. */
 export function usePerson(): string {
-  const role = useViewAs();
-  return ROLES.find((r) => r.value === role)!.person;
+  return useUser()?.name ?? "";
 }

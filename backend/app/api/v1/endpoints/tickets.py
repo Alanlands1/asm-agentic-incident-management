@@ -10,6 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session, selectinload
 
+from app.api.v1.endpoints.auth import require_role
 from app.core.config import settings
 from app.db.session import get_db
 from app.llm import ModelError, call_model
@@ -414,7 +415,8 @@ def _chat_used(db: Session, ticket_id: str, payload: ChatUse, seen: str) -> Tick
     return TicketSummary.model_validate(ticket)
 
 
-@router.post("/tickets/{ticket_id}/assign", response_model=TicketSummary, summary="Assign the ticket to an engineer")
+@router.post("/tickets/{ticket_id}/assign", response_model=TicketSummary, summary="Assign the ticket to an engineer",
+             dependencies=[Depends(require_role("lead", "admin"))])
 async def assign(ticket_id: str, payload: AssignCreate, db: AsyncSession = Depends(get_db)) -> TicketSummary:
     """The lead assigns or reassigns the ticket here. A Jira issue is assigned in Jira first, so the next sync agrees;
     a ticket from another source is assigned in the console only."""
@@ -448,7 +450,8 @@ async def submit_review(ticket_id: str, payload: ReviewStepCreate, db: AsyncSess
     return await db.run_sync(_review_step, ticket_id, lambda s, t: lead_review.submit(s, t, payload.reviewer))
 
 
-@router.post("/tickets/{ticket_id}/lead-review", response_model=TicketSummary, summary="Approve the closure note or send it back")
+@router.post("/tickets/{ticket_id}/lead-review", response_model=TicketSummary, summary="Approve the closure note or send it back",
+             dependencies=[Depends(require_role("lead", "admin"))])
 async def decide_review(ticket_id: str, payload: LeadReviewCreate, db: AsyncSession = Depends(get_db)) -> TicketSummary:
     """The lead approves the closure note (then it may be sent) or sends it back to the engineer with what to change."""
     return await db.run_sync(
@@ -466,16 +469,15 @@ def _review_step(db: Session, ticket_id: str, step) -> TicketSummary:
     return TicketSummary.model_validate(ticket)
 
 
-@router.post("/tickets/{ticket_id}/close", response_model=TicketSummary, summary="Send the closure note to Jira")
+@router.post("/tickets/{ticket_id}/close", response_model=TicketSummary, summary="Close the ticket with its closure note")
 async def close_in_jira(
     ticket_id: str, author_email: str = Body(..., embed=True, min_length=3), db: AsyncSession = Depends(get_db)
 ) -> TicketSummary:
     """Post the closure note on the Jira issue, move the issue to done and close the ticket here. The one write to Jira
-    at the end of the work, and only when the engineer asks (design D8)."""
+    at the end of the work, and only when the engineer asks (design D8). A ticket from another source is closed here
+    only: nothing is sent, the engineer closes it in the source with this note."""
     ticket = await db.run_sync(_get_or_404, ticket_id)
     notes = (ticket.resolution_notes or "").strip()
-    if ticket.source != "JIRA":
-        raise HTTPException(status_code=409, detail=f"Ticket {ticket_id} did not come from Jira")
     needs_lead = await db.run_sync(lambda s: lead_review.required(s, ticket))
     waiting = ticket.pipeline_status == PipelineStatus.FIX_CONFIRMED and needs_lead
     if ticket.pipeline_status == PipelineStatus.IN_REVIEW or waiting:
@@ -490,10 +492,12 @@ async def close_in_jira(
     )
     changed = decided if decided and decided != ticket.reported_priority else None
     await db.commit()  # no transaction open while Jira answers
-    try:
-        moved_to = await jira.close_issue(ticket_id, notes, priority=changed)
-    except AtlassianError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    moved_to = "Closed"
+    if ticket.source == "JIRA":
+        try:
+            moved_to = await jira.close_issue(ticket_id, notes, priority=changed)
+        except AtlassianError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
     closed = await db.run_sync(_closed, ticket_id, author_email, notes, moved_to)
     jira.start_knowledge()  # the case is learned now, not on the next sync
     return closed

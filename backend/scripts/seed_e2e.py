@@ -1,7 +1,7 @@
 """A throwaway SQLite database for the console's browser tests (frontend/e2e).
 
 The sample tickets, plus one ticket (AMS-1209) past Data Quality and Triage with a suggested fix, so the ticket page has
-a result to rate. Nothing reaches Supabase, Jira or the model. Usage: python scripts/seed_e2e.py <path.db>
+a result to rate, and one person per role to sign in as (<role>@e2e.test, password e2e-password). Nothing reaches Supabase, Jira or the model. Usage: python scripts/seed_e2e.py <path.db>
 """
 
 import os
@@ -20,6 +20,8 @@ import app.models  # noqa: E402,F401  (registers every table)
 from app.core.config import settings  # noqa: E402
 from app.db.session import Base  # noqa: E402
 from app.models.ticket import AgentRun, PipelineStatus, Review, Ticket  # noqa: E402
+from app.models.user import User  # noqa: E402
+from app.services.auth import ROLES, hash_password  # noqa: E402
 from app.services.ingestion import ingest_workbook  # noqa: E402
 
 TICKET = "AMS-1209"
@@ -43,5 +45,7 @@ with Session(engine) as db:
                             "steps": ["Re-run the payslip job with the current template.", "Open three payslips to check."],
                             "references": ["KB-PAY-001"]}))
     ticket.pipeline_status = PipelineStatus.REVIEWED
+    for role in ROLES:
+        db.add(User(email=f"{role}@e2e.test", name=f"E2E {role.title()}", role=role, password_hash=hash_password("e2e-password")))
     db.commit()
 print(f"Seeded {db_path}")

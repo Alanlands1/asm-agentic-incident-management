@@ -2,7 +2,7 @@ import { ListRow } from "@/components/console/list-row";
 import { cn } from "cn";
 import { CircleCheck, Clock, TriangleAlert } from "lucide-react";
 
-const SLA_WORDS = { ok: "On track", watch: "At risk", breach_likely: "Breach likely", breached: "Breached" };
+const SLA_WORDS = { ok: "On track", watch: "Watch", breach_likely: "Breach likely", breached: "Breached" };
 
 /** 45 -> "45 min", 130 -> "2 h 10 min", 1923 -> "1 d 8 h". */
 export const span = (minutes: number) => {

@@ -14,8 +14,43 @@ function watchErrors(page: Page): string[] {
   return errors;
 }
 
-const viewAs = (page: Page, role: "admin" | "lead" | "engineer") =>
-  page.addInitScript((r) => window.localStorage.setItem("ams.viewAs", r), role);
+/** Signs in as one of the people seeded by backend/scripts/seed_e2e.py; the cookie stays with the page. */
+const signIn = async (page: Page, role: "admin" | "lead" | "engineer") => {
+  const res = await page.request.post("/api/v1/auth/login", { data: { email: `${role}@e2e.test`, password: "e2e-password" } });
+  expect(res.ok()).toBe(true);
+};
+
+test.beforeEach(({ page }) => signIn(page, "admin"));
+
+test.describe("sign-in", () => {
+  test("nobody signed in is sent to the sign-in page, and signing in opens the console", async ({ page }) => {
+    await page.context().clearCookies();
+    await page.goto("/tickets");
+    await expect(page).toHaveURL(/\/login$/);
+    await page.getByLabel("Email").fill("engineer@e2e.test");
+    await page.getByLabel("Password").fill("wrong");
+    await page.getByRole("button", { name: "Sign in", exact: true }).click();
+    await expect(page.getByText("Wrong email or password.")).toBeVisible();
+    await page.getByLabel("Password").fill("e2e-password");
+    await page.getByRole("button", { name: "Sign in", exact: true }).click();
+    await expect(page).toHaveURL(/\/team$/); // the engineer's home
+    await expect(page.getByLabel("View as")).toHaveCount(0); // the persona list is the admin's
+    await page.getByRole("button", { name: "Sign out" }).click();
+    await expect(page).toHaveURL(/\/login$/);
+  });
+
+  test("an admin views the console as another person and comes back", async ({ page }) => {
+    await page.goto("/");
+    await page.getByLabel("View as").selectOption({ label: "E2E Engineer · Engineer" });
+    await expect(page).toHaveURL(/\/team$/); // the engineer's home and menu
+    await expect(page.getByRole("link", { name: "Reports" })).toHaveCount(0);
+    await page.reload(); // the choice stays
+    await expect(page.getByLabel("View as")).toHaveValue("engineer@e2e.test");
+    await page.getByLabel("View as").selectOption({ label: "Myself (E2E Admin)" });
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.getByRole("link", { name: "Reports" })).toBeVisible();
+  });
+});
 
 test.describe("smoke", () => {
   for (const path of PAGES) {
@@ -77,7 +112,7 @@ test.describe("reports", () => {
   });
 
   test("is for admins only", async ({ page }) => {
-    await viewAs(page, "lead");
+    await signIn(page, "lead");
     await page.goto("/reports");
     await expect(page).toHaveURL(/\/lead$/); // a page outside the lead's menu sends them home
     await expect(page.getByRole("link", { name: "Reports" })).toHaveCount(0);

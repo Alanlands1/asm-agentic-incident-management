@@ -103,6 +103,7 @@ async def reset_demo(db: AsyncSession, rerun: bool = True) -> ResetResult:
         await db.execute(delete(Comment).where(Comment.ticket_id.in_(open_ids), Comment.author_email.in_(BOTS)))
         await db.execute(update(Ticket).where(Ticket.id.in_(open_ids)).values(
             pipeline_status=PipelineStatus.PENDING, storm_id=None, status="new",
+            resolution_notes=None, resolved_at=None,  # a closure note from before the reset is not this round's work
             opened_at=now.replace(tzinfo=None)))  # the SLA clock starts again; a Jira sync never moves it back
         # Triage reads the reporter's priority from here, and a later sync must not see the restore as a person's decision
         for ticket in await db.scalars(select(Ticket).where(Ticket.id.in_(priorities))):

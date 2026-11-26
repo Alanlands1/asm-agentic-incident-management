@@ -60,7 +60,7 @@ function nextSentence(t: BoardTicket) {
   if (t.stage === "fix_confirmed" && t.lead_step === "sent_back") return `${t.lead_by ?? "The lead"} returned your closure note. Update it, then resubmit it.`;
   if (t.stage === "fix_confirmed")
     return `${t.closure_score != null ? `Closure Quality score: ${t.closure_score} of 6. ` : ""}${t.review_required ? "Complete it, then submit it for lead approval." : "Complete it, then send it."}`;
-  if (t.stage === "approved") return `${t.lead_by ?? "The lead"} approved the closure note. Send it to close the ticket.`;
+  if (t.stage === "approved") return `${t.lead_by ?? "The lead"} approved the closure note. Close the ticket with it.`;
   if (t.stage === "in_review") return "The closure note is awaiting lead approval.";
   if (t.stage === "reviewed" && t.fix_verdict === "resolved" && t.fix_answer !== "wrong") return "Apply the suggested fix, then confirm the outcome.";
   if (t.stage === "reviewed" && t.fix_verdict && t.fix_answer !== "wrong")
@@ -81,6 +81,7 @@ export function MyWorklist() {
   const now = hour === null ? null : new Date(hour);
 
   useEffect(() => {
+    if (!viewer) return; // who is signed in is not known yet
     apiClient<Closed[]>(`/personas/closed?person=${encodeURIComponent(viewer)}&days=7`).then(setClosed, () => setClosed([]));
     if (lead) pipelineService.listByStage("in_review").then((r) => setToReview(r.items), () => setToReview([]));
   }, [viewer, lead, board]);
@@ -207,7 +208,7 @@ export function MyWorklist() {
                     <TableCell className="pl-4">
                       <PriorityChip priority={x.priority} />
                     </TableCell>
-                    <TableCell className="whitespace-normal">
+                    <TableCell className="min-w-48 whitespace-normal">
                       <Link href={ticketHref(x)} className="font-medium underline-offset-4 hover:underline">
                         {x.summary || "No summary"}
                       </Link>
@@ -223,7 +224,7 @@ export function MyWorklist() {
                     </TableCell>
                     <TableCell className="pr-4">
                       <div className="flex items-center justify-end gap-3">
-                        <span className="hidden text-right text-xs text-muted-foreground xl:inline">{nextStep(x)}</span>
+                        <span className="hidden w-36 shrink-0 text-right text-xs whitespace-normal text-muted-foreground 2xl:inline">{nextStep(x)}</span>
                         <Button variant="secondary" size="sm" nativeButton={false} render={<Link href={ticketHref(x)} />}>
                           Open
                         </Button>

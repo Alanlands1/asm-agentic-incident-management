@@ -130,6 +130,8 @@ Database settings are configured in [`app/core/config.py`](file:///Users/bhimk/P
 | `DB_POOL_PRE_PING`| Validates connection health before checkout | `True` |
 | `DB_ECHO` | Print SQL statements to log (debug only) | `False` |
 | `PII_MASKING_ENABLED` | Redact personal information before DB persistence | `True` |
+| `SESSION_HOURS` | How long a sign-in lasts (see section 9) | `12` |
+| `SESSION_COOKIE_SECURE` | Send the session cookie over HTTPS only | `False` |
 | `PHOENIX_ENABLED` | Export API request traces to Arize Phoenix (see section 8) | `False` |
 | `PHOENIX_COLLECTOR_ENDPOINT` | Phoenix OTLP/HTTP traces endpoint | `http://localhost:6006/v1/traces` |
 | `PHOENIX_PROJECT_NAME` | Project name shown in Phoenix | `ams-incident-management` |
@@ -179,3 +181,24 @@ API request traces (method, route, status, latency, `http.request_id`) and LLM c
 - **Export**: spans are batched, so they appear in the UI a few seconds after the request. Health check URLs are excluded.
 - **Code**: `app/core/telemetry.py`, wired in `app/main.py`. LLM spans come from `openinference-instrumentation-anthropic`, which patches the Anthropic SDK in the same setup. Setup never stops startup; failures are logged as warnings.
 - **Privacy**: request spans hold HTTP metadata only. LLM spans hold the prompt and response, but the prompt is built from ticket text that `Masker` already redacted, and the response holds placeholders (`<PERSON_n>`) because unmasking happens after the call. So raw PII is not exported.
+
+---
+
+## 9. Sign-in
+
+Every endpoint except `/health` and `/auth/login` needs a session. Tables: `users`, `user_sessions` (`db/scripts/12_create_users.sql`).
+
+- **Endpoints**: `POST /api/v1/auth/login` (email, password) sets the `ams_session` cookie (HttpOnly, SameSite=Lax); `GET /api/v1/auth/me`; `POST /api/v1/auth/logout`.
+- **People**: `cd backend && python scripts/create_user.py <email> "<name as in Jira>" <admin|lead|engineer>` adds a person or changes their name, role or password. `name` must match the Jira display name, because `tickets.assignee` holds it.
+- **Storage**: passwords as salted scrypt hashes (standard library); of a session only the SHA-256 of its token. Sessions end after `SESSION_HOURS` or on sign-out.
+- **Roles**: `Depends(require_role(...))` from `app/api/v1/endpoints/auth.py`. Admin only: `/demo/reset`, `/admin/*` (as well as the `X-Admin-Key`). Lead or admin: `/tickets/{id}/assign`, `/tickets/{id}/lead-review`. Everything else: any signed-in person.
+- **Sign in with Atlassian**: `GET /api/v1/auth/atlassian/start` sends the browser to Atlassian and
+  `/auth/atlassian/callback` signs in the user whose email matches the Atlassian account's (`app/services/atlassian_login.py`).
+  It only confirms who the person is: they must already be in `users` (`create_user.py ... --atlassian-only` for no
+  password), and their role comes from there. Needs `ATLASSIAN_OAUTH_CLIENT_ID` / `ATLASSIAN_OAUTH_CLIENT_SECRET` from an
+  OAuth 2.0 (3LO) app at developer.atlassian.com with the User identity API (`read:me`) and `ATLASSIAN_OAUTH_REDIRECT_URI`
+  as its callback URL. Without them the console shows no Atlassian button (`GET /auth/providers`).
+- **Persona**: an admin can view the console as another person (`GET /api/v1/auth/users` fills the list). This changes the
+  console only: the menu, the worklist and the name sent as `by`. The API still sees the admin's own session.
+- **Known gap**: the `by` / `reviewer` / `author_email` fields are still taken from the request, not from the session.
+- **Tests**: the `client` fixture is signed in as an admin (`current_user` overridden); `tests/test_auth.py` removes that.
