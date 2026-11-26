@@ -103,17 +103,19 @@
   .source span { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
   .nodes { display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: 1fr 1fr; gap: 34px; flex: 1; margin: 34px 0 14px; min-height: 0; }
   /* the hand-over between two cards: grey until the card it leaves is done */
-  .arrow { position: absolute; width: 26px; height: 26px; border-radius: 50%; background: var(--card); border: 1px solid var(--line); color: #b9b2a7; display: grid; place-items: center; font-size: 15px; line-height: 1; z-index: 3; transition: background 0.35s, color 0.35s, border-color 0.35s; }
-  .arrow.r { right: -31px; top: 50%; margin-top: -13px; } .arrow.l { left: -31px; top: 50%; margin-top: -13px; }
-  .arrow.d { bottom: -31px; left: 50%; margin-left: -13px; } .arrow.t { top: -31px; left: 50%; margin-left: -13px; }
-  .node.done > .arrow, .node.active > .arrow.t { background: var(--red); border-color: var(--red); color: #fff; }
-  .node.dim > .arrow { opacity: 1; }
+  .arrow { position: absolute; width: 30px; height: 16px; font-size: 0; background: #cdc6ba; clip-path: polygon(0 37%, 62% 37%, 62% 0, 100% 50%, 62% 100%, 62% 63%, 0 63%); z-index: 3; transition: background 0.35s; }
+  .arrow.r { right: -32px; top: 50%; margin-top: -8px; } .arrow.l { left: -32px; top: 50%; margin-top: -8px; transform: rotate(180deg); }
+  .arrow.d { bottom: -25px; left: 50%; margin-left: -15px; transform: rotate(90deg); } .arrow.t { top: -25px; left: 50%; margin-left: -15px; transform: rotate(90deg); }
+  .node.done > .arrow, .node.active > .arrow.t { background: var(--red); }
   /* the way back: from Knowledge Builder (bottom left) through the gap between the rows, up into Resolution (top right) */
   .nodes { position: relative; }
   .loop { position: absolute; left: 150px; width: 870px; top: calc(50% - 17px); height: 34px; pointer-events: none; z-index: 1; color: #c9c2b7; transition: color 0.35s; }
-  .loop::before { content: ""; position: absolute; left: 0; bottom: 0; width: 100%; height: 17px; border-left: 2px dashed currentColor; border-top: 2px dashed currentColor; border-top-left-radius: 8px; }
-  .loop::after { content: ""; position: absolute; right: -2px; top: 4px; height: 13px; border-right: 2px dashed currentColor; }
-  .loop i { position: absolute; right: -8px; top: -5px; width: 0; height: 0; border: 7px solid transparent; border-bottom: 10px solid currentColor; border-top: 0; }
+  .loop svg { position: absolute; inset: 0; overflow: visible; }
+  .loop path { fill: none; stroke: currentColor; stroke-width: 2; stroke-dasharray: 6 6; stroke-linecap: round; }
+  .loop polygon { fill: currentColor; }
+  .nodes.looped .loop path { animation: march 0.7s linear infinite; }
+  @keyframes march { to { stroke-dashoffset: -12; } }
+  @media (prefers-reduced-motion: reduce) { .slide.on, .nodes.looped .loop path { animation: none; } }
   .loop span { position: absolute; left: 50%; top: 8px; transform: translateX(-50%); background: var(--paper); padding: 0 12px; font-family: var(--mono); font-size: 10.5px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; white-space: nowrap; }
   .nodes.looped .loop { color: var(--red); }
   .node { padding: 18px 20px; display: flex; flex-direction: column; gap: 10px; transition: opacity 0.35s, transform 0.35s, box-shadow 0.35s, border-color 0.35s; position: relative; }
@@ -174,8 +176,8 @@
   .tier h3 { margin-bottom: 4px; }
   .tier.one { background: var(--red); width: 100%; } .tier.one h3, .tier.one p { color: #fff; }
   .tier.two { background: var(--red-soft); border: 1px solid var(--red-line); width: 86%; }
-  .tier.three { background: var(--card); border: 1.5px solid var(--red); width: 72%; } .tier.three h3 { color: var(--red); }
-  .down { color: var(--red); font-size: 16px; line-height: 1; }
+  .tier.three { display: block; background: var(--card); border: 1.5px solid var(--red); width: 72%; } .tier.three h3 { color: var(--red); }
+  .down { width: 20px; height: 26px; font-size: 0; background: var(--red); clip-path: polygon(38% 0, 62% 0, 62% 55%, 100% 55%, 50% 100%, 0 55%, 38% 55%); }
   .controls { display: flex; flex-direction: column; gap: 12px; }
   .control { padding: 16px 20px; border-left: 3px solid var(--red); }
   .control h3 { font-size: 17px; margin-bottom: 3px; }
@@ -253,7 +255,7 @@
       <div class="card panel">
         <h3>Before the console (current process)</h3>
         <svg viewBox="0 0 600 290" role="img" aria-label="An incident sits between six separate sources that the engineer checks by hand" font-family="Manrope, Segoe UI, sans-serif">
-          <g stroke="#b9b2a7" stroke-width="3">
+          <g stroke="#b9b2a7" stroke-width="3" stroke-linecap="round" stroke-dasharray="1 8">
             <line x1="300" y1="145" x2="90" y2="48"/><line x1="300" y1="145" x2="300" y2="30"/><line x1="300" y1="145" x2="510" y2="48"/>
             <line x1="300" y1="145" x2="90" y2="244"/><line x1="300" y1="145" x2="300" y2="258"/><line x1="300" y1="145" x2="510" y2="244"/>
           </g>
@@ -281,7 +283,8 @@
             <rect x="160" y="104" width="280" height="62" rx="12" fill="#c20f2f"/><text x="300" y="131" fill="#fff">AMS Console</text><text x="300" y="151" fill="#fff" font-weight="500" font-size="13">five agents, one pipeline</text>
             <rect x="160" y="216" width="280" height="62" rx="12" fill="#17130f"/><text x="300" y="243" fill="#fff">Guided response</text><text x="300" y="263" fill="#d9b45a" font-weight="500" font-size="13">confirmed by the engineer</text>
           </g>
-          <g stroke="#c20f2f" stroke-width="3" fill="none"><path d="M300 60v38m-8-10 8 10 8-10"/><path d="M300 170v40m-8-10 8 10 8-10"/></g>
+          <g stroke="#c20f2f" stroke-width="4" stroke-linecap="round" fill="none"><path d="M300 62V86"/><path d="M300 172V198"/></g>
+          <g fill="#c20f2f"><path d="M300 100l-10-15h20z"/><path d="M300 212l-10-15h20z"/></g>
         </svg>
         <div class="strip">The ticket reaches the engineer checked, prioritised and with a suggested fix and its sources.</div>
         <div class="trio"><div class="strip">1 entry point</div><div class="strip">Single flow</div><div class="strip">Faster response</div></div>
@@ -324,7 +327,7 @@
       <div class="card source" data-node="1"><b>Support mailbox</b><span>emails · no priority field</span></div>
     </div>
     <div class="nodes">
-      <div class="loop" aria-hidden="true"><i></i><span>New knowledge feeds the next search</span></div>
+      <div class="loop" aria-hidden="true"><svg width="870" height="34" viewBox="0 0 870 34"><path d="M1 34V25Q1 17 9 17H861Q869 17 869 9V7"/><polygon points="869,-5 862,7 876,7"/></svg><span>New knowledge feeds the next search</span></div>
       <div class="card node" data-node="2"><span class="arrow t" aria-hidden="true">↓</span><span class="arrow r" aria-hidden="true">→</span><div class="top"><span class="tagbox">A1</span><h3>Data Quality</h3><span class="state"></span></div>
         <ul><li>Team-owned rules</li><li>Flags with a reason</li><li>Drafts a request for information</li></ul>
         <div class="live"><div class="chips"><span class="chip">✓ Rules checked</span><span class="chip">✓ Model check</span></div><p>Enough to act on. If not: stop, and draft the email to the requester.</p></div>
