@@ -241,3 +241,28 @@ async def test_with_write_back_on_the_system_writes_nothing_on_its_own(monkeypat
     for told in (await jira.announce(None, now), await jira.announce_resolution(None, now),
                  await jira.announce_closure(None, now), await jira.move_triaged(None)):
         assert told == 0
+
+
+async def test_a_ticket_from_another_source_is_closed_here_without_jira(client, monkeypatch):
+    from app.db.session import get_db
+    from app.main import app
+    from app.services import jira
+
+    monkeypatch.setattr(jira.settings, "LEAD_REVIEW", "never")
+
+    async def no_jira(*args, **kwargs):
+        raise AssertionError("a mailbox ticket is never written to Jira")
+
+    monkeypatch.setattr(jira, "close_issue", no_jira)
+    run_id = await _seed(client)
+    async for session in app.dependency_overrides[get_db]():
+        (await session.get(Ticket, "AMS-1209")).source = "Mailbox"
+        await session.commit()
+    await client.post("/api/v1/tickets/AMS-1209/fix-outcome",
+                      json={"agent_run_id": run_id, "outcome": "worked", "reviewer": "ravi@contoso.com"})
+    note = "Cause: the batch rejected the file. Fix: re-ran posting. Checked: all four deals show paid."
+    await client.put("/api/v1/tickets/AMS-1209/closure-note", json={"text": note})
+    r = await client.post("/api/v1/tickets/AMS-1209/close", json={"author_email": "ravi@contoso.com"})
+    assert r.status_code == 200 and r.json()["status"] == "closed"
+    detail = (await client.get("/api/v1/tickets/AMS-1209")).json()
+    assert detail["closed_at"] and detail["source_status"] == "Closed"

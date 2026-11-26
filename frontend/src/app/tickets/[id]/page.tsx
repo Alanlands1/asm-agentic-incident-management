@@ -4,12 +4,14 @@ import { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } f
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { AppShell } from "@/components/console/app-shell";
+import { AssignControl } from "@/components/console/assign-control";
 import { PageHeader } from "@/components/console/page-header";
 import { PriorityChip } from "@/components/console/priority-chip";
 import { FeedbackThumbs } from "@/components/console/feedback-thumbs";
+import { RequesterEmail } from "@/components/console/requester-email";
 import { ReviewActions } from "@/components/console/review-actions";
 import { RunbookButton } from "@/components/console/runbook-button";
-import { FixChat } from "@/components/console/fix-chat";
+import { AskAssistant, FixChat } from "@/components/console/fix-chat";
 import { SectionHead, SlaClock } from "@/components/console/sync-parts";
 import { STAGES } from "@/components/console/dashboard";
 import { humanize } from "@/components/console/document-hints";
@@ -31,7 +33,7 @@ import { ticketService } from "@/services/ticket-service";
 import { AttentionItem } from "@/types/incident";
 import { AgentRun, FixOutcome, FLAGS, Outcome, PipelineTicket } from "@/types/pipeline";
 import { ServiceNowTicket } from "@/types/servicenow";
-import { Check, ChevronDown, LoaderCircle, Play, Send, ThumbsDown, ThumbsUp, TriangleAlert } from "lucide-react";
+import { Check, ChevronDown, Contrast, LoaderCircle, Play, Send, ThumbsDown, ThumbsUp, TriangleAlert } from "lucide-react";
 import { cn } from "cn";
 
 const STAGE_WORDS: Record<string, string> = { ...Object.fromEntries(STAGES), historical: "Closed before the agents started" };
@@ -44,54 +46,54 @@ const AGENTS: Record<string, string> = {
   fix_chat: "AI assistant",
 };
 const VERDICTS: Record<string, string> = {
-  answered: "answered the engineer",
+  answered: "responded to the engineer",
   proposed: "proposed a fix",
-  uncertain: "the rules could not decide",
+  uncertain: "the rules were inconclusive",
   passed: "complete",
-  needs_info: "needs details from the reporter",
+  needs_info: "needs more information from the requester",
   not_an_incident: "not an incident",
   rejected: "rejected",
-  resolved: "found the fix in the runbooks",
+  resolved: "found a fix in the runbooks",
   no_match: "no runbook covers this",
-  good: "close notes are good",
-  needs_work: "close notes need work",
-  not_applicable: "close notes not needed",
-  matched: "a knowledge-base article covers this fix",
-  gap: "no knowledge-base article covers this fix",
+  good: "closure note meets the standard",
+  needs_work: "closure note needs work",
+  not_applicable: "closure note not required",
+  matched: "an existing knowledge article covers this fix",
+  gap: "no knowledge article covers this fix",
 };
 
 /** What the person looking at the ticket has to do, by stage. */
 const NEXT: Record<string, string> = {
-  pending: "Nothing yet. The Data Quality agent checks this ticket after the next Jira sync, or run it now.",
-  awaiting_info: "Ask the reporter for the missing details. The agent drafted the reply.",
-  dq_passed: "Nothing yet. The Triage agent sets a priority next, or run it now.",
-  triaged: "Review the recommended priority: agree with it or change it.",
-  reviewed: "The priority is decided. The Resolution agent looks for the fix now.",
-  fix_confirmed: "The fix worked. Finish the closure note, then send it to Jira.",
-  needs_lead: "Three suggested fixes didn't work. Your lead looks at this ticket.",
-  in_review: "The closure note waits for the lead's approval.",
-  approved: "The lead approved the closure note. Send it to Jira.",
-  rejected: "Nothing. This is not an incident.",
-  error: "An agent failed on this ticket. A person has to look.",
-  historical: "Nothing. The ticket was closed before the agents started.",
+  pending: "No action needed yet. Data Quality checks this ticket after the next Jira sync, or you can run it now.",
+  awaiting_info: "Request the missing information from the requester. A draft reply is ready.",
+  dq_passed: "No action needed yet. Triage sets the priority next, or you can run it now.",
+  triaged: "Review the recommended priority: accept it or change it.",
+  reviewed: "Priority confirmed. Resolution is searching for a fix.",
+  fix_confirmed: "Fix confirmed. Complete the closure note, then close the ticket with it.",
+  needs_lead: "Three suggested fixes did not resolve the issue. The ticket is escalated to your lead.",
+  in_review: "The closure note is awaiting lead approval.",
+  approved: "The lead approved the closure note. Close the ticket with it.",
+  rejected: "No action needed. This is not an incident.",
+  error: "An agent failed on this ticket. Manual review is required.",
+  historical: "No action needed. The ticket was closed before the agents started.",
 };
 const DQ_STEP: Record<string, ["done" | "attention", string]> = {
   passed: ["done", "Complete"],
-  needs_info: ["attention", "Needs details"],
+  needs_info: ["attention", "Needs more information"],
   not_an_incident: ["attention", "Not an incident"],
   rejected: ["attention", "Rejected"],
-  uncertain: ["attention", "Could not decide"],
+  uncertain: ["attention", "Inconclusive"],
 };
 // Resolution, Closure Quality and Knowledge Builder: the words under their step, by verdict.
 const LATER_STEP: Record<string, ["done" | "attention", string]> = {
   resolved: ["done", "Fix found"],
-  matched: ["done", "Article covers it"],
+  matched: ["done", "Covered by an article"],
   gap: ["attention", "No article yet"],
-  no_match: ["attention", "No runbook covers it"],
-  good: ["done", "Close notes good"],
-  needs_work: ["attention", "Close notes need work"],
-  not_applicable: ["done", "Not needed"],
-  uncertain: ["attention", "Could not decide"],
+  no_match: ["attention", "No matching runbook"],
+  good: ["done", "Closure note complete"],
+  needs_work: ["attention", "Closure note needs work"],
+  not_applicable: ["done", "Not required"],
+  uncertain: ["attention", "Inconclusive"],
 };
 // Stages where a person may start the agents; the server refuses the rest.
 const CAN_RUN = ["pending", "awaiting_info", "dq_passed", "triaged", "error"];
@@ -100,9 +102,9 @@ type Agent = "data_quality" | "triage" | "resolution" | "closure_quality";
 const WORKING: Record<Agent | "knowledge_builder", string> = {
   data_quality: "Data Quality is checking the ticket…",
   triage: "Triage is setting the priority…",
-  resolution: "Resolution is looking for the fix in the runbooks…",
-  closure_quality: "Closure Quality is checking the close notes…",
-  knowledge_builder: "Knowledge Builder is learning from the close notes…",
+  resolution: "Resolution is searching the runbooks for a fix…",
+  closure_quality: "Closure Quality is checking the closure note…",
+  knowledge_builder: "Knowledge Builder is learning from the closure note…",
 };
 
 const when = (iso?: string | null) => (iso ? new Date(iso).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—");
@@ -140,7 +142,7 @@ function Post({ label, done, onPost }: { label: string; done?: boolean; onPost: 
           setFailed(null);
           onPost()
             .then(() => setSent(true))
-            .catch((e: unknown) => setFailed(e instanceof Error ? e.message : "Couldn't post to Jira"))
+            .catch((e: unknown) => setFailed(e instanceof Error ? e.message : "Couldn't post to Jira. Try again."))
             .finally(() => setBusy(false));
         }}
       >
@@ -182,7 +184,7 @@ function Run({ run, action, children }: { run: AgentRun; action?: React.ReactNod
       {typeof o.notes === "string" && o.notes && <p className="break-words text-muted-foreground">{o.notes}</p>}
       <p className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
         {typeof o.rule === "string" && <span>Rule: <span className="font-mono">{o.rule}</span></span>}
-        {typeof o.must_follow === "string" && <span>Must-follow rule: <span className="font-mono">{o.must_follow}</span></span>}
+        {typeof o.must_follow === "string" && <span>Mandatory rule: <span className="font-mono">{o.must_follow}</span></span>}
         {missing.length > 0 && <span>Missing: {missing.join(", ")}</span>}
         {references.length > 0 && <span>Runbook articles: <span className="font-mono">{references.join(", ")}</span></span>}
         {typeof o.confidence === "string" && <span>Confidence: {o.confidence}</span>}
@@ -190,7 +192,7 @@ function Run({ run, action, children }: { run: AgentRun; action?: React.ReactNod
         {run.agent === "knowledge_builder" && typeof o.article === "string" && <span>Article: <span className="font-mono">{o.article}</span></span>}
         {run.agent === "knowledge_builder" && typeof (o.draft as { draft_id?: number } | undefined)?.draft_id === "number" && (
           <Link href="/agents/knowledge" className="font-semibold text-primary">
-            Draft #{(o.draft as { draft_id: number }).draft_id} waiting for review
+            Draft #{(o.draft as { draft_id: number }).draft_id} awaiting review
           </Link>
         )}
         {audits.length > 0 && (
@@ -205,28 +207,28 @@ function Run({ run, action, children }: { run: AgentRun; action?: React.ReactNod
         <p className="flex flex-col gap-0.5 rounded-[14px] bg-primary px-3 py-2 text-xs text-primary-foreground">
           {higher.length > 0 && (
             <span>
-              <span className="font-semibold">Ranked higher from engineers&rsquo; ratings: </span>
+              <span className="font-semibold">Ranked higher based on engineer ratings: </span>
               <span className="font-mono">{higher.join(", ")}</span>
             </span>
           )}
           {lower.length > 0 && (
             <span>
-              <span className="font-semibold">Ranked lower from engineers&rsquo; ratings: </span>
+              <span className="font-semibold">Ranked lower based on engineer ratings: </span>
               <span className="font-mono">{lower.join(", ")}</span>
             </span>
           )}
-          <span>From ratings on tickets of the same application and triage rule.</span>
+          <span>Based on ratings for tickets with the same application and triage rule.</span>
         </p>
       )}
       {answer.chase_email && (
         <details>
-          <summary className="cursor-pointer text-xs font-semibold text-primary">Draft reply to the reporter</summary>
+          <summary className="cursor-pointer text-xs font-semibold text-primary">Draft reply to the requester</summary>
           <p className="mt-1 whitespace-pre-wrap break-words rounded-lg border border-border bg-muted px-3 py-2">{answer.chase_email}</p>
         </details>
       )}
       {signals && (
         <details>
-          <summary className="cursor-pointer text-xs font-semibold text-primary">What it looked at</summary>
+          <summary className="cursor-pointer text-xs font-semibold text-primary">Signals evaluated</summary>
           <dl className="mt-1 grid grid-cols-[minmax(0,12rem)_minmax(0,1fr)] gap-x-4 gap-y-1 text-xs">
             {Object.entries(signals).map(([k, v]) => (
               <div key={k} className="contents">
@@ -237,7 +239,6 @@ function Run({ run, action, children }: { run: AgentRun; action?: React.ReactNod
           </dl>
         </details>
       )}
-      {children}
     </>
   );
   return (
@@ -245,9 +246,9 @@ function Run({ run, action, children }: { run: AgentRun; action?: React.ReactNod
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <span className="font-semibold">{AGENTS[run.agent] ?? humanize(run.agent)}</span>
         <span>
-          {o.source === "chat" ? "uses the fix worked out with the AI assistant" : /^P[1-5]$/.test(run.verdict) ? `recommends ${run.verdict}` : (VERDICTS[run.verdict] ?? run.verdict)}
+          {o.source === "chat" ? "uses the fix developed with the AI assistant" : /^P[1-5]$/.test(run.verdict) ? `recommends ${run.verdict}` : (VERDICTS[run.verdict] ?? run.verdict)}
         </span>
-        {o.source === "chat" && <Badge variant="outline">AI suggestion, not from a runbook</Badge>}
+        {o.source === "chat" && <Badge variant="outline">AI-generated, not from a runbook</Badge>}
         <Badge variant="secondary">{o.stage === "model" || run.agent === "resolution" ? "Model" : "Rules"}</Badge>
         {flags.map((f) => (
           <Badge key={f}>{FLAGS[f]}</Badge>
@@ -272,7 +273,7 @@ function Run({ run, action, children }: { run: AgentRun; action?: React.ReactNod
       )}
       {typeof o.root_cause === "string" && (
         <p className="break-words">
-          <span className="font-semibold">Cause: </span>
+          <span className="font-semibold">Root cause: </span>
           {o.root_cause}
         </p>
       )}
@@ -287,13 +288,14 @@ function Run({ run, action, children }: { run: AgentRun; action?: React.ReactNod
         <>
           <div className="-mx-4">{action}</div>
           <details>
-            <summary className="cursor-pointer text-xs font-semibold text-primary">Why this fix</summary>
+            <summary className="cursor-pointer text-xs font-semibold text-primary">Why this fix was suggested</summary>
             <div className="mt-1.5 flex flex-col gap-1.5">{more}</div>
           </details>
         </>
       ) : (
         more
       )}
+      {children}
     </li>
   );
 }
@@ -324,7 +326,7 @@ function Note({
       await pipelineService.setGuidance(ticketId, value);
       await then();
     } catch (e) {
-      setFailed(e instanceof Error ? e.message : "Couldn't save the note");
+      setFailed(e instanceof Error ? e.message : "Couldn't save the note. Try again.");
     } finally {
       setSaving(false);
     }
@@ -332,7 +334,7 @@ function Note({
   return (
     <div className="flex flex-col gap-2 px-4 py-3 text-[13px]">
       <label htmlFor="note" className="font-semibold">
-        Tell the agents more
+        Add context for the agents
       </label>
       <Textarea id="note" rows={3} maxLength={4000} value={value} onChange={(e) => setValue(e.target.value)} aria-describedby="note-help" />
       <div className="flex flex-wrap items-center gap-2">
@@ -343,15 +345,15 @@ function Note({
           <Button
             size="sm"
             disabled={saving || busy || (value.trim() === text && !inputChanged)}
-            title={value.trim() === text && !inputChanged ? "Nothing changed since the last run: change the note first" : undefined}
+            title={value.trim() === text && !inputChanged ? "No changes since the last run. Update the note first." : undefined}
             onClick={() => save(rerun)}
           >
             <Play />
-            Save and run again
+            Save and rerun
           </Button>
         )}
         <span id="note-help" className="text-xs text-muted-foreground">
-          Extra facts, a question, or the answer you already know. The agents read this with the description.
+          Additional facts, a question or a known answer. The agents read this together with the description.
         </span>
       </div>
       {failed && (
@@ -387,14 +389,14 @@ const GROUPS: { label: string; keys: StepKey[] }[] = [
 const CARDS: CardKey[] = ["data_quality", "triage", "resolution", "closure_quality", "knowledge_builder"];
 const CARD_TITLES: Record<CardKey, string> = {
   data_quality: "Data Quality",
-  triage: "Triage and review",
+  triage: "Triage and priority review",
   resolution: "Suggested fix",
-  closure_quality: "Close notes",
-  knowledge_builder: "Knowledge",
+  closure_quality: "Closure note",
+  knowledge_builder: "Knowledge Builder",
 };
 const WAITS: Record<string, string> = {
-  resolution: "Runs once a person has decided the priority",
-  closure_quality: "Opens once you say the fix worked",
+  resolution: "Runs after the priority is confirmed",
+  closure_quality: "Opens after you confirm the fix",
   knowledge_builder: "Runs after Closure Quality",
 };
 
@@ -523,7 +525,7 @@ function Updates({ ticket, toJira, whyNotJira, onSent }: { ticket: PipelineTicke
         setText("");
         return onSent();
       })
-      .catch((e: unknown) => setFailed(e instanceof Error ? e.message : "Couldn't send the update"))
+      .catch((e: unknown) => setFailed(e instanceof Error ? e.message : "Couldn't send the update. Try again."))
       .finally(() => setBusy(false));
   };
   return (
@@ -534,8 +536,8 @@ function Updates({ ticket, toJira, whyNotJira, onSent }: { ticket: PipelineTicke
           {ticket.comments.map((c) => (
             <li key={c.id} className="flex flex-col gap-1 border-b border-border px-4 py-3 text-[13px]">
               <span className="text-xs text-muted-foreground">
-                <span className="font-semibold text-foreground">{/^<[A-Z_]+_\d+>$/.test(c.author_email) ? "Reporter" : c.author_email}</span>
-                {" "}· {c.from_reporter ? "reporter" : "support"} · {when(c.created_at)}
+                <span className="font-semibold text-foreground">{/^<[A-Z_]+_\d+>$/.test(c.author_email) ? "Requester" : c.author_email}</span>
+                {" "}· {c.from_reporter ? "requester" : "support"} · {when(c.created_at)}
               </span>
               <p className="whitespace-pre-wrap break-words">{c.body}</p>
             </li>
@@ -543,22 +545,22 @@ function Updates({ ticket, toJira, whyNotJira, onSent }: { ticket: PipelineTicke
         </ul>
       )}
       <div className="flex flex-col gap-2 px-4 py-3 text-[13px]">
-        <div role="group" aria-label="Who sees this" className="flex flex-wrap gap-1.5">
+        <div role="group" aria-label="Visibility" className="flex flex-wrap gap-1.5">
           <Button size="sm" variant={caller ? "default" : "secondary"} aria-pressed={caller} disabled={!toJira} title={toJira ? undefined : whyNotJira} onClick={() => setMode("caller")}>
-            Reply to caller
+            Reply to requester
           </Button>
           <Button size="sm" variant={caller ? "secondary" : "default"} aria-pressed={!caller} onClick={() => setMode("internal")}>
             Internal note
           </Button>
         </div>
         <label htmlFor="update" className="text-xs text-muted-foreground">
-          {caller ? "The reporter sees this on the Jira issue once you press Send." : `Only people in the console see this.${toJira ? "" : ` ${whyNotJira}`}`}
+          {caller ? "The requester sees this on the Jira issue after you send it." : `Visible only in the console.${toJira ? "" : ` ${whyNotJira}`}`}
         </label>
         <Textarea id="update" rows={3} maxLength={4000} value={text} onChange={(e) => setText(e.target.value)} disabled={busy} />
         <div className="flex flex-wrap items-center gap-2">
           <Button size="sm" disabled={busy || !text.trim()} onClick={send}>
             <Send />
-            {busy ? "Sending…" : caller ? "Send to the caller" : "Add the note"}
+            {busy ? "Sending…" : caller ? "Send to requester" : "Add note"}
           </Button>
         </div>
         {failed && (
@@ -574,20 +576,20 @@ function Updates({ ticket, toJira, whyNotJira, onSent }: { ticket: PipelineTicke
 /** Who did what on the ticket, newest first: agent results, the decided priority, ratings and updates. */
 function Activity({ ticket }: { ticket: PipelineTicket }) {
   const [all, setAll] = useState(false);
-  const masked = (s: string) => (/^<[A-Z_]+_\d+>$/.test(s) ? "Reporter" : s);
+  const masked = (s: string) => (/^<[A-Z_]+_\d+>$/.test(s) ? "Requester" : s);
   const decided = ticket.decided?.final_priority ? ticket.decided : null;
   const rows = [
     ...ticket.agent_runs.map((r) => ({
       key: `r${r.id}`,
       at: r.created_at,
-      who: AGENTS[r.agent] ?? humanize(r.agent),
-      what: /^P\d$/.test(r.verdict) ? `recommends ${r.verdict}` : (VERDICTS[r.verdict] ?? humanize(r.verdict)),
+      who: r.agent === "assignment" ? String(r.output.by) : (AGENTS[r.agent] ?? humanize(r.agent)),
+      what: r.agent === "assignment" ? (r.output.to ? `assigned the ticket to ${String(r.output.to)}` : "unassigned the ticket") : /^P\d$/.test(r.verdict) ? `recommends ${r.verdict}` : (VERDICTS[r.verdict] ?? humanize(r.verdict)),
     })),
-    ...(decided ? [{ key: "decided", at: decided.created_at, who: decided.reviewer, what: `decided the priority: P${decided.final_priority}` }] : []),
+    ...(decided ? [{ key: "decided", at: decided.created_at, who: decided.reviewer, what: `confirmed the priority: P${decided.final_priority}` }] : []),
     // Ratings from use repeat what is listed already (agreed with the priority, the fix worked): only thumbs given by hand.
     ...(ticket.feedback ?? [])
       .filter((f) => !f.reason.startsWith("From use: "))
-      .map((f) => ({ key: `f${f.id}`, at: f.created_at, who: f.reviewer, what: `said ${AGENTS[f.agent] ?? humanize(f.agent)} was ${f.stars >= 4 ? "right" : f.stars <= 2 ? "wrong" : "partly right"}` })),
+      .map((f) => ({ key: `f${f.id}`, at: f.created_at, who: f.reviewer, what: `rated ${AGENTS[f.agent] ?? humanize(f.agent)} ${f.stars >= 4 ? "correct" : f.stars <= 2 ? "incorrect" : "partially correct"}` })),
     ...ticket.comments.map((c) => ({ key: `c${c.id}`, at: c.created_at, who: masked(c.author_email), what: "added an update" })),
     ...(ticket.lead_reviews ?? []).map((s, i) => ({
       key: `l${i}`,
@@ -598,7 +600,7 @@ function Activity({ ticket }: { ticket: PipelineTicket }) {
           ? "submitted the closure note for review"
           : s.action === "approved"
             ? "approved the closure note"
-            : `sent the closure note back: ${s.note ?? ""}`,
+            : `returned the closure note: ${s.note ?? ""}`,
     })),
   ]
     // The lists come oldest first; reversed, two entries with the same time keep the later one on top.
@@ -607,9 +609,9 @@ function Activity({ ticket }: { ticket: PipelineTicket }) {
   const shown = all ? rows : rows.slice(0, 5);
   return (
     <Card className="gap-0 py-0">
-      <SectionHead title="Who did what" />
+      <SectionHead title="Activity log" />
       {rows.length === 0 ? (
-        <p className="px-4 py-3 text-[13px] text-muted-foreground">Nothing yet.</p>
+        <p className="px-4 py-3 text-[13px] text-muted-foreground">No activity yet.</p>
       ) : (
         <ul role="list">
           {shown.map((i) => (
@@ -625,7 +627,7 @@ function Activity({ ticket }: { ticket: PipelineTicket }) {
       {rows.length > 5 && (
         <div className="border-t border-border px-4 py-2">
           <Button size="xs" variant="ghost" onClick={() => setAll(!all)}>
-            {all ? "Show the last 5" : `Show all (${rows.length})`}
+            {all ? "Show latest 5" : `Show all (${rows.length})`}
           </Button>
         </div>
       )}
@@ -650,22 +652,22 @@ function ClosureEdit({ ticketId, run, notes, onSaved }: { ticketId: string; run:
     pipelineService
       .closureReview(ticketId, { action, reviewer: person, ...(action === "edited" ? { final_text: value.trim() } : {}) })
       .then(() => {
-        setSaved(action === "accepted" ? "The agent's draft is kept as the final notes." : "Your version is kept as the final notes.");
+        setSaved(action === "accepted" ? "The agent's draft is saved as the final closure note." : "Your version is saved as the final closure note.");
         return onSaved();
       })
       .catch((e: unknown) =>
-        setFailed(e instanceof ApiError && e.status === 409 ? "Already decided for this check." : e instanceof Error ? e.message : "Couldn't save the notes")
+        setFailed(e instanceof ApiError && e.status === 409 ? "A decision has already been recorded for this check." : e instanceof Error ? e.message : "Couldn't save the closure note. Try again.")
       )
       .finally(() => setBusy(false));
   };
   return (
     <div className="flex flex-col gap-2 border-t border-border px-4 py-3 text-[13px]">
       <label htmlFor={`closure-${run.id}`} className="font-semibold">
-        {draft ? "Close notes, as the agent would write them" : "Close notes"}
+        {draft ? "Closure note, as drafted by the agent" : "Closure note"}
       </label>
       <p id={`closure-help-${run.id}`} className="text-xs text-muted-foreground">
-        {draft && GAP.test(draft) ? "Fill in the parts marked [engineer to add: …], then save. " : ""}
-        Kept in the console. They go to Jira only when you send the closure note.
+        {draft && GAP.test(draft) ? "Complete the parts marked [engineer to add: …], then save. " : ""}
+        Stored in the console. Sent to Jira only with the closure note.
       </p>
       <Textarea
         id={`closure-${run.id}`}
@@ -679,7 +681,7 @@ function ClosureEdit({ ticketId, run, notes, onSaved }: { ticketId: string; run:
       <div className="flex flex-wrap items-center gap-2">
         {canAccept && (
           <Button size="sm" disabled={busy || saved !== null} onClick={() => decide("accepted")}>
-            Accept the draft
+            Accept draft
           </Button>
         )}
         <Button
@@ -742,7 +744,7 @@ function FixAnswer({
         setNote("");
         return onDone();
       })
-      .catch((e: unknown) => setFailed(e instanceof Error ? e.message : "Couldn't save your answer"))
+      .catch((e: unknown) => setFailed(e instanceof Error ? e.message : "Couldn't save your response. Try again."))
       .finally(() => setSending(false));
   };
   const left = MAX_WRONG - wrong - 1; // new suggestions after this one, if this one did not work either
@@ -752,13 +754,13 @@ function FixAnswer({
     <div className="flex flex-col gap-2 border-t border-border px-4 py-3 text-[13px]">
       <div className="flex flex-wrap items-center gap-2">
         <Badge variant="secondary">Fix v{version}</Badge>
-        {waitingForNext && <span className="text-muted-foreground">You said it didn&rsquo;t work. The Resolution agent looks for another fix with what you wrote.</span>}
+        {waitingForNext && <span className="text-muted-foreground">You reported that the fix did not work. Resolution is searching for another fix using your notes.</span>}
       </div>
       {needsLead && !said && (
         <Alert>
           <AlertDescription>
-            {MAX_WRONG} suggested fixes didn&rsquo;t work. Ask your lead: they see every version and your notes. Add an internal note under Updates to bring them
-            in; if you fix it together, say so here.
+            {MAX_WRONG} suggested fixes did not resolve the issue. Escalate to your lead, who can see every version and your notes. Add an internal note under Updates to involve them;
+            if you resolve it together, record the outcome here.
           </AlertDescription>
         </Alert>
       )}
@@ -766,27 +768,27 @@ function FixAnswer({
         <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <Check className="size-3.5 text-p3" aria-hidden="true" />
           <span className="break-words">
-            {answer.action === "worked" ? "You said it worked." : found ? `You said it worked, with changes: ${answer.note}` : `You fixed it another way: ${answer.note}`}
+            {answer.action === "worked" ? "You confirmed the fix worked." : found ? `You confirmed the fix worked with changes: ${answer.note}` : `You resolved it another way: ${answer.note}`}
           </span>
           <Button size="xs" variant="link" disabled={busy} onClick={() => setChanging(true)}>
-            Change answer
+            Change response
           </Button>
         </p>
       ) : waitingForNext ? null : mode === null ? (
         <div className="flex flex-wrap items-center gap-2 rounded-xl bg-selected px-3 py-2.5">
-          <span className="font-semibold">{found ? "Did it work?" : "No runbook covers this. Fixed it another way?"}</span>
+          <span className="font-semibold">{found ? "Did the fix resolve the issue?" : "No runbook covers this. Did you resolve it another way?"}</span>
           {found && (
             <Button size="sm" variant="secondary" disabled={busy || sending} onClick={() => send("worked")}>
               {sending && <LoaderCircle className="animate-spin" />}
-              {sending ? "Opening the closure note…" : "Yes, it worked"}
+              {sending ? "Opening the closure note…" : "Yes, resolved"}
             </Button>
           )}
           <Button size="sm" variant="secondary" disabled={busy || sending} onClick={() => setMode("partly")}>
-            {found ? "Partly, I changed steps" : "I fixed it another way"}
+            {found ? "Partially, with changes" : "Resolved another way"}
           </Button>
           {found && !needsLead && (
             <Button size="sm" variant="secondary" disabled={busy || sending} onClick={() => setMode("wrong")}>
-              No, it didn&rsquo;t work
+              No, not resolved
             </Button>
           )}
           {changing && (
@@ -794,17 +796,17 @@ function FixAnswer({
               Cancel
             </Button>
           )}
-          <span className="basis-full text-xs text-muted-foreground">The closure note opens once you confirm the fix worked.</span>
+          <span className="basis-full text-xs text-muted-foreground">The closure note opens after you confirm the fix.</span>
         </div>
       ) : (
         <div className="flex flex-col gap-1.5 rounded-xl bg-muted px-3 py-2.5 animate-in fade-in duration-300">
           <label htmlFor={`fix-note-${run.id}`} className="font-semibold">
-            {mode === "wrong" ? "What happened when you tried it?" : found ? "What did you change?" : "What did you do?"}
+            {mode === "wrong" ? "What happened when you applied the fix?" : found ? "What did you change?" : "How did you resolve it?"}
           </label>
           <p id={`fix-note-help-${run.id}`} className="text-xs text-muted-foreground">
             {mode === "wrong"
-              ? "The Resolution agent reads this and suggests a different fix. Personal details are masked before it is kept."
-              : "It goes into the closure note, and the Knowledge Builder uses it to update the runbook."}
+              ? "Resolution uses this to suggest a different fix. Personal data is masked before it is stored."
+              : "This is added to the closure note, and Knowledge Builder uses it to update the runbook."}
           </p>
           <Textarea
             id={`fix-note-${run.id}`}
@@ -813,12 +815,12 @@ function FixAnswer({
             onChange={(e) => setNote(e.target.value)}
             disabled={sending}
             aria-describedby={`fix-note-help-${run.id}`}
-            placeholder={mode === "wrong" ? "For example: the re-run failed again with the same error" : "For example: step 3 needed the file re-generated, not just re-sent"}
+            placeholder={mode === "wrong" ? "For example: the rerun failed with the same error" : "For example: step 3 required regenerating the file, not just resending it"}
           />
           <div className="flex flex-wrap items-center gap-2">
             <Button size="sm" disabled={busy || sending || !note.trim()} onClick={() => send(mode)}>
               {sending && <LoaderCircle className="animate-spin" />}
-              {sending ? "Saving…" : mode === "partly" ? "Save and open the closure note" : left > 0 ? "Get a new suggestion" : "Ask your lead"}
+              {sending ? "Saving…" : mode === "partly" ? "Save and open closure note" : left > 0 ? "Request a new suggestion" : "Escalate to lead"}
             </Button>
             <Button
               size="sm"
@@ -833,7 +835,7 @@ function FixAnswer({
             </Button>
             {mode === "wrong" && (
               <span className="text-xs text-muted-foreground">
-                {left > 0 ? `${left} new suggestion${left === 1 ? "" : "s"} left before asking your lead` : "This is the last suggestion: your lead looks next"}
+                {left > 0 ? `${left} more suggestion${left === 1 ? "" : "s"} before escalation to your lead` : "This is the final suggestion before escalation to your lead"}
               </span>
             )}
           </div>
@@ -889,22 +891,24 @@ function ClosureNote({
     setFailed(null);
     request()
       .then(onDone)
-      .catch((e: unknown) => setFailed(e instanceof Error ? e.message : what === "save" ? "Couldn't save the note" : "Couldn't do that. Try again."))
+      .catch((e: unknown) => setFailed(e instanceof Error ? e.message : what === "save" ? "Couldn't save the note. Try again." : "Couldn't do that. Try again."))
       .finally(() => setDoing(null));
   };
-  const why = !toJira ? whyNotJira : edited ? "Save your changes first." : gap ? "Fill in the marked parts first." : null;
+  const fromJira = ticket.source === "JIRA";
+  const blocked = fromJira && !toJira; // a Jira issue is closed by writing to Jira; any other ticket is closed here only
+  const why = blocked ? whyNotJira : edited ? "Save your changes first." : gap ? "Complete the marked parts first." : null;
   return (
     <div className="flex flex-col gap-2 border-t border-border px-4 py-3 text-[13px]">
       {stage === "fix_confirmed" && last?.action === "sent_back" && (
         <div role="note" className="flex flex-col gap-0.5 rounded-xl border border-primary bg-selected px-3 py-2">
-          <p className="font-semibold">Sent back by {last.reviewer}</p>
+          <p className="font-semibold">Returned by {last.reviewer}</p>
           <p className="whitespace-pre-wrap break-words">{last.note}</p>
-          <p className="text-xs text-muted-foreground">Change the note, save it, then submit it again.</p>
+          <p className="text-xs text-muted-foreground">Update the note, save it, then resubmit it.</p>
         </div>
       )}
       {questions.length > 0 && (
         <div className="flex flex-col gap-1">
-          <p className="font-semibold">What the note still needs</p>
+          <p className="font-semibold">Missing from the note</p>
           <ul className="flex list-disc flex-col gap-0.5 pl-5">
             {questions.map((q) => (
               <li key={q}>{q}</li>
@@ -913,11 +917,11 @@ function ClosureNote({
         </div>
       )}
       <label htmlFor="closure-note" className="font-semibold">
-        The note that goes back to {source}
+        Closure note for {source}
       </label>
       <p id="closure-note-help" className="text-xs text-muted-foreground">
-        {GAP.test(value) ? "Fill in the parts marked [engineer to add: …]. " : ""}
-        {stage === "in_review" ? "The lead is reviewing this note; it can't be changed meanwhile." : "Saving checks it again. It stays in the console until you send it."}
+        {GAP.test(value) ? "Complete the parts marked [engineer to add: …]. " : ""}
+        {stage === "in_review" ? "The lead is reviewing this note. It can't be edited during review." : "Saving runs the check again. The note stays in the console until you send it."}
       </p>
       <Textarea
         id="closure-note"
@@ -932,20 +936,20 @@ function ClosureNote({
       <div className="flex flex-wrap items-center gap-2">
         <Button size="sm" variant={edited ? "default" : "secondary"} disabled={busy || doing !== null || !edited || !value.trim()} onClick={() => call("save", () => pipelineService.saveClosureNote(ticket.id, value.trim()))}>
           {doing === "save" && <LoaderCircle className="animate-spin" />}
-          {doing === "save" ? "Checking…" : "Save and check again"}
+          {doing === "save" ? "Checking…" : "Save and recheck"}
         </Button>
         {draft && draft.trim() !== value.trim() && (
           <Button size="sm" variant="secondary" disabled={doing !== null} onClick={() => setValue(draft)}>
-            Use the agent&rsquo;s draft
+            Use agent draft
           </Button>
         )}
-        {stage === "approved" && <span className="text-xs text-muted-foreground">Saving a change sends it to the lead again.</span>}
+        {stage === "approved" && <span className="text-xs text-muted-foreground">Saving a change resubmits it for lead approval.</span>}
       </div>
       )}
       {stage === "in_review" ? (
         <div className="flex flex-col gap-2 border-t border-border pt-2.5">
           <p>
-            <span className="font-semibold">Waiting for the lead&rsquo;s review.</span>{" "}
+            <span className="font-semibold">Awaiting lead approval.</span>{" "}
             <span className="text-muted-foreground">Submitted by {submitted?.reviewer ?? "the engineer"} {submitted ? when(submitted.created_at) : ""}.</span>
           </p>
           {isLead ? (
@@ -958,7 +962,7 @@ function ClosureNote({
                 <div className="flex flex-wrap items-center gap-2">
                   <Button size="sm" disabled={doing !== null || !comment.trim()} onClick={() => call("back", () => pipelineService.leadReview(ticket.id, { action: "sent_back", note: comment.trim(), reviewer: person }))}>
                     {doing === "back" && <LoaderCircle className="animate-spin" />}
-                    Send it back
+                    Return to engineer
                   </Button>
                   <Button size="sm" variant="ghost" disabled={doing !== null} onClick={() => setSendingBack(false)}>
                     Cancel
@@ -969,39 +973,50 @@ function ClosureNote({
               <div className="flex flex-wrap items-center gap-2">
                 <Button size="sm" disabled={busy || doing !== null} onClick={() => call("approve", () => pipelineService.leadReview(ticket.id, { action: "approved", reviewer: person }))}>
                   {doing === "approve" ? <LoaderCircle className="animate-spin" /> : <Check />}
-                  Approve the closure note
+                  Approve closure note
                 </Button>
                 <Button size="sm" variant="secondary" disabled={doing !== null} onClick={() => setSendingBack(true)}>
-                  Send it back
+                  Return to engineer
                 </Button>
               </div>
             )
           ) : (
-            <p className="text-xs text-muted-foreground">A lead approves it or sends it back. Switch to the Lead view to review it.</p>
+            <p className="text-xs text-muted-foreground">A lead approves or returns it. Switch to the Lead view to review it.</p>
           )}
         </div>
       ) : needsReview ? (
         <div className="flex flex-wrap items-center gap-2 border-t border-border pt-2.5">
           <Button size="sm" disabled={busy || doing !== null || edited || gap || !saved.trim()} onClick={() => call("submit", () => pipelineService.submitReview(ticket.id, person))}>
             {doing === "submit" ? <LoaderCircle className="animate-spin" /> : <Send />}
-            {doing === "submit" ? "Submitting…" : "Submit for the lead's review"}
+            {doing === "submit" ? "Submitting…" : "Submit for lead approval"}
           </Button>
           <span className="text-xs text-muted-foreground">
-            {edited ? "Save your changes first." : gap ? "Fill in the marked parts first." : `A lead approves this note before it goes to ${source}.`}
+            {edited ? "Save your changes first." : gap ? "Complete the marked parts first." : `A lead must approve this note before it is sent to ${source}.`}
           </span>
         </div>
       ) : (
         <div className="flex flex-wrap items-center gap-2 border-t border-border pt-2.5">
-          <Button size="sm" disabled={!toJira || busy || doing !== null || edited || gap || !saved.trim()} onClick={() => call("send", () => pipelineService.closeInJira(ticket.id, person))}>
+          <Button size="sm" disabled={blocked || busy || doing !== null || edited || gap || !saved.trim()} onClick={() => call("send", () => pipelineService.closeInJira(ticket.id, person))}>
             {doing === "send" ? <LoaderCircle className="animate-spin" /> : <Send />}
-            {doing === "send" ? "Sending…" : `Send the closure note to ${source}`}
+            {doing === "send" ? (fromJira ? "Sending…" : "Closing…") : fromJira ? `Send closure note to ${source}` : `Mark as closed in ${source}`}
           </Button>
           <span className="text-xs text-muted-foreground">
             {why ??
-              `${stage === "approved" ? `Approved by ${steps.findLast((s) => s.action === "approved")?.reviewer ?? "the lead"}. ` : ""}Posts this note on ${ticket.id} and moves the issue to Done. Nothing else goes to ${source}.`}
+              `${stage === "approved" ? `Approved by ${steps.findLast((s) => s.action === "approved")?.reviewer ?? "the lead"}. ` : ""}${
+                fromJira
+                  ? `Posts this note on ${ticket.id} and sets the issue to Done. Nothing else is sent to ${source}.`
+                  : `Close the ticket in ${source} with this note first. This closes it in the console; nothing is sent to ${source}.`
+              }`}
           </span>
         </div>
       )}
+      <RequesterEmail
+        ticket={ticket}
+        ready={edited ? "Save your changes first." : gap || !saved.trim() ? "Save a complete closure note first." : null}
+        toJira={toJira}
+        source={source}
+        onSent={onDone}
+      />
       {failed && (
         <p role="alert" className="text-xs font-medium text-destructive">
           {failed}
@@ -1015,7 +1030,7 @@ function Text({ title, text }: { title: string; text?: string | null }) {
   return (
     <Card className="gap-0 py-0">
       <SectionHead title={title} />
-      <p className="whitespace-pre-wrap break-words px-4 py-3 text-[13px]">{text || "Nothing written."}</p>
+      <p className="whitespace-pre-wrap break-words px-4 py-3 text-[13px]">{text || "Not provided."}</p>
     </Card>
   );
 }
@@ -1032,6 +1047,7 @@ function Ticket() {
   const [running, setRunning] = useState<Agent | null>(null);
   const [runFailed, setRunFailed] = useState<string | null>(null);
   const person = usePerson();
+  const role = useViewAs();
   const [openStep, setOpenStep] = useState<StepKey | null>(null);
   const [openCards, setOpenCards] = useState<Set<CardKey>>(new Set());
   const [doneOpen, setDoneOpen] = useState(false);
@@ -1111,7 +1127,7 @@ function Ticket() {
           : pipelineService.runAgents(id, agent);
     call
       .then(load)
-      .catch((e: unknown) => setRunFailed(e instanceof Error ? e.message : "The agent did not run"))
+      .catch((e: unknown) => setRunFailed(e instanceof Error ? e.message : "The agent could not run. Try again."))
       .finally(() => setRunning(null));
   };
   const canRun = !closed && CAN_RUN.includes(ticket?.pipeline_status ?? "");
@@ -1124,11 +1140,11 @@ function Ticket() {
         size="xs"
         variant="secondary"
         disabled={busy || same}
-        title={same ? "Nothing changed since the last run: edit the ticket, add a note or a reply first" : busy ? "The agents are working; wait for them to finish" : undefined}
+        title={same ? "No changes since the last run. Edit the ticket, or add a note or reply first." : busy ? "The agents are running. Wait for them to finish." : undefined}
         onClick={() => runAgent(agent)}
       >
         <Play />
-        {again ? "Run again" : "Run"}
+        {again ? "Rerun" : "Run"}
       </Button>
     );
   };
@@ -1176,21 +1192,21 @@ function Ticket() {
   // A person reviews only a priority Triage lowered; the rest is approved by the agents.
   const autoApproved = decided?.reviewer === "AMS agents (auto)";
   const lowered = recommended !== null && ticket?.reported_priority != null && recommended > ticket.reported_priority;
-  const FIX_WORDS: Record<Outcome, string> = { worked: "Fix worked", partly: "Worked, with changes", wrong: "Didn't work" };
+  const FIX_WORDS: Record<Outcome, string> = { worked: "Fix confirmed", partly: "Resolved with changes", wrong: "Not resolved" };
   const fixStep = (): Partial<FlowStep> =>
     fixAnswer && fixAnswer.action !== "wrong"
       ? { state: "done", summary: FIX_WORDS[fixAnswer.action] }
       : needsLead
-        ? { state: "attention", summary: "Ask your lead", lines: [`${MAX_WRONG} suggested fixes didn't work`] }
+        ? { state: "attention", summary: "Escalated to lead", lines: [`${MAX_WRONG} suggested fixes did not resolve the issue`] }
         : asking
-          ? { state: "attention", summary: fixAnswer ? "Looking again" : fixRun!.verdict === "resolved" ? "Did it work?" : "No runbook covers it" }
+          ? { state: "attention", summary: fixAnswer ? "Searching again" : fixRun!.verdict === "resolved" ? "Awaiting your confirmation" : "No matching runbook" }
           : {};
   const noteRun = runOf("closure_quality");
   const noteStep = (): Partial<FlowStep> =>
     inReview
-      ? { state: "done", summary: "With the lead", lines: [`Submitted by ${lastLead?.reviewer ?? "the engineer"}`] }
+      ? { state: "done", summary: "Awaiting lead approval", lines: [`Submitted by ${lastLead?.reviewer ?? "the engineer"}`] }
       : approved
-        ? { state: "attention", summary: "Ready to send", lines: [`Approved by ${approval?.reviewer ?? "the lead"}`, `Goes to ${source} when you send it`] }
+        ? { state: "attention", summary: jira ? "Ready to send" : "Ready to close", lines: [`Approved by ${approval?.reviewer ?? "the lead"}`, jira ? `Sent to ${source} only when you send it` : "Closed here once you closed it in the source"] }
         : confirmed
       ? {
           state: "attention",
@@ -1201,10 +1217,10 @@ function Ticket() {
                 ? "Ready to submit"
                 : "Ready to send"
               : (LATER_STEP[noteRun.verdict]?.[1] ?? noteRun.verdict),
-          lines: [...brief(noteRun), `Goes to ${source} when you send it`],
+          lines: [...brief(noteRun), `Sent to ${source} only when you send it`],
         }
       : !["resolved", "closed"].includes(ticket?.status ?? "")
-        ? { state: "waiting", summary: "Not yet", lines: [WAITS.closure_quality] }
+        ? { state: "waiting", summary: "Pending", lines: [WAITS.closure_quality] }
         : {};
   const built: FlowStep[] = ticket
     ? [
@@ -1220,7 +1236,7 @@ function Ticket() {
           key: "data_quality",
           name: "Data Quality",
           state: dq ? (DQ_STEP[dq.verdict]?.[0] ?? "attention") : "waiting",
-          summary: dq ? (DQ_STEP[dq.verdict]?.[1] ?? dq.verdict) : "Not yet",
+          summary: dq ? (DQ_STEP[dq.verdict]?.[1] ?? dq.verdict) : "Pending",
           lines: dq ? [...brief(dq), when(dq.created_at)] : ["Checks the ticket after the next sync, or run it now"],
           run: dq,
           section: "data_quality",
@@ -1229,33 +1245,33 @@ function Ticket() {
           key: "triage",
           name: "Triage",
           state: recommended !== null ? "done" : triage ? "attention" : "waiting",
-          summary: recommended !== null ? `P${recommended} recommended` : triage ? "Could not decide" : "Not yet",
-          lines: triage ? [...brief(triage), when(triage.created_at)] : ["Sets a priority once Data Quality passes"],
+          summary: recommended !== null ? `P${recommended} recommended` : triage ? "Inconclusive" : "Pending",
+          lines: triage ? [...brief(triage), when(triage.created_at)] : ["Sets the priority after the Data Quality check passes"],
           run: triage,
           section: "triage",
         },
         {
           key: "review",
-          name: "Review by a person",
+          name: "Priority review",
           state: reviewed || closed ? "done" : ticket.pipeline_status === "triaged" ? "attention" : "waiting",
           summary: autoApproved
-            ? "Not needed"
+            ? "Not required"
             : reviewed
               ? decided?.final_priority
                 ? `P${decided.final_priority} by ${decided.reviewer}`
                 : "Priority decided"
               : closed
-                ? "Not needed"
+                ? "Not required"
                 : ticket.pipeline_status === "triaged"
-                  ? "Waiting for you"
-                  : "Only if lowered",
+                  ? "Awaiting your review"
+                  : "Required only if lowered",
           lines: autoApproved
-            ? [`Triage didn't lower the priority, so P${decided!.final_priority} was approved without a person`]
+            ? [`Triage did not lower the priority, so P${decided!.final_priority} was approved automatically`]
             : ticket.pipeline_status === "triaged" && lowered
-              ? [`Triage lowered the priority from P${ticket.reported_priority} to P${recommended}: agree or change it`]
+              ? [`Triage lowered the priority from P${ticket.reported_priority} to P${recommended}: accept or change it`]
               : decided?.note
                 ? [decided.note]
-                : ["Needed only when Triage lowers the reporter's priority"],
+                : ["Required only when Triage lowers the requester's priority"],
           section: "triage",
         },
         ...(["resolution", "closure_quality", "knowledge_builder"] as const).map(
@@ -1265,7 +1281,7 @@ function Ticket() {
               key: agent,
               name: agent === "knowledge_builder" ? "Knowledge" : AGENTS[agent], // as its card is titled; keeps the bar on one line
               state: run ? (LATER_STEP[run.verdict]?.[0] ?? "attention") : "waiting",
-              summary: run ? (LATER_STEP[run.verdict]?.[1] ?? run.verdict) : "Not yet",
+              summary: run ? (LATER_STEP[run.verdict]?.[1] ?? run.verdict) : "Pending",
               lines: run ? [...brief(run), when(run.created_at)] : [WAITS[agent]],
               run,
               section: agent,
@@ -1279,27 +1295,27 @@ function Ticket() {
           name: "Lead review",
           state: !ticket.lead_review_required || approved || closed ? "done" : inReview ? "attention" : "waiting",
           summary: !ticket.lead_review_required
-            ? "Not needed"
+            ? "Not required"
             : approved || (closed && approval)
               ? `Approved by ${approval?.reviewer ?? "the lead"}`
               : inReview
-                ? "With the lead"
+                ? "Awaiting lead approval"
                 : lastLead?.action === "sent_back"
-                  ? "Sent back"
-                  : "Not yet",
+                  ? "Returned"
+                  : "Pending",
           lines: !ticket.lead_review_required
-            ? ["A lead reviews closure notes only when the setting asks for it (Settings, Jira)"]
+            ? ["Lead approval applies only when enabled in Settings › Jira"]
             : lastLead?.action === "sent_back" && !inReview && !approved
               ? [`${lastLead.reviewer}: ${lastLead.note ?? ""}`]
-              : ["A lead approves the closure note before it goes to the source"],
+              : ["A lead approves the closure note before it is sent to the source"],
           section: "closure_quality",
         },
         {
           key: "back",
-          name: jira ? "Back to Jira" : "Back to source",
+          name: jira ? "Close in Jira" : "Close in source",
           state: closed ? "done" : "waiting",
-          summary: closed ? "Closed" : "At the end",
-          lines: [closed ? `Closed in ${source} ${when(ticket.closed_at)}` : `The closure note goes to ${source} when you send it`],
+          summary: closed ? "Closed" : "Final step",
+          lines: [closed ? `Closed in ${source} ${when(ticket.closed_at)}` : `The closure note is sent to ${source} when you send it`],
           section: null,
         },
       ]
@@ -1400,11 +1416,11 @@ function Ticket() {
           <p className="px-4 py-3 text-[13px] text-muted-foreground">{key === "triage" ? "Not triaged yet." : (WAITS[key] ?? "Not run yet.")}</p>
         )}
         {key === "resolution" && !closed && (
-          <FixChat ticket={ticket!} noRunbook={latestRun?.verdict === "no_match"} onDone={load} />
+          <AskAssistant noRunbook={latestRun?.verdict === "no_match"} />
         )}
         {key === "resolution" && references.length > 0 && (
           <div className="flex flex-wrap items-center gap-2 border-t border-border px-4 py-3">
-            <span className="font-mono text-[10.5px] font-medium tracking-[0.08em] text-muted-foreground uppercase">From the runbooks</span>
+            <span className="font-mono text-[10.5px] font-medium tracking-[0.08em] text-muted-foreground uppercase">Runbook references</span>
             {references.map((kb) => (
               <RunbookButton key={kb} id={kb} panel />
             ))}
@@ -1413,7 +1429,7 @@ function Ticket() {
         {key === "triage" && (
           <div className="flex flex-col gap-2 border-t border-border px-4 py-3 text-[13px]">
             <p>
-              <span className="font-semibold">Review by a person: </span>
+              <span className="font-semibold">Priority review: </span>
               {stepOf("review").summary} · {stepOf("review").lines[0]}
             </p>
             {!closed && ticket?.pipeline_status === "triaged" && recommended !== null && (
@@ -1429,7 +1445,7 @@ function Ticket() {
             ticket={ticket!}
             run={latestRun}
             toJira={jira && writeBack}
-            whyNotJira={jira ? "Writing to Jira is switched off for this console." : `This ticket did not come from Jira: close it in ${source} with this note.`}
+            whyNotJira={jira ? "Jira write-back is disabled for this console." : `This ticket did not originate in Jira. Close it in ${source} using this note.`}
             source={source}
             busy={busy}
             onDone={load}
@@ -1438,15 +1454,15 @@ function Ticket() {
           <div className="flex flex-col gap-2 border-t border-border px-4 py-3 text-[13px]">
             <p className="font-semibold">
               {ticket.closure_decision.action === "accepted"
-                ? "Final close notes: the agent's draft, accepted"
+                ? "Final closure note: agent draft accepted"
                 : ticket.closure_decision.action === "edited"
-                  ? "Final close notes: your version"
-                  : "The check was set aside; the notes stand as they are"}
+                  ? "Final closure note: your version"
+                  : "The check was dismissed; the note is unchanged"}
             </p>
             {ticket.closure_decision.final_text && (
               <p className="whitespace-pre-wrap break-words rounded-lg border border-border bg-muted px-3 py-2 font-mono text-[12px]">{ticket.closure_decision.final_text}</p>
             )}
-            <p className="text-xs text-muted-foreground">Kept in the console. They go to Jira only when you send the closure note.</p>
+            <p className="text-xs text-muted-foreground">Stored in the console. Sent to Jira only with the closure note.</p>
           </div>
         ) : (
           key === "closure_quality" &&
@@ -1457,13 +1473,13 @@ function Ticket() {
         {key === "data_quality" && draft && writeBack && !closed && (
           <div className="border-t border-border px-4 py-3">
             {/* Engineer-asked only (design D9): nothing goes to Jira until this is pressed. */}
-            <Post label="Post the draft reply to Jira" done={ticket!.comments.some((c) => c.body.includes(draft))} onPost={() => pipelineService.replyInJira(ticket!.id, person, draft).then(load)} />
+            <Post label="Post draft reply to Jira" done={ticket!.comments.some((c) => c.body.includes(draft))} onPost={() => pipelineService.replyInJira(ticket!.id, person, draft).then(load)} />
           </div>
         )}
         {older.length > 0 && (
           <Collapsible className="border-t border-border">
             <CollapsibleTrigger className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-xs font-semibold text-primary focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
-              {key === "resolution" ? "Earlier fixes" : "Earlier checks"} ({older.length})
+              {key === "resolution" ? "Previous fixes" : "Previous checks"} ({older.length})
             </CollapsibleTrigger>
             <CollapsibleContent>
               <ul role="list" className="border-t border-border">
@@ -1474,7 +1490,7 @@ function Ticket() {
                       {key === "resolution" && (
                         <p className="flex flex-wrap items-center gap-2 break-words">
                           <Badge variant="secondary">Fix v{runs.indexOf(r) + 1}</Badge>
-                          {said ? `${FIX_WORDS[said.action]}${said.note ? `: ${said.note}` : ""} · ${said.reviewer}` : "No answer given"}
+                          {said ? `${FIX_WORDS[said.action]}${said.note ? `: ${said.note}` : ""} · ${said.reviewer}` : "No response recorded"}
                         </p>
                       )}
                     </Run>
@@ -1531,7 +1547,7 @@ function Ticket() {
     if (ticket) lastNow.current = key;
   }, [nowStep?.key, ticket]);
 
-  // Cards glide to their new place when they move (Now → Just finished → Coming up / Done) instead of jumping; a card
+  // Cards glide to their new place when they move (Now → Recently completed → Coming up / Done) instead of jumping; a card
   // that appears fades up. Positions are page-relative, so scrolling doesn't count as moving.
   const places = useRef(new Map<CardKey, number>());
   const placed = useRef(false);
@@ -1586,7 +1602,7 @@ function Ticket() {
           <div ref={barWrap} className="md:sticky md:top-[70px] md:z-10 md:-mx-2 md:bg-background md:px-2 md:pt-1 md:pb-2">
           <Card
             className={cn("scroll-thin flex-row flex-nowrap overflow-x-auto transition-[padding,box-shadow] duration-200", pinned ? "py-1 shadow-[0_6px_16px_rgba(25,29,56,0.10)]" : "py-2")}
-            aria-label="Where the agents are"
+            aria-label="Workflow progress"
             role="group"
           >
             {GROUPS.map((group) => {
@@ -1596,7 +1612,7 @@ function Ticket() {
                 <div key={group.label} className="flex shrink-0 flex-auto flex-col gap-1 px-1.5 [&+&]:border-l [&+&]:border-border">
                   <p className={cn("flex items-center gap-1.5 pl-1 font-mono text-[10.5px] font-medium tracking-[0.08em] text-muted-foreground uppercase", pinned && "sr-only")}>
                     {group.label}
-                    <span className={done === steps.length ? "text-p3" : undefined}>{done === steps.length ? "✓ done" : `${done}/${steps.length}`}</span>
+                    <span className={done === steps.length ? "text-p3" : undefined}>{done === steps.length ? "✓ Done" : `${done}/${steps.length}`}</span>
                   </p>
                   <ol role="list" className="flex flex-nowrap gap-0.5">
                     {steps.map((s) => {
@@ -1618,7 +1634,7 @@ function Ticket() {
                               <div className="flex items-center gap-2">
                                 <span className="flex-1 font-mono text-[10.5px] font-medium tracking-[0.08em] text-foreground uppercase">{s.name}</span>
                                 <Badge variant={isNow || s.state === "attention" ? "default" : "secondary"}>
-                                  {isNow ? "Now" : s.state === "done" ? "Done" : s.state === "attention" ? "Needs a person" : "Waiting"}
+                                  {isNow ? "Now" : s.state === "done" ? "Done" : s.state === "attention" ? "Action required" : "Pending"}
                                 </Badge>
                               </div>
                               <p className="text-sm font-semibold">{working === s.key ? "Running…" : s.summary}</p>
@@ -1629,15 +1645,15 @@ function Ticket() {
                               ))}
                               {stars !== undefined && (
                                 <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                                  {stars >= 4 ? <ThumbsUp className="size-3 text-p3" aria-hidden="true" /> : <ThumbsDown className="size-3 text-primary" aria-hidden="true" />}
-                                  Rated {stars >= 4 ? "right" : stars <= 2 ? "wrong" : "partly right"}
+                                  {stars >= 4 ? <ThumbsUp className="size-3 text-p3" aria-hidden="true" /> : stars <= 2 ? <ThumbsDown className="size-3 text-primary" aria-hidden="true" /> : <Contrast className="size-3" aria-hidden="true" />}
+                                  Rated {stars >= 4 ? "correct" : stars <= 2 ? "incorrect" : "partially correct"}
                                 </span>
                               )}
                               {(s.section || action) && (
                                 <div className="flex flex-wrap items-center gap-2 border-t border-border pt-2">
                                   {s.section && (
                                     <Button size="xs" variant="secondary" onClick={() => openSection(s.section)}>
-                                      {s.section === "jira" ? "See the description" : "Open the section"}
+                                      {s.section === "jira" ? "View description" : "Open section"}
                                     </Button>
                                   )}
                                   {action}
@@ -1664,7 +1680,7 @@ function Ticket() {
             <div className="flex min-w-0 flex-col gap-4">
               <Card id="step-jira" className="scroll-mt-24 gap-0 py-0">
                 <SectionHead title="Description" />
-                <p className="whitespace-pre-wrap break-words px-4 py-3 text-[13px]">{ticket.description || "Nothing written."}</p>
+                <p className="whitespace-pre-wrap break-words px-4 py-3 text-[13px]">{ticket.description || "Not provided."}</p>
               </Card>
 
               {/* Now: the step to act on, open. */}
@@ -1679,19 +1695,19 @@ function Ticket() {
                     <Badge>Now</Badge>
                   )}
                   <h2 id="now-h" className={cn("text-[13px] font-semibold", closed && "text-p3")}>
-                    {nowStep ? nowStep.name : closed ? `Closed in ${source}` : "Nothing to do"}
+                    {nowStep ? nowStep.name : closed ? `Closed in ${source}` : "No action required"}
                   </h2>
                   <span className="text-[13px] text-muted-foreground">
                     {closed
-                      ? `Nothing. This ticket is closed in ${source}.`
+                      ? `No action required. This ticket is closed in ${source}.`
                       : ticket.pipeline_status === "reviewed" && runOf("resolution")
                         ? fixAnswer?.action === "wrong"
-                          ? "You said the fix didn't work. The Resolution agent looks for another one with what you wrote."
-                          : "Try the suggested fix, then tell us if it worked. The closure note opens once it did."
+                          ? "You reported that the fix did not work. Resolution is searching for another fix using your notes."
+                          : "Apply the suggested fix, then confirm whether it resolved the issue. The closure note opens after confirmation."
                         : confirmed && lastLead?.action === "sent_back"
-                          ? `${lastLead.reviewer} sent the closure note back. Change it, then submit it again.`
+                          ? `${lastLead.reviewer} returned the closure note. Update it, then resubmit it.`
                           : confirmed && ticket.lead_review_required
-                            ? "The fix worked. Finish the closure note, then submit it for the lead's review."
+                            ? "Fix confirmed. Complete the closure note, then submit it for lead approval."
                             : (NEXT[ticket.pipeline_status] ?? ticket.pipeline_status)}
                   </span>
                   {nowStep && actionFor(nowStep.key) && <span className="ml-auto">{actionFor(nowStep.key)}</span>}
@@ -1699,7 +1715,7 @@ function Ticket() {
                 {busy && (
                   <p role="status" className="flex items-center gap-2 text-[13px] font-medium text-primary">
                     <LoaderCircle className="size-3.5 animate-spin" />
-                    {working ? WORKING[working] : "The agents are working. This page updates by itself."}
+                    {working ? WORKING[working] : "The agents are running. This page updates automatically."}
                   </p>
                 )}
                 {/* The placeholder slides in; a card glides here from where it was (see the layout effect above). */}
@@ -1742,7 +1758,7 @@ function Ticket() {
                   className="flex flex-col gap-2"
                 >
                   <h2 id="fresh-h" className="pl-1 animate-in fade-in duration-500 font-mono text-[10.5px] font-medium tracking-[0.08em] text-muted-foreground uppercase">
-                    Just finished
+                    Recently completed
                   </h2>
                   {card(freshShown)}
                 </section>
@@ -1751,7 +1767,7 @@ function Ticket() {
               {cardsNext.length > 0 && (
                 <section aria-labelledby="next-h" className="flex flex-col gap-2">
                   <h2 id="next-h" className="pl-1 font-mono text-[10.5px] font-medium tracking-[0.08em] text-muted-foreground uppercase">
-                    {closed ? "Needs a look" : "Coming up"}
+                    {closed ? "Needs attention" : "Up next"}
                   </h2>
                   {cardsNext.map(card)}
                 </section>
@@ -1783,10 +1799,10 @@ function Ticket() {
                 toJira={jira && writeBack && !closed}
                 whyNotJira={
                   !jira
-                    ? "This ticket did not come from Jira, so replies to the caller can't be sent from here."
+                    ? "This ticket did not originate in Jira, so replies to the requester can't be sent from here."
                     : closed
                       ? `The ticket is closed in ${source}.`
-                      : "Writing to Jira is switched off for this console."
+                      : "Jira write-back is disabled for this console."
                 }
                 onSent={load}
               />
@@ -1804,11 +1820,11 @@ function Ticket() {
                           React.ReactNode,
                         ][])
                       : []),
-                    ["Recommended", recommended !== null ? <PriorityChip priority={recommended} /> : "Not triaged yet"],
+                    ["Recommended priority", recommended !== null ? <PriorityChip priority={recommended} /> : "Not triaged yet"],
                     ...(decided
                       ? [
                           [
-                            "Decided",
+                            "Confirmed priority",
                             <span key="d" className="inline-flex flex-wrap items-center gap-2">
                               <PriorityChip priority={decided.final_priority} />
                               {[`by ${decided.reviewer}`, decided.note].filter(Boolean).join(" · ")}
@@ -1817,7 +1833,7 @@ function Ticket() {
                         ]
                       : []),
                     [
-                      "Reporter asked for",
+                      "Requested priority",
                       ticket.reported_priority ? (
                         <span className="inline-flex items-center gap-2">
                           <PriorityChip priority={ticket.reported_priority} />
@@ -1827,11 +1843,21 @@ function Ticket() {
                         "—"
                       ),
                     ],
-                    ["Reporter", /^<[A-Z_]+_\d+>$/.test(ticket.reporter_name ?? "") ? "Name masked" : (ticket.reporter_name ?? "—")],
-                    ["Assigned to", [ticket.assignment_group, ticket.assignee].filter(Boolean).join(" · ") || "—"],
+                    ["Requester", /^<[A-Z_]+_\d+>$/.test(ticket.reporter_name ?? "") ? "Name masked" : (ticket.reporter_name ?? "—")],
+                    [
+                      "Assigned to",
+                      role !== "engineer" && !closed ? (
+                        <span className="inline-flex flex-wrap items-center gap-2">
+                          {ticket.assignment_group}
+                          <AssignControl ticketId={ticket.id} assignee={ticket.assignee} onDone={load} />
+                        </span>
+                      ) : (
+                        [ticket.assignment_group, ticket.assignee].filter(Boolean).join(" · ") || "—"
+                      ),
+                    ],
                     ["Opened", when(ticket.opened_at)],
                     ...(closed ? ([["Closed", when(ticket.closed_at)]] as [string, React.ReactNode][]) : []),
-                    ["Status in the source", ticket.source_status ?? ticket.status],
+                    ["Source status", (ticket.source_status ?? ticket.status).replace(/^[a-z]/, (c) => c.toUpperCase()).replace(/_/g, " ")],
                   ]}
                 />
               </Card>
@@ -1845,8 +1871,8 @@ function Ticket() {
         <>
           <Alert>
             <AlertDescription>
-              This ticket came from a ServiceNow sheet. The agents have not checked it: only tickets synced from Jira go through Data Quality
-              and Triage today.
+              This ticket was imported from a ServiceNow sheet. The agents have not processed it: only tickets synced from Jira currently go through Data Quality
+              and Triage.
             </AlertDescription>
           </Alert>
           <Card className="gap-0 py-0">
@@ -1854,7 +1880,7 @@ function Ticket() {
             <Facts
               rows={[
                 ["Priority", <PriorityChip key="p" priority={sheet.priority} />],
-                ["Caller", sheet.caller ?? "—"],
+                ["Requester", sheet.caller ?? "—"],
                 ["Assigned to", sheet.assignment_group ?? "—"],
                 ["Opened", when(sheet.opened_at)],
                 ["Closed", when(sheet.closed_at)],
@@ -1866,6 +1892,16 @@ function Ticket() {
           {sheet.resolution_notes && <Text title="Resolution notes" text={sheet.resolution_notes} />}
         </>
       )}
+      {ticket && !closed && <FixChat
+          ticket={ticket}
+          noRunbook={runOf("resolution")?.verdict === "no_match"}
+          renderRun={(run) => (
+            <ul role="list">
+              <Run run={run} />
+            </ul>
+          )}
+          onDone={load}
+        />}
     </>
   );
 }

@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from app.api.v1.endpoints.auth import current_user
 from app.db.session import get_db
 from app.main import app
 from app.models.dq import DQRule, DQRun
@@ -33,6 +34,7 @@ async def dq_client(mock_db):
         yield mock_db
 
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[current_user] = lambda: None  # signed in
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         yield ac
     app.dependency_overrides.clear()

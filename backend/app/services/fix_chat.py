@@ -4,6 +4,9 @@ Each turn is one structured model call through app.llm: the ticket, the runbook 
 the engineer's note and the conversation so far are masked together, so a name gets the same placeholder in every turn.
 The model answers the engineer and, once it has enough to go on, proposes a fix (cause, steps, how to check it).
 Turns are stored as agent runs (agent "fix_chat"): they stay with the ticket and show in "Who did what".
+Each turn also carries where the ticket stands (stage, priority, each agent's last result in one line). The model can
+name agents whose stored result the console prints (`show`: nothing runs, nothing is retyped), and, only when the
+engineer says to, one agent to run again with the extra details the engineer gave (`rerun`).
 "Use as the fix" turns a proposal into the ticket's suggested fix (a Resolution run marked source "chat"), so the
 usual loop follows: try it, say if it worked, closure note, lead review, Send; Knowledge Builder learns from it.
 """
@@ -11,6 +14,7 @@ usual loop follows: try it, say if it worked, closure note, lead review, Send; K
 import logging
 import re
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -27,6 +31,7 @@ from app.privacy.masking import Masker
 from app.services.data_quality import last_run, reporter_text
 from app.services.fix import answers, tried
 from app.services.jira import AGENTS_BOT, COMMAND_BOT, SLA_BOT, SYSTEM
+from app.services.lead_review import priority_of
 
 logger = logging.getLogger("app.fix_chat")
 
@@ -38,6 +43,18 @@ SIMILAR = 3  # closed tickets shown to the model
 ARTICLES = 3  # knowledge-base articles from the search
 EXCERPT = 900  # characters of each article or close note
 BOTS = (AGENTS_BOT, SLA_BOT, COMMAND_BOT)
+AgentName = Literal["data_quality", "triage", "resolution", "closure_quality"]
+NAMES = {"data_quality": "Data Quality", "triage": "Triage", "resolution": "Resolution", "closure_quality": "Closure Quality"}
+REASON = 300  # characters of an agent's reason in the status
+# Where each agent may run again from the chat. Data Quality and Triage also on a reviewed ticket (the Run buttons stop
+# before that): the engineer asked, with new details. Not once the fix is confirmed: the work after it would be lost.
+RERUN_AT = {
+    "data_quality": (PipelineStatus.PENDING, PipelineStatus.AWAITING_INFO, PipelineStatus.DQ_PASSED, PipelineStatus.TRIAGED,
+                     PipelineStatus.ERROR, PipelineStatus.REVIEWED),
+    "triage": (PipelineStatus.DQ_PASSED, PipelineStatus.TRIAGED, PipelineStatus.REVIEWED),
+    "resolution": (PipelineStatus.REVIEWED,),
+    "closure_quality": (PipelineStatus.FIX_CONFIRMED, PipelineStatus.IN_REVIEW, PipelineStatus.APPROVED),
+}
 PLACEHOLDER = re.compile(r"<[A-Z_]+_\d+>")  # a saved case is masked already; its placeholders are not this ticket's
 WORD = re.compile(r"[a-z0-9][a-z0-9_-]{2,}")
 # Words every ticket has; two tickets sharing them are not alike.
@@ -57,10 +74,19 @@ class ChatFix(BaseModel):
     check: str = Field(description="How the engineer confirms it is fixed")
 
 
+class Rerun(BaseModel):
+    agent: AgentName = Field(description="The agent to run again")
+    note: str = Field(description="The extra details the engineer gave for this run, in their words; empty when none")
+
+
 class ChatAnswer(BaseModel):
     reply: str = Field(description="Your answer to the engineer's latest message: short, plain text")
     fix: ChatFix | None = Field(description="A complete proposed fix once there is enough to go on; null while you "
                                             "still need facts from the engineer")
+    show: list[AgentName] = Field(description="Agents whose stored result the console prints under your reply; empty "
+                                              "when none is asked about. Do not retype those details in `reply`")
+    rerun: Rerun | None = Field(description="Only when the engineer's latest message says to run an agent again; "
+                                            "null otherwise")
 
 
 def chat_spec() -> CallSpec[ChatAnswer]:
@@ -138,6 +164,38 @@ async def articles(db: AsyncSession, ticket: Ticket, message: str) -> str:
     return "\n\n".join(found)
 
 
+def cannot_rerun(ticket: Ticket, agent: str) -> str | None:
+    """Why this agent cannot run again on the ticket now; None when it can."""
+    if ticket.closed_at is not None:
+        return "the ticket is closed"
+    if ticket.pipeline_status not in RERUN_AT[agent]:
+        return f"the ticket is at stage '{ticket.pipeline_status}'"
+    if agent == "closure_quality" and not (ticket.resolution_notes or "").strip():
+        return "there is no closure note yet"
+    return None
+
+
+def status(db: Session, ticket: Ticket) -> str:
+    """Where the ticket stands, in a few lines: stage, priority, each agent's last result, what can run again."""
+    lines = [f"Stage: {ticket.pipeline_status}",
+             f"Priority: reported {_p(ticket.reported_priority)}, in force {_p(priority_of(db, ticket))}"]
+    for agent, name in NAMES.items():
+        run = last_run(ticket, agent)
+        if run is None:
+            lines.append(f"{name}: not run yet")
+            continue
+        o = run.output or {}
+        reason = str(o.get("reason") or (o.get("answer") or {}).get("reason") or o.get("root_cause") or "").strip()
+        lines.append(f"{name}: {run.verdict}{' - ' + reason[:REASON] if reason else ''}")
+    can = [name for agent, name in NAMES.items() if cannot_rerun(ticket, agent) is None]
+    lines.append(f"Can run again now: {', '.join(can) or 'none'}")
+    return "\n".join(lines)
+
+
+def _p(priority: int | None) -> str:
+    return f"P{priority}" if priority else "not set"
+
+
 def prepare(db: Session, ticket: Ticket, message: str, kb: str = "") -> tuple[str, Masker]:
     """The text the model reads for this turn, and the masker that hides personal details in it. Not masked yet."""
     if ticket.closed_at is not None:
@@ -154,24 +212,37 @@ def prepare(db: Session, ticket: Ticket, message: str, kb: str = "") -> tuple[st
     elif fix is not None:
         runbook = "No runbook article covers this ticket."
     history = "\n".join(f"Engineer: {r.output.get('question', '')}\nAssistant: {r.output.get('reply', '')}"
-                        for r in turns(ticket)[-MAX_TURNS:]) or none
+                        for r in [t for t in turns(ticket) if not t.output.get("cleared")][-MAX_TURNS:]) or none
     text = prompt["ticket_template"].format(
         summary=ticket.summary, application=ticket.application or none, body=reporter_text(ticket),
         runbook=runbook, tried=tried([r for r in ticket.agent_runs if r.agent == "resolution"], answers(db, ticket.id)) or none,
         history=history, message=message, notes=team_notes(ticket) or none, cases=similar_cases(db, ticket) or none,
-        kb=kb or none,
+        kb=kb or none, status=status(db, ticket),
     )
     masker = Masker(known_names=[ticket.reporter_name, ticket.assignee], known_emails=[ticket.reporter_email])
     return text, masker
 
 
-def save_turn(db: Session, ticket: Ticket, message: str, author: str, answer: ChatAnswer, audit: dict) -> AgentRun:
-    """Store one turn. Not committed."""
+def save_turn(db: Session, ticket: Ticket, message: str, author: str, answer: ChatAnswer, audit: dict,
+              rerun: dict | None = None) -> AgentRun:
+    """Store one turn: the reply, the stored results it points at (`shown`: agent -> run id) and what a rerun did.
+    Not committed."""
+    shown = {a: r.id for a in dict.fromkeys(answer.show) if (r := last_run(ticket, a)) is not None}
     run = AgentRun(ticket_id=ticket.id, agent=AGENT, verdict="proposed" if answer.fix else "answered",
                    output={"question": message, "asked_by": author, "reply": answer.reply,
-                           "fix": answer.fix.model_dump() if answer.fix else None, "audit": audit})
+                           "fix": answer.fix.model_dump() if answer.fix else None, "shown": shown, "rerun": rerun,
+                           "audit": audit})
     db.add(run)
     return run
+
+
+def clear(ticket: Ticket) -> int:
+    """Start the ticket's chat afresh: its turns leave the chat window and the model's view of the chat so far. They
+    stay stored, for the activity log and for a fix that came from one. Returns how many were cleared. Not committed."""
+    fresh = [r for r in turns(ticket) if not r.output.get("cleared")]
+    for r in fresh:
+        r.output = {**r.output, "cleared": True}
+    return len(fresh)
 
 
 def use(db: Session, ticket: Ticket, run_id: int, reviewer: str, input_hash: str | None) -> AgentRun:

@@ -6,17 +6,17 @@ import { DocumentEditor } from "@/components/console/document-editor";
 import { Tabs, TabsContent, TabsIndicator, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const DOCS = [
-  { name: "apps", label: "Applications", note: "Application names, keywords and teams. Data Quality, Triage and privacy masking all read it." },
-  { name: "pii", label: "Privacy terms", note: "Words and patterns hidden before anything is stored or sent to the model." },
+  { name: "apps", label: "Applications", note: "Application names, keywords and teams. Used by Data Quality, Triage and personal data masking." },
+  { name: "pii", label: "Privacy terms", note: "Words and patterns masked before any data is stored or sent to the model." },
   { name: "sla", label: "SLA times", note: "P1/P2 targets, when a ticket counts as at risk, and the first-message template." },
-  { name: "storms", label: "Storm detection", note: "How many people, within how many minutes, make a storm." },
+  { name: "storms", label: "Storm detection", note: "How many requesters, within how many minutes, form a storm." },
 ] as const;
 
 /** Reference files that more than one agent reads. Tabs stay mounted so unsaved edits survive switching. */
 export default function ReferenceDataPage() {
   return (
     <AppShell>
-      <PageHeader title="Reference data" context="Files the agents share. Each save is checked first and recorded in the change history." />
+      <PageHeader title="Reference data" context="Shared files used by the agents. Each save is validated and recorded in the change history." />
       <Tabs defaultValue="apps">
         <TabsList aria-label="Reference files">
           {DOCS.map((d) => (

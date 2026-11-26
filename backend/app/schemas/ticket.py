@@ -96,6 +96,13 @@ class LeadReviewCreate(BaseModel):
     reviewer: str = Field(..., min_length=3, examples=["lead@contoso.com"])
 
 
+class AssignCreate(BaseModel):
+    """The lead gives the ticket to an engineer, or takes it back."""
+    assignee: str | None = Field(
+        None, max_length=128, description="The engineer's name as in Jira; None: nobody", examples=["Ravi Kumar"])
+    by: str = Field(..., min_length=3, examples=["lead@contoso.com"])
+
+
 class FixOutcomeCreate(BaseModel):
     """The engineer's answer to the latest suggested fix."""
     agent_run_id: int

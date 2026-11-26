@@ -15,7 +15,7 @@ import { ConfluenceConnection, ConfluencePage, ConfluencePageDetail, ConfluenceS
 import { ExternalLink, FileText, RefreshCw } from "lucide-react";
 
 const message = (e: unknown, fallback: string) => (e instanceof Error ? e.message : fallback);
-const offline = (e: unknown): ConfluenceConnection => ({ site: "", connected: false, error: message(e, "Couldn't reach the backend"), sync_minutes: 0 });
+const offline = (e: unknown): ConfluenceConnection => ({ site: "", connected: false, error: message(e, "Couldn't reach the backend. Try again."), sync_minutes: 0 });
 
 /** Admin: Confluence connection, which spaces to copy, sync history and the copied pages. Read-only towards Confluence. */
 export default function ConfluenceSettingsPage() {
@@ -37,19 +37,19 @@ export default function ConfluenceSettingsPage() {
     confluenceService
       .getPage(page.id)
       .then((detail) => setPreview((p) => (p?.page.id === page.id ? { page, detail } : p)))
-      .catch((e: unknown) => setPreview((p) => (p?.page.id === page.id ? { page, error: message(e, "Couldn't load the page") } : p)));
+      .catch((e: unknown) => setPreview((p) => (p?.page.id === page.id ? { page, error: message(e, "Couldn't load the page. Try again.") } : p)));
   };
 
   const loadCopies = () => {
-    confluenceService.getSyncs().then(setSyncs).catch((e: unknown) => setSyncError(message(e, "Couldn't load sync history")));
-    confluenceService.getPages().then(setPages).catch((e: unknown) => setSyncError(message(e, "Couldn't load copied pages")));
+    confluenceService.getSyncs().then(setSyncs).catch((e: unknown) => setSyncError(message(e, "Couldn't load the sync history. Try again.")));
+    confluenceService.getPages().then(setPages).catch((e: unknown) => setSyncError(message(e, "Couldn't load the copied pages. Try again.")));
   };
 
   useEffect(() => {
     confluenceService.getConnection().then(setConn).catch((e: unknown) => setConn(offline(e)));
-    confluenceService.getSpaces().then(setSpaces).catch((e: unknown) => setSpacesError(message(e, "Couldn't load Confluence spaces")));
-    confluenceService.getSyncs().then(setSyncs).catch((e: unknown) => setSyncError(message(e, "Couldn't load sync history")));
-    confluenceService.getPages().then(setPages).catch((e: unknown) => setSyncError(message(e, "Couldn't load copied pages")));
+    confluenceService.getSpaces().then(setSpaces).catch((e: unknown) => setSpacesError(message(e, "Couldn't load Confluence spaces. Try again.")));
+    confluenceService.getSyncs().then(setSyncs).catch((e: unknown) => setSyncError(message(e, "Couldn't load the sync history. Try again.")));
+    confluenceService.getPages().then(setPages).catch((e: unknown) => setSyncError(message(e, "Couldn't load the copied pages. Try again.")));
   }, []);
 
   const testConnection = async () => {
@@ -78,7 +78,7 @@ export default function ConfluenceSettingsPage() {
       setDirty(false);
       setSaved(true);
     } catch (e) {
-      setSpacesError(message(e, "Couldn't save spaces"));
+      setSpacesError(message(e, "Couldn't save the spaces. Try again."));
     } finally {
       setSaving(false);
     }
@@ -108,7 +108,7 @@ export default function ConfluenceSettingsPage() {
         context={`Copy knowledge base pages from Confluence for the agents to read. ${
           conn?.write_back
             ? "An approved Knowledge Builder article can be published to its application's page."
-            : "Nothing is written back to Confluence (CONFLUENCE_WRITE_BACK is off)."
+            : "Confluence write-back is disabled (CONFLUENCE_WRITE_BACK is off)."
         }`}
         actions={
           <Button variant="secondary" onClick={testConnection} disabled={testing}>
@@ -155,7 +155,7 @@ export default function ConfluenceSettingsPage() {
         {!spaces ? (
           !spacesError && <p className="px-4 py-6 text-muted-foreground">Loading Confluence spaces…</p>
         ) : spaces.length === 0 ? (
-          <p className="px-4 py-6 text-muted-foreground">This Confluence site has no shared spaces you can see.</p>
+          <p className="px-4 py-6 text-muted-foreground">No shared spaces are visible to this account on this Confluence site.</p>
         ) : (
           <ul role="list">
             {spaces.map((s) => (
@@ -207,7 +207,7 @@ export default function ConfluenceSettingsPage() {
         )}
         <SyncHistory
           runs={syncs && syncs.slice(0, 10)}
-          empty="No syncs yet. Pick your spaces, save, then select Sync now."
+          empty="No syncs yet. Select your spaces, save, then select Sync now."
           changed={(s) => s.created + s.updated + s.removed}
         >
           {(s) => (
@@ -226,7 +226,7 @@ export default function ConfluenceSettingsPage() {
           <span className="text-xs text-muted-foreground">{pages ? `${pages.length} pages` : "Loading…"}</span>
         </SectionHead>
         {pages && pages.length === 0 ? (
-          <p className="px-4 py-6 text-muted-foreground">Nothing copied yet.</p>
+          <p className="px-4 py-6 text-muted-foreground">No pages copied yet.</p>
         ) : (
           <ul role="list">
             {pages?.map((p) => (

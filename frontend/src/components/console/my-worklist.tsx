@@ -33,16 +33,16 @@ const thisHour = () => new Date().setMinutes(0, 0, 0);
 /** Each agent's result on the ticket, in order, as small labels (design canvas). */
 function Chain({ ticket }: { ticket: BoardTicket }) {
   const links = [
-    ticket.dq_verdict && `Data Quality · ${ticket.dq_verdict === "passed" ? "passed" : ticket.dq_verdict === "needs_info" ? "needs details" : ticket.dq_verdict}`,
+    ticket.dq_verdict && `Data Quality · ${ticket.dq_verdict === "passed" ? "passed" : ticket.dq_verdict === "needs_info" ? "needs information" : ticket.dq_verdict}`,
     ticket.priority && `Triage · P${ticket.priority}`,
     ticket.fix_verdict &&
-      `Resolution · ${ticket.fix_answer === "worked" || ticket.fix_answer === "partly" ? "fix used" : ticket.fix_answer === "wrong" ? "fix didn't work" : ticket.fix_verdict === "resolved" ? "fix suggested" : "no runbook fix"}`,
+      `Resolution · ${ticket.fix_answer === "worked" || ticket.fix_answer === "partly" ? "fix applied" : ticket.fix_answer === "wrong" ? "fix did not work" : ticket.fix_verdict === "resolved" ? "fix suggested" : "no runbook fix"}`,
     ticket.closure_verdict && `Closure Quality · ${ticket.closure_score != null ? `${ticket.closure_score} of 6` : ticket.closure_verdict}`,
-    ticket.lead_step && `Lead · ${ticket.lead_step === "sent_back" ? "sent back" : ticket.lead_step}`,
+    ticket.lead_step && `Lead · ${ticket.lead_step === "sent_back" ? "returned" : ticket.lead_step}`,
   ].filter((l): l is string => !!l);
   if (links.length === 0) return null;
   return (
-    <ol role="list" aria-label="What the agents did" className="flex flex-wrap gap-1.5">
+    <ol role="list" aria-label="Agent results" className="flex flex-wrap gap-1.5">
       {links.map((l) => (
         <li key={l}>
           <Badge variant="secondary">
@@ -57,14 +57,14 @@ function Chain({ ticket }: { ticket: BoardTicket }) {
 
 /** The next action on the hero ticket, as a sentence. */
 function nextSentence(t: BoardTicket) {
-  if (t.stage === "fix_confirmed" && t.lead_step === "sent_back") return `${t.lead_by ?? "The lead"} sent your closure note back. Change it, then submit it again.`;
+  if (t.stage === "fix_confirmed" && t.lead_step === "sent_back") return `${t.lead_by ?? "The lead"} returned your closure note. Update it, then resubmit it.`;
   if (t.stage === "fix_confirmed")
-    return `${t.closure_score != null ? `Closure Quality scored your note ${t.closure_score} of 6. ` : ""}${t.review_required ? "Finish it, then submit it to the lead." : "Finish it, then send it."}`;
-  if (t.stage === "approved") return `${t.lead_by ?? "The lead"} approved the closure note. Send it to close the ticket.`;
-  if (t.stage === "in_review") return "The closure note is with the lead.";
-  if (t.stage === "reviewed" && t.fix_verdict === "resolved" && t.fix_answer !== "wrong") return "Try the suggested fix, then say if it worked.";
+    return `${t.closure_score != null ? `Closure Quality score: ${t.closure_score} of 6. ` : ""}${t.review_required ? "Complete it, then submit it for lead approval." : "Complete it, then send it."}`;
+  if (t.stage === "approved") return `${t.lead_by ?? "The lead"} approved the closure note. Close the ticket with it.`;
+  if (t.stage === "in_review") return "The closure note is awaiting lead approval.";
+  if (t.stage === "reviewed" && t.fix_verdict === "resolved" && t.fix_answer !== "wrong") return "Apply the suggested fix, then confirm the outcome.";
   if (t.stage === "reviewed" && t.fix_verdict && t.fix_answer !== "wrong")
-    return "No runbook covers this one. Fix it, then say what you did: that drafts the closure note.";
+    return "No runbook covers this issue. Resolve it, then record how: that drafts the closure note.";
   return `${nextStep(t)}.`;
 }
 
@@ -81,6 +81,7 @@ export function MyWorklist() {
   const now = hour === null ? null : new Date(hour);
 
   useEffect(() => {
+    if (!viewer) return; // who is signed in is not known yet
     apiClient<Closed[]>(`/personas/closed?person=${encodeURIComponent(viewer)}&days=7`).then(setClosed, () => setClosed([]));
     if (lead) pipelineService.listByStage("in_review").then((r) => setToReview(r.items), () => setToReview([]));
   }, [viewer, lead, board]);
@@ -93,12 +94,12 @@ export function MyWorklist() {
     (a, b) => (a.priority ?? 9) - (b.priority ?? 9) || (a.minutes_left ?? Infinity) - (b.minutes_left ?? Infinity)
   );
   const tasks: Task[] = [
-    ...(lead ? toReview : []).map((x) => ({ key: `review ${x.id}`, ticket: x.id, what: `Review the closure note on ${x.id}`, from: x.summary })),
+    ...(lead ? toReview : []).map((x) => ({ key: `review ${x.id}`, ticket: x.id, what: `Review closure note on ${x.id}`, from: x.summary })),
     ...tasksOf(tickets),
   ];
   const wrong = [
     t?.sla_breached && `${count(t.sla_breached, "ticket has", "tickets have")} breached SLA`,
-    t?.sla_at_risk && `${count(t.sla_at_risk, "ticket is", "tickets are")} close to breach`,
+    t?.sla_at_risk && `${count(t.sla_at_risk, "ticket is", "tickets are")} near breach`,
   ].filter((part): part is string => !!part);
   const nearest = tickets.reduce<BoardTicket | null>((f, x) => (x.minutes_left !== null && (!f || x.minutes_left < f.minutes_left!) ? x : f), null);
 
@@ -125,7 +126,7 @@ export function MyWorklist() {
         <p role="status" className="text-[13px]">
           <Status ok={wrong.length === 0}>
             <span>
-              <span className="font-semibold">{wrong.length ? `${and.format(wrong)}.` : "None past SLA."}</span>
+              <span className="font-semibold">{wrong.length ? `${and.format(wrong)}.` : "No SLA breaches."}</span>
               {nearest &&
                 (nearest.minutes_left! < 0
                   ? ` The most overdue is ${span(nearest.minutes_left!)} over.`
@@ -138,7 +139,7 @@ export function MyWorklist() {
       {hero && (
         <Card className="gap-4 px-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex min-w-0 flex-1 flex-col gap-2">
-            <p className="text-xs font-medium text-muted-foreground">Work on this now</p>
+            <p className="text-xs font-medium text-muted-foreground">Start here</p>
             <h2 className="flex flex-wrap items-center gap-2 text-base font-semibold">
               <PriorityChip priority={hero.priority} />
               {hero.summary || "No summary"}
@@ -150,7 +151,7 @@ export function MyWorklist() {
             <Chain ticket={hero} />
             <div className="flex flex-wrap gap-2 pt-1">
               <Button nativeButton={false} render={<Link href={ticketHref(hero)} />}>
-                Open the ticket
+                Open ticket
               </Button>
               {hero.runbook && <RunbookButton id={hero.runbook} label={`Open runbook ${hero.runbook}`} />}
             </div>
@@ -184,12 +185,12 @@ export function MyWorklist() {
       <div className="grid items-start gap-4 lg:grid-cols-3">
         <Card className="gap-0 py-0 lg:col-span-2">
           <SectionHead title={`${chosen ? chosen.label : "Up next"} · ${listed.length}`}>
-            <span className="text-xs text-muted-foreground">Highest priority first, then the nearest deadline</span>
+            <span className="text-xs text-muted-foreground">Sorted by priority, then nearest deadline</span>
           </SectionHead>
           {!board ? (
             <div className="flex flex-col gap-3 px-4 py-3">{error ? null : Array.from({ length: 4 }, (_, i) => <Skeleton key={i} className="h-5" />)}</div>
           ) : listed.length === 0 ? (
-            <p className="px-4 py-6 text-muted-foreground">{tickets.length ? "Nothing here." : `Nothing open is assigned to ${viewer}.`}</p>
+            <p className="px-4 py-6 text-muted-foreground">{tickets.length ? "No tickets." : `No open tickets are assigned to ${viewer}.`}</p>
           ) : (
             <Table>
               <TableHeader>
@@ -207,7 +208,7 @@ export function MyWorklist() {
                     <TableCell className="pl-4">
                       <PriorityChip priority={x.priority} />
                     </TableCell>
-                    <TableCell className="whitespace-normal">
+                    <TableCell className="min-w-48 whitespace-normal">
                       <Link href={ticketHref(x)} className="font-medium underline-offset-4 hover:underline">
                         {x.summary || "No summary"}
                       </Link>
@@ -223,7 +224,7 @@ export function MyWorklist() {
                     </TableCell>
                     <TableCell className="pr-4">
                       <div className="flex items-center justify-end gap-3">
-                        <span className="hidden text-right text-xs text-muted-foreground xl:inline">{nextStep(x)}</span>
+                        <span className="hidden w-36 shrink-0 text-right text-xs whitespace-normal text-muted-foreground 2xl:inline">{nextStep(x)}</span>
                         <Button variant="secondary" size="sm" nativeButton={false} render={<Link href={ticketHref(x)} />}>
                           Open
                         </Button>
@@ -240,7 +241,7 @@ export function MyWorklist() {
           <Card className="gap-0 py-0">
             <SectionHead title={`My tasks · ${tasks.length}`} />
             {tasks.length === 0 ? (
-              <p className="px-4 py-3 text-[13px] text-muted-foreground">{board ? "Nothing waits for you." : "Loading…"}</p>
+              <p className="px-4 py-3 text-[13px] text-muted-foreground">{board ? "No pending tasks." : "Loading…"}</p>
             ) : (
               <ul role="list">
                 {tasks.map((task) => (
@@ -261,7 +262,7 @@ export function MyWorklist() {
           <Card className="gap-0 py-0">
             <SectionHead title="Closed by you this week" />
             {!closed || closed.length === 0 ? (
-              <p className="px-4 py-3 text-[13px] text-muted-foreground">{closed ? "Nothing closed with Send this week." : "Loading…"}</p>
+              <p className="px-4 py-3 text-[13px] text-muted-foreground">{closed ? "No tickets closed this week." : "Loading…"}</p>
             ) : (
               <ul role="list">
                 {closed.map((c) => (

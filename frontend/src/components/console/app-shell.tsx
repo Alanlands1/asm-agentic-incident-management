@@ -2,16 +2,16 @@
 
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Menu } from "lucide-react";
+import { LogOut, Menu } from "lucide-react";
 import { cn } from "cn";
 import { AppSidebar } from "@/components/console/app-sidebar";
 import { AttentionBell } from "@/components/console/attention-bell";
 import { PersonChip } from "@/components/console/person-chip";
-import { RoleSwitch } from "@/components/console/role-switch";
+import { PersonaSelect } from "@/components/console/persona-select";
 import { ThemeToggle } from "@/components/console/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { ROLES, mayOpen, useViewAs } from "@/lib/view-as";
+import { ROLES, mayOpen, signOut, useUser } from "@/lib/view-as";
 
 /** True once the page has scrolled, so the sticky top bar can show its bottom line. */
 function useScrolled() {
@@ -29,13 +29,18 @@ export function AppShell({ children, className }: { children: React.ReactNode; c
   const [menuOpen, setMenuOpen] = useState(false);
   const scrolled = useScrolled();
 
-  // A page outside the role's menu sends them home. shortcut: UI lock only, the API has no sign-in; enforce there with real sessions.
-  const role = useViewAs();
+  // Nobody signed in goes to the sign-in page; a page outside the role's menu sends them home.
+  // The API checks the session on every call, and the role where it matters (reset, assigning, lead approval, settings).
+  const user = useUser();
+  const role = user?.role;
   const router = useRouter();
-  const allowed = mayOpen(role, usePathname());
+  const pathname = usePathname();
+  const allowed = role !== undefined && mayOpen(role, pathname);
   useEffect(() => {
-    if (!allowed) router.replace(ROLES.find((r) => r.value === role)!.home);
-  }, [allowed, role, router]);
+    if (user === null) router.replace("/login");
+    else if (role && !allowed) router.replace(ROLES.find((r) => r.value === role)!.home);
+  }, [user, allowed, role, router]);
+  if (!user) return null;
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -53,11 +58,14 @@ export function AppShell({ children, className }: { children: React.ReactNode; c
           <span aria-hidden="true" className="flex size-8 items-center justify-center rounded-[10px] bg-primary text-sm font-bold text-primary-foreground">A</span>
           <span className="font-serif text-2xl font-semibold leading-none">AMS Console</span>
         </div>
-        <RoleSwitch />
         <div className="flex items-center gap-2">
           <ThemeToggle />
           <AttentionBell />
+          <PersonaSelect />
           <PersonChip />
+          <Button variant="ghost" size="icon-lg" aria-label="Sign out" title="Sign out" onClick={() => signOut()}>
+            <LogOut />
+          </Button>
         </div>
       </header>
 

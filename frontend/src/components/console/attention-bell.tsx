@@ -15,9 +15,9 @@ export function AttentionBell() {
   const waiting = data.p1_p2.filter((i) => !i.last_sent).length;
   const parts = [
     data.storms.length > 0 && plural(data.storms.length, "storm", "storms"),
-    waiting > 0 && `${plural(waiting, "P1/P2", "P1/P2s")} whose reporter has heard nothing yet`,
+    waiting > 0 && `${plural(waiting, "P1/P2 ticket", "P1/P2 tickets")} without a first update to the requester`,
   ].filter(Boolean);
-  const label = `${data.count} need attention: ${parts.join(", ")}. Open incidents`;
+  const label = `${data.count} need attention: ${parts.join(", ")}. Open Incidents`;
   return (
     <Link
       href="/incidents"

@@ -5,7 +5,7 @@ export default function TriageAgentPage() {
     <AgentPage
       title="Triage"
       agent="triage"
-      context="Recommends a priority with a reason, finds storms and drafts the P1/P2 first message. An engineer decides."
+      context="Recommends a priority with a rationale, detects storms and drafts the first P1/P2 update. An engineer confirms the priority."
       prefix="TRIAGE"
       breakerKey="TRIAGE_OUTAGE_BREAKER"
       documents={[
@@ -14,7 +14,7 @@ export default function TriageAgentPage() {
         {
           name: "data_quality_prompts",
           label: "Prompts",
-          note: "One prompts file serves every agent: a change here also changes Data Quality's prompt.",
+          note: "All agents share one prompts file: a change here also affects the Data Quality prompt.",
         },
       ]}
     />

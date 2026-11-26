@@ -100,7 +100,7 @@ export default function TicketsPage() {
           closed_at: t.status === "closed" || t.status === "resolved" ? t.opened_at ?? t.status : null,
           dq_flag: false,
         }));
-      const all = [...data.items, ...extra].sort((a, b) => (b.opened_at ?? "").localeCompare(a.opened_at ?? ""));
+      const all = [...data.items, ...extra].sort((a, b) => (b.opened_at ?? "").localeCompare(a.opened_at ?? "") || a.ticket_id.localeCompare(b.ticket_id));
       setStoreOnly(new Set(extra.map((t) => t.ticket_id)));
       setTickets(all);
       setTotalCount(data.total + extra.length);
@@ -108,7 +108,7 @@ export default function TicketsPage() {
         .then((board) => setAgents(Object.fromEntries(board.tickets.map((t) => [t.id, t]))))
         .catch(() => setAgents({})); // the list still works without the agents' view
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Failed to load ServiceNow tickets";
+      const msg = err instanceof Error ? err.message : "Couldn't load ServiceNow tickets. Try again.";
       setError(msg);
     } finally {
       setLoading(false);
@@ -179,7 +179,7 @@ export default function TicketsPage() {
     <AppShell>
       <PageHeader
         title="All tickets"
-        context="Every ticket from ServiceNow sheets, Jira and the support mailbox."
+        context="All tickets from ServiceNow sheets, Jira and the support mailbox."
         actions={
           <>
             <Button variant="secondary" onClick={fetchTickets} disabled={loading}>
@@ -220,7 +220,7 @@ export default function TicketsPage() {
             <Search className="pointer-events-none absolute top-2 left-2.5 size-4 text-muted-foreground" aria-hidden="true" />
             <Input
               aria-label="Search tickets"
-              placeholder="Search by ticket ID, description, caller or service"
+              placeholder="Search by ticket ID, description, requester or service"
               value={searchTerm}
               onChange={(e) => {
                 setSearchTerm(e.target.value);
@@ -287,7 +287,7 @@ export default function TicketsPage() {
               }}
               className={selectClass}
             >
-              <option value="all">All lifecycle</option>
+              <option value="all">All statuses</option>
               <option value="open">Open / unresolved</option>
               <option value="closed">Closed</option>
             </select>
@@ -316,9 +316,9 @@ export default function TicketsPage() {
                 }
                 title={ticket.short_description || "No short description"}
                 meta={[
-                  ticket.service || "No service",
-                  masked(ticket.caller) ? null : ticket.caller || "Unknown caller",
-                  ticket.priority || "Unassigned priority",
+                  ticket.service || null,
+                  masked(ticket.caller) ? null : ticket.caller || "Unknown requester",
+                  ticket.priority ? `Requester set ${ticket.priority.replace(/^Importance: /, "importance ")}` : null,
                   ticket.closed_at ? "Closed" : "Open",
                 ]
                   .filter(Boolean)
@@ -415,7 +415,7 @@ export default function TicketsPage() {
                 {selectedTicket.short_description || "ServiceNow incident detail"}
               </DialogTitle>
               <DialogDescription>
-                Opened {selectedTicket.opened_at ? new Date(selectedTicket.opened_at).toLocaleString() : "unknown"} · Caller: {masked(selectedTicket.caller) ? "masked" : selectedTicket.caller || "N/A"}
+                Opened {selectedTicket.opened_at ? new Date(selectedTicket.opened_at).toLocaleString() : "unknown"} · Requester: {masked(selectedTicket.caller) ? "masked" : selectedTicket.caller || "N/A"}
               </DialogDescription>
             </DialogHeader>
 

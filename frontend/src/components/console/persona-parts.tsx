@@ -49,7 +49,7 @@ export type BoardTicket = {
 };
 
 export const STAGE_WORDS: Record<string, string> = Object.fromEntries(STAGES);
-export const NO_ENGINEER = "No engineer yet";
+export const NO_ENGINEER = "Unassigned";
 export const and = new Intl.ListFormat("en-GB", { type: "conjunction" });
 export const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 export const appOf = (t: BoardTicket) => t.application ?? "No application";
@@ -69,7 +69,7 @@ export function useBoard(person?: string) {
         setError(null);
       })
       .catch((e: unknown) => {
-        if (request === asked.current) setError(e instanceof Error ? e.message : "Couldn't load the board");
+        if (request === asked.current) setError(e instanceof Error ? e.message : "Couldn't load the overview. Try again.");
       });
   }, [person]);
   useEffect(load, [load]);
@@ -78,11 +78,11 @@ export function useBoard(person?: string) {
 
 /** The work statuses of the 19 Nov review and the design canvas, each a set of pipeline stages. */
 export const STATUSES: { key: string; label: string; sub: string; stages: string[] }[] = [
-  { key: "needs", label: "Needs details", sub: "reporter to answer", stages: ["awaiting_info"] },
-  { key: "triage", label: "Triage", sub: "priority to agree", stages: ["pending", "dq_passed", "triaged"] },
-  { key: "fixing", label: "Fixing", sub: "fix suggested", stages: ["reviewed", "needs_lead"] },
-  { key: "note", label: "Closure note", sub: "being written", stages: ["fix_confirmed", "approved"] },
-  { key: "review", label: "In review", sub: "with a lead", stages: ["in_review"] },
+  { key: "needs", label: "Needs information", sub: "awaiting requester", stages: ["awaiting_info"] },
+  { key: "triage", label: "Triage", sub: "priority to confirm", stages: ["pending", "dq_passed", "triaged"] },
+  { key: "fixing", label: "In progress", sub: "fix suggested", stages: ["reviewed", "needs_lead"] },
+  { key: "note", label: "Closure note", sub: "to finish or send", stages: ["fix_confirmed", "approved"] },
+  { key: "review", label: "In review", sub: "awaiting lead approval", stages: ["in_review"] },
 ];
 export const statusOf = (t: BoardTicket) => STATUSES.find((s) => s.stages.includes(t.stage));
 
@@ -90,7 +90,7 @@ export const statusOf = (t: BoardTicket) => STATUSES.find((s) => s.stages.includ
 export function StagePill({ ticket }: { ticket: BoardTicket }) {
   const status = statusOf(ticket);
   const words =
-    ticket.stage === "needs_lead" ? "Needs the lead" : ticket.stage === "approved" ? "Ready to send" : (status?.label ?? STAGE_WORDS[ticket.stage] ?? ticket.stage);
+    ticket.stage === "needs_lead" ? "Escalated to lead" : ticket.stage === "approved" ? "Ready to close" : (status?.label ?? STAGE_WORDS[ticket.stage] ?? ticket.stage);
   return (
     <Badge
       variant="secondary"
@@ -121,31 +121,31 @@ export const AGES: { key: string; label: string; has: (minutes: number) => boole
   { key: "older", label: "> 7 days", has: (m) => m >= 10080 },
 ];
 
-/** What the ticket waits for, as a short next step; every step is done in the console except assigning. */
+/** What the ticket waits for, as a short next step; every step is done in the console. */
 export function nextStep(t: BoardTicket, toAssign = false) {
-  if (toAssign) return "Assign an engineer in Jira";
+  if (toAssign) return "Assign an engineer";
   switch (t.stage) {
     case "pending":
     case "dq_passed":
-      return "The agents are checking it";
+      return "Agents processing";
     case "awaiting_info":
-      return t.has_draft ? "Send the drafted question" : "Waiting for the reporter";
+      return t.has_draft ? "Send the drafted request" : "Awaiting requester";
     case "triaged":
-      return `Agree or change P${t.priority}`;
+      return `Confirm or change P${t.priority}`;
     case "reviewed":
       return !t.fix_verdict || t.fix_answer === "wrong"
-        ? "Resolution is looking for a fix"
+        ? "Resolution is searching for a fix"
         : t.fix_verdict === "resolved"
-          ? "Try the fix, say if it worked"
-          : "No runbook fix: say what you did";
+          ? "Apply the fix and confirm the outcome"
+          : "No runbook fix: record how you resolved it";
     case "needs_lead":
-      return "The lead looks at it";
+      return "Escalated to lead";
     case "fix_confirmed":
-      return t.lead_step === "sent_back" ? `Answer ${t.lead_by ?? "the lead"}` : t.review_required ? "Finish the note, submit it" : "Finish the note, send it";
+      return t.lead_step === "sent_back" ? `Respond to ${t.lead_by ?? "the lead"}` : t.review_required ? "Complete and submit the note" : "Complete and send the note";
     case "in_review":
-      return "With the lead";
+      return "Awaiting lead approval";
     case "approved":
-      return "Send the closure note";
+      return "Send closure note";
     default:
       return STAGE_WORDS[t.stage] ?? t.stage;
   }
@@ -159,18 +159,18 @@ export function tasksOf(tickets: BoardTicket[]): Task[] {
     const tasks: Task[] = [];
     const add = (what: string, from: string) => tasks.push({ key: `${t.id} ${what}`, ticket: t.id, what, from });
     if (t.stage === "triaged")
-      add(`Agree or change the priority on ${t.id}`, `Triage recommends P${t.priority}${t.reported_priority ? `; reported P${t.reported_priority}` : ""}`);
-    if (t.stage === "awaiting_info" && t.has_draft) add(`Send the drafted question on ${t.id}`, "Data Quality agent drafted it");
+      add(`Confirm or change the priority on ${t.id}`, `Triage recommends P${t.priority}${t.reported_priority ? `; reported P${t.reported_priority}` : ""}`);
+    if (t.stage === "awaiting_info" && t.has_draft) add(`Send the drafted request on ${t.id}`, "Drafted by Data Quality");
     if (t.stage === "reviewed" && t.fix_verdict && !t.fix_answer)
-      add(`Try the fix on ${t.id}, then say if it worked`, t.fix_verdict === "resolved" ? "Resolution agent suggested it" : "No runbook covers it: say what you did");
-    if (t.stage === "fix_confirmed" && t.lead_step === "sent_back") add(`Answer ${t.lead_by ?? "the lead"} on ${t.id}`, `Sent back by ${t.lead_by ?? "the lead"}`);
+      add(`Apply the fix on ${t.id} and confirm the outcome`, t.fix_verdict === "resolved" ? "Suggested by Resolution" : "No runbook covers it: record how you resolved it");
+    if (t.stage === "fix_confirmed" && t.lead_step === "sent_back") add(`Respond to ${t.lead_by ?? "the lead"} on ${t.id}`, `Returned by ${t.lead_by ?? "the lead"}`);
     else if (t.stage === "fix_confirmed")
       add(
-        `Finish the closure note on ${t.id}${t.review_required ? " and submit it" : ""}`,
-        t.closure_score != null ? `Closure Quality scored it ${t.closure_score} of 6` : "Closure Quality agent checks it"
+        `Complete the closure note on ${t.id}${t.review_required ? " and submit it" : ""}`,
+        t.closure_score != null ? `Closure Quality score: ${t.closure_score} of 6` : "Checked by Closure Quality"
       );
-    if (t.stage === "approved") add(`Send the closure note on ${t.id}`, `Approved by ${t.lead_by ?? "the lead"}`);
-    if (t.fix_verdict === "resolved" && t.fix_answer && !t.fix_rated) add(`Rate the suggested fix on ${t.id}`, "Helps rank the runbooks");
+    if (t.stage === "approved") add(`Send closure note on ${t.id}`, `Approved by ${t.lead_by ?? "the lead"}`);
+    if (t.fix_verdict === "resolved" && t.fix_answer && !t.fix_rated) add(`Rate the suggested fix on ${t.id}`, "Improves runbook ranking");
     return tasks;
   });
 }
@@ -211,10 +211,10 @@ const AGENT_LINES: {
   flagged: (n: number) => string;
   tone: string;
 }[] = [
-  { key: "data_quality", name: "Data Quality", Icon: ShieldCheck, done: "tickets checked", flagged: (n) => `${n} need details from the reporter`, tone: "bg-p2" },
-  { key: "triage", name: "Triage", Icon: SlidersHorizontal, done: "given a priority", flagged: (n) => `${n} approved without a person`, tone: "bg-primary" },
-  { key: "resolution", name: "Resolution", Icon: BookOpen, done: "fixes suggested", flagged: (n) => `${n} worked for the engineer`, tone: "bg-p3" },
-  { key: "closure_quality", name: "Closure Quality", Icon: CheckCheck, done: "closure notes checked", flagged: (n) => `${n} good to send`, tone: "bg-p3" },
+  { key: "data_quality", name: "Data Quality", Icon: ShieldCheck, done: "tickets checked", flagged: (n) => `${n} awaiting requester information`, tone: "bg-p2" },
+  { key: "triage", name: "Triage", Icon: SlidersHorizontal, done: "given a priority", flagged: (n) => `${n} approved automatically`, tone: "bg-primary" },
+  { key: "resolution", name: "Resolution", Icon: BookOpen, done: "fixes suggested", flagged: (n) => `${n} confirmed by the engineer`, tone: "bg-p3" },
+  { key: "closure_quality", name: "Closure Quality", Icon: CheckCheck, done: "closure notes checked", flagged: (n) => `${n} ready to send`, tone: "bg-p3" },
   { key: "knowledge_builder", name: "Knowledge Builder", Icon: Library, done: "cases learned", flagged: (n) => `${n} matched to an article`, tone: "bg-p3" },
 ];
 
@@ -223,8 +223,8 @@ export function AgentsToday({ today }: { today: Today | null }) {
   if (!today) return null;
   return (
     <Card className="gap-0 py-0">
-      <SectionHead title="What the agents did today">
-        <span className="hidden text-xs text-muted-foreground sm:inline">Personal details are masked before every model call</span>
+      <SectionHead title="Agent activity today">
+        <span className="hidden text-xs text-muted-foreground sm:inline">Personal data is masked before every model call</span>
       </SectionHead>
       <dl className="grid sm:grid-cols-2 lg:grid-cols-5">
         {AGENT_LINES.map(({ key, name, Icon, done, flagged, tone }) => {
@@ -255,7 +255,7 @@ export function AgentsToday({ today }: { today: Today | null }) {
               {!!day.rated && (
                 <dd className="flex items-center gap-1 text-xs text-muted-foreground">
                   <ThumbsUp className="size-3 text-p3" aria-hidden="true" />
-                  {`${day.right} of ${day.rated} rated right this week`}
+                  {`${day.right} of ${day.rated} rated correct this week`}
                 </dd>
               )}
             </div>
@@ -305,21 +305,23 @@ function sentence(a: Activity): string | null {
     case "review": {
       const priority = a.priority ? ` P${a.priority}` : " the priority";
       return a.action === "accepted"
-        ? `${who} agreed with${priority} for ${on}.`
+        ? `${who} accepted${priority} for ${on}.`
         : a.action === "edited"
           ? `${who} changed ${on} to${priority}.`
           : `${who} rejected the recommendation for ${on}${a.priority ? `;${priority} stands` : ""}.`;
     }
     case "fix_answer":
-      return a.action === "wrong" ? `${who} said the fix on ${on} didn't work.` : `${who} said the fix on ${on} worked${a.action === "partly" ? ", with changes" : ""}.`;
+      return a.action === "wrong" ? `${who} reported that the fix on ${on} did not work.` : `${who} confirmed the fix on ${on}${a.action === "partly" ? ", with changes" : ""}.`;
     case "lead_review":
       return a.action === "submitted"
         ? `${who} submitted the closure note on ${on} for review.`
         : a.action === "approved"
           ? `${who} approved the closure note on ${on}.`
-          : `${who} sent the closure note on ${on} back.`;
+          : `${who} returned the closure note on ${on}.`;
+    case "assigned":
+      return a.action ? `${who} assigned ${on} to ${a.action}.` : `${who} unassigned ${on}.`;
     case "closure_decision":
-      return `${who} decided on the close notes of ${on}.`;
+      return `${who} recorded a decision on the closure note of ${on}.`;
     case "closed":
       return `${who} sent the closure note and closed ${on}.`;
     case "sync_failed":

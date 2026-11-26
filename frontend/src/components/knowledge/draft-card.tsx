@@ -78,7 +78,7 @@ function EditDialog({ draft, busy, onSave }: { draft: KBDraft; busy: boolean; on
         <DialogHeader>
           <DialogTitle>Edit the draft for {draft.application}</DialogTitle>
           <DialogDescription>
-            Replace every [expert to add]. No names, phone numbers or emails: the same checks as the draft apply.
+            Replace every [expert to add] placeholder. Do not include names, phone numbers or email addresses; the same checks as the draft apply.
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-3 text-[13px]">
@@ -122,15 +122,15 @@ function RejectDialog({ busy, onReject }: { busy: boolean; onReject: (reason: KB
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Reject this draft</DialogTitle>
-          <DialogDescription>It will not become an article. The reason helps tune the agent.</DialogDescription>
+          <DialogDescription>The draft will not become an article. Your reason helps tune the agent.</DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-3 text-[13px]">
           <div className="flex flex-col gap-1">
             <label htmlFor={`${id}-r`} className="font-medium">
-              Why
+              Reason
             </label>
             <select id={`${id}-r`} className={SELECT} value={reason} onChange={(e) => setReason(e.target.value as typeof reason)}>
-              <option value="">Pick a reason</option>
+              <option value="">Select a reason</option>
               {DRAFT_REJECT_REASONS.map((r) => (
                 <option key={r.value} value={r.value}>
                   {r.label}
@@ -176,8 +176,8 @@ export function DraftCard({ draft, onDone }: { draft: KBDraft; onDone: () => voi
     }
   };
   const send = (body: Omit<KBDraftReview, "reviewer">) =>
-    act(() => knowledgeService.review(draft.id, { ...body, reviewer: person }), "Couldn't save the decision");
-  const publish = () => act(() => knowledgeService.publish(draft.id), "Couldn't publish to Confluence");
+    act(() => knowledgeService.review(draft.id, { ...body, reviewer: person }), "Couldn't save the decision. Try again.");
+  const publish = () => act(() => knowledgeService.publish(draft.id), "Couldn't publish to Confluence. Try again.");
 
   return (
     <li className="flex flex-col gap-2 border-b border-border px-4 py-3 text-[13px] last:border-b-0">
@@ -255,10 +255,10 @@ export function DraftCard({ draft, onDone }: { draft: KBDraft; onDone: () => voi
         {draft.status !== "rejected" && (
           <a href={knowledgeService.exportUrl(draft.id)} download className={buttonVariants({ size: "sm", variant: "ghost" })}>
             <Download />
-            Markdown
+            Download Markdown
           </a>
         )}
-        {draft.status === "draft" && gaps && <span className="text-xs text-muted-foreground">Fill in every [expert to add] to approve: use Edit.</span>}
+        {draft.status === "draft" && gaps && <span className="text-xs text-muted-foreground">Complete every [expert to add] placeholder before approving: use Edit and approve.</span>}
       </div>
       {error && (
         <Alert variant="destructive">

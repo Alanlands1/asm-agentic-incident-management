@@ -43,7 +43,7 @@ export function ReviewActions({ ticketId, recommended, onDone }: { ticketId: str
       window.dispatchEvent(new Event(REVIEW_EVENT));
       onDone();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn't save the decision");
+      setError(e instanceof Error ? e.message : "Couldn't save the decision. Try again.");
     } finally {
       setBusy(false);
     }
@@ -56,7 +56,7 @@ export function ReviewActions({ ticketId, recommended, onDone }: { ticketId: str
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <Button size="sm" variant="secondary" onClick={() => setOpen(true)} disabled={busy}>
-          Change
+          Change priority
         </Button>
         <DialogContent>
           <DialogHeader>
@@ -82,10 +82,10 @@ export function ReviewActions({ ticketId, recommended, onDone }: { ticketId: str
             </div>
             <div className="flex flex-col gap-1">
               <label htmlFor={`${id}-r`} className="font-medium">
-                Why
+                Reason
               </label>
               <select id={`${id}-r`} className={SELECT} value={reason} onChange={(e) => setReason(e.target.value as typeof reason)}>
-                <option value="">Pick a reason (optional)</option>
+                <option value="">Select a reason (optional)</option>
                 {REASON_CODES.map((r) => (
                   <option key={r.value} value={r.value}>
                     {r.label}

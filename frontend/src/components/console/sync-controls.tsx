@@ -39,7 +39,7 @@ export function SyncInterval({
       onSaved(next);
       setDraft(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't save the interval");
+      setError(err instanceof Error ? err.message : "Couldn't save the interval. Try again.");
     } finally {
       setBusy(false);
     }
@@ -47,7 +47,7 @@ export function SyncInterval({
 
   return (
     <form onSubmit={save} className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3 text-xs text-muted-foreground">
-      <label htmlFor={id}>Runs by itself every</label>
+      <label htmlFor={id}>Runs automatically every</label>
       <Input
         id={id}
         type="number"
@@ -60,7 +60,7 @@ export function SyncInterval({
         onChange={(e) => setDraft(e.target.value)}
         className="w-20"
       />
-      <span>minutes. 0 turns it off.</span>
+      <span>minutes. Enter 0 to turn it off.</span>
       {draft !== null && next !== minutes && (
         <Button type="submit" size="sm" disabled={!valid || busy}>
           {busy ? "Saving…" : "Save"}
@@ -102,7 +102,7 @@ export function SyncHistory<T extends SyncRun>({
         <p className="flex flex-wrap items-center gap-2 border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
           {quiet} scheduled {quiet === 1 ? "run" : "runs"} found nothing new.
           <Button variant="ghost" size="sm" aria-expanded={all} onClick={() => setAll(!all)}>
-            {all ? "Hide them" : "Show them"}
+            {all ? "Hide" : "Show all"}
           </Button>
         </p>
       )}

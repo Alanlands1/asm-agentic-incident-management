@@ -30,6 +30,7 @@ export interface PipelineTicket {
   id: string;
   source: string;
   reporter_name: string | null;
+  reporter_email?: string | null;
   application: string | null;
   summary: string;
   reported_priority: number | null;
@@ -108,10 +109,10 @@ export interface ReviewQueueItem {
 }
 
 export const REASON_CODES = [
-  { value: "wrong_facts", label: "The facts are wrong" },
-  { value: "wrong_rule", label: "The wrong rule fired" },
+  { value: "wrong_facts", label: "Incorrect facts" },
+  { value: "wrong_rule", label: "Wrong rule applied" },
   { value: "wrong_application", label: "Wrong application" },
-  { value: "no_rule_fits", label: "No rule fits" },
+  { value: "no_rule_fits", label: "No applicable rule" },
   { value: "other", label: "Other" },
 ] as const;
 
@@ -155,8 +156,8 @@ export interface ClosureQueueItem {
 
 /** Why a recommendation needs a closer look. */
 export const FLAGS: Record<string, string> = {
-  downgrade: "Lower than the reporter asked",
-  leaned_high: "Leaned high: facts missing",
-  kept_reported: "Kept the reporter's priority",
-  large_shift: "Far from the reporter's priority",
+  downgrade: "Lower than requested",
+  leaned_high: "Set high: facts missing",
+  kept_reported: "Requested priority kept",
+  large_shift: "Large change from requested priority",
 };

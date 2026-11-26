@@ -1,4 +1,6 @@
 -- DESTRUCTIVE: removes all ticket and data quality data. Dev/test only.
+DROP TABLE IF EXISTS user_sessions;
+DROP TABLE IF EXISTS users;
 DROP TABLE IF EXISTS problem_candidates;
 DROP TABLE IF EXISTS resolved_cases;
 DROP TABLE IF EXISTS kb_drafts;

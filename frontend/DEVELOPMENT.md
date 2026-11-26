@@ -61,6 +61,16 @@ frontend/
   ```
   and ensure there are 0 TypeScript and lint errors.
 
+### 5. Tests
+- **Unit tests** (Vitest + React Testing Library, jsdom): `npm test`. They sit next to the component, as
+  `src/**/*.test.tsx`, with services mocked.
+- **Browser tests** (Playwright): `npm run test:e2e`. Run `npx playwright install chromium` once first. They start the
+  real backend (port 8100) on a fresh SQLite database seeded by `backend/scripts/seed_e2e.py`, and a production build of
+  the console (port 3100). The model, Jira and Confluence are switched off, so nothing leaves the machine. Set `PYTHON`
+  if your interpreter is not `python`. Reports land in `playwright-report/`.
+- **API end to end**: `backend/tests/test_e2e_workflow.py` takes one ticket from ingestion to closed in Jira (a fake site)
+  and into the reports, with only the model steps scripted. It runs with the backend suite.
+
 ---
 
 ## Related References

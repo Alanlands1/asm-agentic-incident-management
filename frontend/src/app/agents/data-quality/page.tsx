@@ -2,14 +2,14 @@ import Link from "next/link";
 import { AgentPage } from "@/components/console/agent-page";
 import { Card } from "@/components/ui/card";
 
-const SHARED_PROMPTS = "One prompts file serves every agent: a change here also changes Triage's prompt.";
+const SHARED_PROMPTS = "All agents share one prompts file: a change here also affects the Triage prompt.";
 
 export default function DataQualityAgentPage() {
   return (
     <AgentPage
       title="Data Quality"
       agent="data_quality"
-      context="Checks each new ticket has what an engineer needs, and drafts questions for the reporter when it does not."
+      context="Checks that each new ticket contains the information an engineer needs, and drafts a request to the requester when it does not."
       prefix="DQ"
       breakerKey="DQ_OUTAGE_BREAKER"
       documents={[

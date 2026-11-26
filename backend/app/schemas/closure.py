@@ -25,6 +25,12 @@ class ClosureCheckResponse(BaseModel):
     output: dict[str, Any] = Field(..., description="Score out of 6, the three parts with their quotes, questions and any draft")
 
 
+class RequesterEmailOut(BaseModel):
+    """A draft email telling the requester the ticket is resolved. Not sent: the engineer edits and sends it."""
+    subject: str = Field(..., examples=["Resolved: AMS-1200 payroll register missing a new joiner"])
+    body: str
+
+
 class ClosureQueueItem(BaseModel):
     """Close notes that need work, with what to ask the engineer and a draft built from what is on the ticket."""
     ticket_id: str

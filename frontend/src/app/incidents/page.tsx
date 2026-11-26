@@ -43,7 +43,7 @@ function DeclareButton({ storm, onDone }: { storm: Storm; onDone: () => void }) 
       setOpen(false);
       onDone();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn't declare the major incident");
+      setError(e instanceof Error ? e.message : "Couldn't declare the major incident. Try again.");
     } finally {
       setBusy(false);
     }
@@ -89,7 +89,7 @@ function FirstMessage({ item, onDone }: { item: AttentionItem; onDone: () => voi
       await navigator.clipboard.writeText(text);
       setCopied(true);
     } catch {
-      setError("Couldn't copy. Select the text and copy it by hand.");
+      setError("Couldn't copy. Select the text and copy it manually.");
     }
   };
   const markSent = async (toJira: boolean) => {
@@ -99,7 +99,7 @@ function FirstMessage({ item, onDone }: { item: AttentionItem; onDone: () => voi
       await incidentService.markSent(item.ticket_id, text, person, toJira);
       onDone();
     } catch (e) {
-      setError(e instanceof Error ? e.message : toJira ? "Couldn't post to Jira" : "Couldn't record the message");
+      setError(e instanceof Error ? e.message : toJira ? "Couldn't post to Jira. Try again." : "Couldn't record the message. Try again.");
     } finally {
       setBusy(null);
     }
@@ -109,7 +109,7 @@ function FirstMessage({ item, onDone }: { item: AttentionItem; onDone: () => voi
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <label htmlFor={id} className="text-xs font-medium text-muted-foreground">
-          {item.last_sent ? "Next update to the people on the ticket" : "First message to the people on the ticket"}
+          {item.last_sent ? "Next update to stakeholders" : "First update to stakeholders"}
         </label>
         {item.last_sent ? (
           <span className="inline-flex items-center gap-1.5 text-xs">
@@ -168,7 +168,7 @@ export default function IncidentsPage() {
         title="Incidents"
         context={
           data
-            ? `${plural(data.storms.length, "storm", "storms")} · ${plural(data.p1_p2.length, "open P1/P2", "open P1/P2s")} · ${waiting} whose reporter has heard nothing yet`
+            ? `${plural(data.storms.length, "storm", "storms")} · ${plural(data.p1_p2.length, "open P1/P2", "open P1/P2s")} · ${waiting} without a first update`
             : "Loading…"
         }
         actions={<Button variant="secondary" onClick={refresh}>Refresh</Button>}
@@ -176,10 +176,10 @@ export default function IncidentsPage() {
 
       {data && (
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          <StatTile variant="primary" label="Storms now" value={data.storms.length} window={data.storms[0]?.application ?? "none open"} />
+          <StatTile variant="primary" label="Active storms" value={data.storms.length} window={data.storms[0]?.application ?? "none open"} />
           <StatTile label="Open P1" value={data.p1_p2.filter((i) => i.priority === 1).length} />
           <StatTile label="Open P2" value={data.p1_p2.filter((i) => i.priority === 2).length} />
-          <StatTile label="Past SLA now" value={data.p1_p2.filter((i) => i.state === "breached").length} window={`${waiting} whose reporter has heard nothing yet`} />
+          <StatTile label="SLA breached" value={data.p1_p2.filter((i) => i.state === "breached").length} window={`${waiting} without a first update`} />
         </div>
       )}
 
@@ -194,14 +194,14 @@ export default function IncidentsPage() {
 
       {data && data.count === 0 && data.p1_p2.length === 0 && (
         <Card className="px-4 py-6 text-muted-foreground">
-          Nothing needs attention. Storms and P1/P2 tickets show here as Triage finds them.
+          Nothing needs attention. Storms and P1/P2 tickets appear here when Triage detects them.
         </Card>
       )}
 
       {data && data.storms.length > 0 && (
         <Card className="gap-0 py-0">
           <SectionHead title="Storms">
-            <span className="text-xs text-muted-foreground">Many people reporting the same issue at once</span>
+            <span className="text-xs text-muted-foreground">Multiple requesters reporting the same issue at once</span>
           </SectionHead>
           <ul role="list">
             {data.storms.map((s) => (
@@ -246,7 +246,7 @@ export default function IncidentsPage() {
       {data && data.p1_p2.length > 0 && (
         <Card className="gap-0 py-0">
           <SectionHead title="P1 and P2">
-            <span className="text-xs text-muted-foreground">Most at risk first</span>
+            <span className="text-xs text-muted-foreground">Highest SLA risk first</span>
           </SectionHead>
           <ul role="list">
             {data.p1_p2.map((i) => (
@@ -264,7 +264,7 @@ export default function IncidentsPage() {
                       <p className="text-xs text-muted-foreground">
                         {[
                           i.application ?? "No application",
-                          i.priority_from === "reviewed" ? "priority set by an engineer" : "priority recommended by Triage",
+                          i.priority_from === "reviewed" ? "priority confirmed" : "priority recommended by Triage",
                           i.storm_id ? `part of storm ${i.storm_id}` : null,
                         ]
                           .filter(Boolean)

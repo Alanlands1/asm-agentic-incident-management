@@ -12,15 +12,15 @@ export default function ResolutionAgentPage() {
     <AppShell>
       <PageHeader
         title="Resolution"
-        context="Finds the runbook fix for each approved ticket: the cause, the steps and the KB articles it used."
+        context="Finds the runbook fix for each ticket with a confirmed priority: the root cause, the steps and the knowledge articles used."
       />
       <AgentRunPanel agent="resolution" />
       <p className="text-xs text-muted-foreground">
-        It searches the pages copied from Confluence, refreshed after each Confluence sync. With nothing copied it uses the runbook
+        It searches the pages copied from Confluence, refreshed after each Confluence sync. If no pages are copied, it uses the runbook
         files.{" "}
         {mayOpen(role, "/settings/confluence") && (
           <Link href="/settings/confluence" className="font-semibold text-primary underline-offset-4 hover:underline">
-            See the copied pages
+            View copied pages
           </Link>
         )}
       </p>

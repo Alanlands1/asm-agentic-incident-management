@@ -214,3 +214,47 @@ async def test_agents_running_follows_the_agents_pass(client):
     assert (await client.get(f"/api/v1/tickets/{ticket_id}")).json()["agents_running"] is False
     async with jira.agents_lock:
         assert (await client.get(f"/api/v1/tickets/{ticket_id}")).json()["agents_running"] is True
+
+
+async def test_the_lead_assigns_a_jira_ticket_in_jira_and_a_mailbox_ticket_here(client, monkeypatch):
+    import httpx
+
+    from app.services import atlassian, jira
+
+    await client.post("/api/v1/ingest")
+    calls = []
+
+    def site(request: httpx.Request) -> httpx.Response:
+        calls.append((request.method, request.url.path, request.content))
+        if request.method == "GET":
+            return httpx.Response(200, json=[{"accountId": "a1", "displayName": "Ravi Kumar"}])
+        return httpx.Response(204)
+
+    fake = httpx.MockTransport(site)
+    monkeypatch.setattr(atlassian, "client", lambda: httpx.AsyncClient(base_url="https://jira.test", transport=fake))
+    monkeypatch.setattr(jira.settings, "JIRA_WRITE_BACK", True)
+    lead = "lead@contoso.com"
+
+    r = await client.post("/api/v1/tickets/AMS-1209/assign", json={"assignee": "Ravi Kumar", "by": lead})
+    assert r.status_code == 200
+    assert calls[-1][:2] == ("PUT", "/rest/api/3/issue/AMS-1209/assignee") and b'"a1"' in calls[-1][2]
+    detail = (await client.get("/api/v1/tickets/AMS-1209")).json()
+    assert detail["assignee"] == "Ravi Kumar"
+    assert detail["agent_runs"][-1]["output"]["by"] == lead and detail["agent_runs"][-1]["verdict"] == "assigned"
+
+    r = await client.post("/api/v1/tickets/AMS-1209/assign", json={"assignee": "Nobody Known", "by": lead})
+    assert r.status_code == 502 and "cannot be assigned" in r.json()["detail"]  # not a person in Jira: nothing changes
+    assert (await client.get("/api/v1/tickets/AMS-1209")).json()["assignee"] == "Ravi Kumar"
+
+    mailbox = (await client.get("/api/v1/tickets", params={"source": "Mailbox", "pipeline_status": "pending", "limit": 1})).json()
+    written = len(calls)
+    ticket_id = mailbox["items"][0]["id"]
+    to_ravi = {"assignee": "Ravi Kumar", "by": lead}
+    assert (await client.post(f"/api/v1/tickets/{ticket_id}/assign", json=to_ravi)).status_code == 200
+    assert len(calls) == written  # no Jira issue behind it
+    assert "Ravi Kumar" in (await client.get("/api/v1/personas/people")).json()
+    assert (await client.post(f"/api/v1/tickets/{ticket_id}/assign", json={"assignee": None, "by": lead})).status_code == 200
+    assert (await client.get(f"/api/v1/tickets/{ticket_id}")).json()["assignee"] is None
+    activity = (await client.get("/api/v1/personas/activity")).json()
+    assert [(a["actor"], a["action"]) for a in activity if a["kind"] == "assigned" and ticket_id in a["ticket_ids"]] == [
+        (lead, None), (lead, "Ravi Kumar")]

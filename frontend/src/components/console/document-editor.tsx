@@ -81,9 +81,9 @@ export function DocumentEditor({ name, label, note }: { name: string; label: str
         setSaved(JSON.stringify(d.document));
         setOverridden(d.overridden);
       }
-      setStatus("Saved. The agents use it from their next ticket.");
+      setStatus("Saved. The agents apply it from the next ticket.");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn't save");
+      setError(e instanceof Error ? e.message : "Couldn't save. Try again.");
     } finally {
       setBusy(false);
     }
@@ -96,9 +96,9 @@ export function DocumentEditor({ name, label, note }: { name: string; label: str
       await adminService.resetDocument(name, person);
       setConfirm(false);
       await load(mode);
-      setStatus("Back to the repo file.");
+      setStatus("Reverted to the repository file.");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn't reset");
+      setError(e instanceof Error ? e.message : "Couldn't reset. Try again.");
     } finally {
       setBusy(false);
     }
@@ -114,7 +114,7 @@ export function DocumentEditor({ name, label, note }: { name: string; label: str
     <Card className="gap-0 py-0">
       <SectionHead title={label}>
         <div className="flex flex-wrap items-center gap-3">
-          <span className="text-xs text-muted-foreground">{overridden ? "Changed by an admin" : "Using the repo file"}</span>
+          <span className="text-xs text-muted-foreground">{overridden ? "Changed by an admin" : "Using the repository file"}</span>
           <Tabs value={mode} onValueChange={(v) => switchMode(v as Mode)}>
             <TabsList variant="pill" aria-label="How to edit">
               <TabsTrigger value="blocks" disabled={dirty && mode !== "blocks"} title={dirty ? "Save or discard your changes first" : undefined}>
@@ -168,13 +168,13 @@ export function DocumentEditor({ name, label, note }: { name: string; label: str
             {overridden && (
               <Dialog open={confirm} onOpenChange={setConfirm}>
                 <Button variant="secondary" onClick={() => setConfirm(true)} disabled={busy}>
-                  Reset to the repo file
+                  Reset to repository file
                 </Button>
                 <DialogContent>
                   <DialogHeader>
                     <DialogTitle>Reset {label}?</DialogTitle>
                     <DialogDescription>
-                      The admin version is replaced by the file in the repo. The change history keeps the admin version.
+                      The admin version is replaced by the repository file. The change history retains the admin version.
                     </DialogDescription>
                   </DialogHeader>
                   <DialogFooter>
@@ -186,7 +186,7 @@ export function DocumentEditor({ name, label, note }: { name: string; label: str
                 </DialogContent>
               </Dialog>
             )}
-            <span className="text-xs text-muted-foreground">Comments in the repo file are not kept after the first save.</span>
+            <span className="text-xs text-muted-foreground">Comments in the repository file are not preserved after the first save.</span>
           </div>
         )}
       </div>

@@ -1,0 +1,29 @@
+# The team's working hours and leave: who can be given a ticket now.
+# Editable here (baseline) or on the lead's Team page (PUT /api/v1/admin/documents/team).
+#
+# Times are local to the team: utc_offset is its distance from UTC. shortcut: a fixed offset, so no daylight saving;
+# use a time zone name once a team works somewhere that changes its clocks.
+# Quote the times: unquoted, YAML reads 09:00 as a number.
+
+utc_offset: "+05:30"
+
+# Everyone works these hours unless listed under engineers. An end before the start is a night shift.
+default: { days: [mon, tue, wed, thu, fri], start: "09:00", end: "18:00" }
+
+# Per engineer, by their name in Jira, e.g.
+# engineers:
+#   Ravi Kumar: { days: [mon, tue, wed, thu, sat], start: "13:00", end: "22:00" }
+engineers: {}
+
+# Nobody holding this many open tickets is suggested another, except for a P1 or P2: those go over it rather than wait.
+max_open: 8
+
+# Who is on the team. Without an entry here, someone who has held a ticket is on it (unless Jira no longer lets
+# them be assigned), and someone only Jira knows is not. The lead's Team page fills these two lists.
+members: []
+not_members: []
+
+# Days off, both dates included, e.g.
+# leave:
+#   - { name: Ravi Kumar, from: 2026-11-26, to: 2026-11-27 }
+leave: []

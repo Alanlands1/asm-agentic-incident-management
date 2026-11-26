@@ -73,7 +73,7 @@ export function SidebarFooter({ onNavigate }: { onNavigate?: () => void }) {
         </Button>
         {failed && (
           <span role="alert" className="text-[11px] text-sidebar-foreground">
-            The sync did not run. Try again, or check Settings › Jira.
+            The sync failed. Try again, or check Settings › Jira.
           </span>
         )}
       </div>

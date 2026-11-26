@@ -6,8 +6,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
+from app.agents.closure_quality.requester_email import draft_email
 from app.api.v1.endpoints import knowledge
+from app.core.config import settings
 from app.db.session import get_db
+from app.llm import ModelError, ModelUnavailableError
 from app.models.ticket import PipelineStatus, Ticket
 from app.schemas.closure import (
     ClosureCheckResponse,
@@ -16,11 +19,12 @@ from app.schemas.closure import (
     ClosureReviewCreate,
     ClosureReviewOut,
     ClosureRunResponse,
+    RequesterEmailOut,
 )
 from app.services import jira
 from app.services.closure import check_ticket, run_closure
 from app.services.closure import review as closure_review
-from app.services.closure.run import RESOLVED
+from app.services.closure.run import GAP, RESOLVED, notes_for
 from app.services.knowledge import run_knowledge
 
 router = APIRouter(prefix="/closure", tags=["closure quality"])
@@ -51,6 +55,32 @@ async def check_one_ticket(ticket_id: str, db: AsyncSession = Depends(get_db)) -
     checked = await db.run_sync(_check_one, ticket_id)
     await jira.announce_closure(db, started)
     return checked
+
+
+@router.post("/tickets/{ticket_id}/email", response_model=RequesterEmailOut, summary="Draft an email to the requester")
+async def draft_requester_email(ticket_id: str, db: AsyncSession = Depends(get_db)) -> RequesterEmailOut:
+    """A draft telling the requester the ticket is resolved, from the saved closure note. Nothing is stored or sent."""
+    return await db.run_sync(_draft_email, ticket_id)
+
+
+def _draft_email(db: Session, ticket_id: str) -> RequesterEmailOut:
+    ticket = db.get(Ticket, ticket_id)
+    if ticket is None:
+        raise HTTPException(status_code=404, detail=f"Ticket {ticket_id} not found")
+    notes, _ = notes_for(ticket)
+    if not notes or GAP.search(ticket.resolution_notes or ""):
+        raise HTTPException(status_code=409, detail="Save a complete closure note first")
+    if not settings.LLM_ENABLED:
+        raise HTTPException(status_code=503, detail="The model is switched off, so no draft can be written")
+    try:
+        email, _, made_up = draft_email(ticket, notes)
+    except ModelError as exc:
+        status = 503 if isinstance(exc, ModelUnavailableError) else 502
+        raise HTTPException(status_code=status, detail=f"Model gave no usable answer ({type(exc).__name__})") from exc
+    if made_up:
+        raise HTTPException(status_code=422, detail=f"The draft named {', '.join(made_up)}, which is not on the ticket. "
+                                                    "Try again.")
+    return RequesterEmailOut(subject=email.subject, body=email.body)
 
 
 def _check_one(db: Session, ticket_id: str) -> ClosureCheckResponse:

@@ -43,7 +43,7 @@ export default function TrendsPage() {
         setData(d);
         setError(null);
       })
-      .catch((e: unknown) => current && setError(e instanceof Error ? e.message : "Couldn't load the trends"));
+      .catch((e: unknown) => current && setError(e instanceof Error ? e.message : "Couldn't load the trends. Try again."));
     return () => {
       current = false;
     };
@@ -61,7 +61,7 @@ export default function TrendsPage() {
 
   return (
     <AppShell>
-      <PageHeader title="Trends" context="Tickets coming in, what the agents spend on the model, and SLA times that ran out. One column per day." />
+      <PageHeader title="Trends" context="Incoming tickets, model usage by the agents, and SLA breaches. One column per day." />
       <Tabs value={String(days)} onValueChange={(v) => setDays(Number(v))}>
         <TabsList aria-label="Period">
           {RANGES.map((n) => (
@@ -75,7 +75,7 @@ export default function TrendsPage() {
 
       {error && (
         <Alert variant="destructive">
-          <AlertDescription>{data ? `Couldn't load ${days} days: ${error}. Showing the last numbers.` : error}</AlertDescription>
+          <AlertDescription>{data ? `Couldn't load ${days} days: ${error}. Showing the last available data.` : error}</AlertDescription>
         </Alert>
       )}
       {!data && !error && <p className="text-muted-foreground">Loading…</p>}
@@ -85,7 +85,7 @@ export default function TrendsPage() {
           <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
             <StatTile
               variant="primary"
-              label="Tickets in"
+              label="Incoming tickets"
               href="/tickets"
               value={short(total(data.tickets))}
               window={`last ${data.days.length} days`}
@@ -95,32 +95,32 @@ export default function TrendsPage() {
               value={short(data.tokens_in + data.tokens_out)}
               window={`${short(data.tokens_in)} in, ${short(data.tokens_out)} out, ${data.model_calls.toLocaleString()} model calls`}
             />
-            <StatTile label="SLA times that ran out" value={total(data.sla_breaches)} window={`last ${data.days.length} days`} />
+            <StatTile label="SLA breaches" value={total(data.sla_breaches)} window={`last ${data.days.length} days`} />
             <StatTile
-              label="Open and past SLA now"
+              label="Open and breached"
               href="/incidents"
               value={data.sla_open.breached}
-              window={`${data.sla_open.breach_likely} more close to it`}
+              window={`${data.sla_open.breach_likely} more near breach`}
             />
           </div>
 
           <Card className="gap-0 py-0">
-            <SectionHead title="Tickets coming in">
-              <Note>By the day each ticket was opened</Note>
+            <SectionHead title="Incoming tickets">
+              <Note>By the date each ticket was opened</Note>
             </SectionHead>
             <TrendChart days={data.days} series={tickets} />
           </Card>
 
           <Card className="gap-0 py-0">
             <SectionHead title="Tokens used by the agents">
-              <Note>Input and output together. Calls that failed are not counted</Note>
+              <Note>Input and output combined. Failed calls are excluded</Note>
             </SectionHead>
             <TrendChart days={data.days} series={named(data.tokens, AGENTS)} />
           </Card>
 
           <Card className="gap-0 py-0">
             <SectionHead title="SLA breaches">
-              <Note>On the day the time ran out, for P1 and P2 tickets not resolved by then</Note>
+              <Note>By breach date, for P1 and P2 tickets not resolved in time</Note>
             </SectionHead>
             <TrendChart
               days={data.days}
@@ -133,7 +133,7 @@ export default function TrendsPage() {
 
           <Card className="gap-0 py-0">
             <SectionHead title="Reviews by person">
-              <Note>Leads and engineers use no tokens themselves. This is the work they did</Note>
+              <Note>Reviews completed by leads and engineers</Note>
             </SectionHead>
             <div className="px-4 py-3">
               {reviews.length ? <Bars rows={reviews} /> : <p className="text-muted-foreground">No reviews in this period.</p>}
