@@ -43,6 +43,8 @@
   .divider { display: flex; align-items: center; gap: 16px; margin: 12px 0 10px; flex: none; }
   .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 
+  .ic { width: 1.05em; height: 1.05em; vertical-align: -0.16em; margin-right: 0.4em; fill: none; stroke: var(--red); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
   /* 1 cover */
   .cover { padding: 0; }
   .frame { position: absolute; inset: 24px; border: 1px solid var(--line); border-radius: 20px; padding: 44px 84px; display: flex; flex-direction: column; overflow: hidden; }
@@ -555,6 +557,39 @@
     else if (at > 0) go(at - 1, +slides[at - 1].dataset.steps - 1);
   }
   const full = () => (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.());
+
+  // small icons: one per heading, looked up by the heading's own text
+  const ICONS = {
+    clip: '<path d="M9 4h6v3H9z"/><path d="M9 5H6v15h12V5h-3"/><path d="m9 13 2 2 4-4"/>',
+    flag: '<path d="M5 21V4"/><path d="M5 4h12l-2 4 2 4H5"/>',
+    search: '<circle cx="11" cy="11" r="6"/><path d="m20 20-4.5-4.5"/>',
+    doc: '<path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4"/><path d="m10 14 2 2 3-4"/>',
+    book: '<path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/><path d="M5 17a3 3 0 0 1 3-3h11"/>',
+    users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8"/><path d="M18 14.5a6.5 6.5 0 0 1 3.5 5.5"/>',
+    user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+    sliders: '<path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>',
+    mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>',
+    board: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 8v8M12 8v5M16 8v3"/>',
+    table: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M3 15h18M9 4v16"/>',
+    shield: '<path d="M12 3 5 6v5c0 5 3 8 7 10 4-2 7-5 7-10V6z"/>',
+    clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    chat: '<path d="M4 5h16v11H9l-5 4z"/>',
+    chart: '<path d="M4 20V4M4 20h16"/><path d="M8 16v-4M12 16V8M16 16v-6"/>',
+  };
+  const ICON_FOR = {
+    "Data Quality": "clip", "Triage": "flag", "Resolution": "search", "Closure Quality": "doc", "Knowledge Builder": "book", "Lead and engineer": "users",
+    "Jira": "board", "ServiceNow": "table", "Support mailbox": "mail",
+    "Knowledge scattered": "book", "Data quality": "clip", "Triage and troubleshooting inconsistent": "flag", "Communication and reporting": "chat",
+    "Engineer": "user", "Lead": "users", "Admin": "sliders", "Lead desk": "users", "Incidents and SLA": "clock", "AI assistant": "chat",
+    "Personal data masking": "shield", "SLA clock": "clock", "Feedback": "chat", "Reports": "chart",
+    "Personal data auto-masking": "shield", "One write to the source system": "board", "Full record of agent results": "doc", "Human review path": "user",
+    "Hybrid search": "search", "Runbook chunking": "book", "Similar closed tickets": "doc", "Rule builder": "sliders", "Quote check": "clip",
+    "Incident grouping": "table", "Rules first, model second": "flag", "Assignment suggestions": "users", "Tracing and change history": "clock",
+  };
+  document.querySelectorAll("h3, .source b, .tile b, .role > .mono, .feature > .mono").forEach((el) => {
+    const icon = ICONS[ICON_FOR[el.textContent.trim()]];
+    if (icon) el.insertAdjacentHTML("afterbegin", `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${icon}</svg>`);
+  });
 
   slides.forEach((_, n) => {
     const b = document.createElement("button");
