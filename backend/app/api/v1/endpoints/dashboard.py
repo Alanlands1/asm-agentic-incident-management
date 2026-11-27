@@ -1,14 +1,15 @@
 """Admin home: one summary of ticket flow, agent results, the review queue, sync health and attention; and daily trends."""
 
 from datetime import UTC, datetime, timedelta
-from typing import Literal
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1.endpoints.auth import require_role
 from app.db.session import get_db
-from app.services import dashboard, reports
+from app.services import dashboard, reports, service_report
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
@@ -139,7 +140,68 @@ class ReportsOut(BaseModel):
     engineers: list[EngineerReport]
 
 
-@router.get("/reports", response_model=ReportsOut, summary="Admin reports for a period")
+@router.get("/reports", response_model=ReportsOut, summary="Admin reports for a period",
+            dependencies=[Depends(require_role("admin"))])
 async def get_reports(days: int = Query(30, ge=1, le=365), db: AsyncSession = Depends(get_db)) -> ReportsOut:
     """Tickets by application, agent performance, fix and closure outcomes, and engineers, for the last `days` days."""
     return ReportsOut(**await db.run_sync(reports.reports, days))
+
+
+class ServiceMeasures(BaseModel):
+    opened: int
+    resolved: int
+    resolved_by_priority: dict[str, int] = Field(description="P1, P2, P3 and P4–P5")
+    mttr_hours: float | None = Field(description="Mean hours from opened to resolved")
+    median_hours: float | None
+    sla_met: float | None = Field(description="Share of P1/P2 tickets resolved within their target")
+    first_fix: float | None = Field(description="Share of confirmed fixes that worked on the first suggestion")
+
+
+class ServiceKpis(BaseModel):
+    current: ServiceMeasures
+    previous: ServiceMeasures = Field(description="The period before, of the same length where the calendar allows")
+    backlog: int = Field(description="Open now")
+    backlog_past_sla: int
+    spark: dict[str, list[float | None]] = Field(description="The last 6 months of opened, resolved, MTTR, SLA met, first fix")
+
+
+class ServiceMonthly(BaseModel):
+    months: list[str] = Field(examples=[["2025-12", "2026-01"]])
+    opened: list[int]
+    resolved: list[int]
+    resolved_by_priority: dict[str, list[int]]
+    mttr_by_priority: dict[str, list[float | None]]
+    sla_met: list[float | None]
+    resolved_by_application: dict[str, list[int]]
+
+
+class ApplicationPerformance(BaseModel):
+    application: str
+    resolved: int
+    mttr_hours: float | None
+    sla_met: float | None
+
+
+class ServiceOut(BaseModel):
+    period: str
+    start: datetime
+    end: datetime
+    applications: list[str] = Field(description="Every application, for the filter")
+    sla_targets: dict[str, int] = Field(description="Hours, by priority")
+    kpis: ServiceKpis
+    monthly: ServiceMonthly = Field(description="The last 12 months, this one so far included")
+    by_application: list[ApplicationPerformance] = Field(description="Resolved in the period, slowest first")
+    ageing: list[dict[str, Any]] = Field(description="Open tickets by age and priority")
+
+
+@router.get("/service", response_model=ServiceOut, summary="Service performance: KPIs and monthly trends",
+            dependencies=[Depends(require_role("admin"))])
+async def get_service(
+    period: Literal["mtd", "last_month", "qtd", "ytd", "12m"] = "mtd",
+    application: str | None = None,
+    priority: int | None = Query(None, ge=1, le=5),
+    db: AsyncSession = Depends(get_db),
+) -> ServiceOut:
+    """Opened and resolved by priority, MTTR, SLA met and first-time fix for the period against the one before, the
+    last 12 months by month and by application, and the open backlog by age."""
+    return ServiceOut(**await db.run_sync(service_report.service_performance, period, application, priority))

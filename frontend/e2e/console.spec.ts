@@ -95,20 +95,41 @@ test.describe("ticket page", () => {
 });
 
 test.describe("reports", () => {
-  test("shows the four reports for the chosen period and downloads a CSV", async ({ page }) => {
+  test("shows the KPIs and the monthly trend charts, filtered by period, application and priority", async ({ page }) => {
     const errors = watchErrors(page);
     await page.goto("/reports");
-    for (const title of ["Tickets by application", "Agent performance", "Resolution and closure outcomes", "Engineers"])
+    const kpis = page.getByRole("region", { name: "Key figures" });
+    for (const label of ["Opened", "Resolved", "Open backlog", "Mean time to resolve", "SLA met (P1/P2)", "First-time fix"])
+      await expect(kpis.getByText(label, { exact: true })).toBeVisible();
+    for (const title of ["Opened vs resolved", "Resolved by priority", "Mean time to resolve by priority", "SLA compliance, P1 and P2",
+                         "Mean time to resolve by application", "Monthly resolution by application", "Open backlog by age"])
       await expect(page.getByRole("heading", { name: title })).toBeVisible();
-    await expect(page.getByRole("cell", { name: "Knowledge Builder" })).toBeVisible(); // one row per agent
+    await expect(page.locator(".recharts-surface").first()).toBeVisible(); // the charts drew
 
-    await page.getByRole("tab", { name: "7 days" }).click();
-    await expect(page.getByRole("tab", { name: "7 days" })).toHaveAttribute("aria-selected", "true");
-
-    const agents = page.locator("[data-slot=card]", { has: page.getByRole("heading", { name: "Agent performance" }) });
-    const [download] = await Promise.all([page.waitForEvent("download"), agents.getByRole("button", { name: "Download CSV" }).click()]);
-    expect(download.suggestedFilename()).toBe("agent-performance-last-7-days.csv");
+    await page.getByRole("tab", { name: "Last 12 months" }).click();
+    await expect(page.getByRole("tab", { name: "Last 12 months" })).toHaveAttribute("aria-selected", "true");
+    await page.getByLabel("Application").selectOption("PayrollPro");
+    await page.getByLabel("Priority").selectOption("1");
+    const heatmap = page.locator("[data-slot=card]", { has: page.getByRole("heading", { name: "Monthly resolution by application" }) });
+    await expect(heatmap.getByText("OrderHub")).toHaveCount(0); // the filters narrow every chart
+    await expect(heatmap.getByText("PayrollPro")).toBeVisible();
     expect(errors).toEqual([]);
+  });
+
+  test("shows a chart as a table and downloads its CSV", async ({ page }) => {
+    await page.goto("/reports");
+    const card = page.locator("[data-slot=card]", { has: page.getByRole("heading", { name: "Resolved by priority" }) });
+    await card.getByRole("button", { name: "View as table" }).click();
+    await expect(card.getByRole("columnheader", { name: "P1" })).toBeVisible();
+    const [download] = await Promise.all([page.waitForEvent("download"), card.getByRole("button", { name: "CSV" }).click()]);
+    expect(download.suggestedFilename()).toBe("resolved-by-priority.csv");
+  });
+
+  test("keeps the detailed tables folded below the charts", async ({ page }) => {
+    await page.goto("/reports");
+    await page.getByRole("button", { name: /Detailed data/ }).click();
+    await expect(page.getByRole("heading", { name: "Agent performance" })).toBeVisible();
+    await expect(page.getByRole("cell", { name: "Knowledge Builder" })).toBeVisible(); // one row per agent
   });
 
   test("is for admins only", async ({ page }) => {

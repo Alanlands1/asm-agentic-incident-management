@@ -106,6 +106,9 @@ class Settings(BaseSettings):
     # Knowledge Builder run
     KNOWLEDGE_OUTAGE_BREAKER: int = Field(5, ge=1)  # same, for the Knowledge Builder model stage
 
+    # RAGAS judge for the Resolution agent's evaluation (evaluation/ragas_report.py): an Anthropic model id
+    EVAL_JUDGE_MODEL: str = "claude-sonnet-5-5"
+
     # Admin API. Unset key = admin endpoints switched off. Set both in the environment only, never through the API.
     ADMIN_API_KEY: str = ""
     ALLOWED_AWS_REGIONS: list[str] = ["ca-central-1"]
