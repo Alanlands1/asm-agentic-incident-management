@@ -90,11 +90,18 @@ def summarise(samples: list[dict]) -> dict[str, tuple[float | None, int]]:
 
 def judges(model: str) -> dict:
     """The three judged RAGAS metrics, each calling the Anthropic model `model` through the Anthropic SDK."""
-    from anthropic import Anthropic
+    from anthropic import AsyncAnthropic  # the metrics are awaited (ascore), which needs the async client
     from ragas.llms import llm_factory
     from ragas.metrics.collections import ContextPrecisionWithReference, ContextRecall, Faithfulness
 
-    client = Anthropic(api_key=settings.ANTHROPIC_API_KEY.get_secret_value() or None)  # None = the SDK's own lookup
+    client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY.get_secret_value() or None)  # None = the SDK's own lookup
+    create = client.messages.create
+
+    async def create_without_sampling(**kwargs):  # ragas always sends temperature and top_p; this SDK version takes neither
+        kwargs.pop("temperature", None), kwargs.pop("top_p", None)
+        return await create(**kwargs)
+
+    client.messages.create = create_without_sampling
     llm = llm_factory(model, provider="anthropic", client=client)
     return {"faithfulness": Faithfulness(llm=llm), "context_precision": ContextPrecisionWithReference(llm=llm),
             "context_recall": ContextRecall(llm=llm)}
