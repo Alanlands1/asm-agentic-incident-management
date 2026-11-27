@@ -14,11 +14,11 @@ Spoken script for `ams-console-deck.html`, written in the style of a narrated ex
 
 A ticket lands in the support queue. Priority: P1. The most urgent thing in the building.
 
-The problem? A profile photo won't upload.
+The problem? A spelling mistake on the claim form page.
 
-The same morning, another ticket comes in marked Medium. Nothing special. Except this one is blocking the payroll run.
+The same morning, another ticket comes in marked Medium. Nothing special. Except this one says: insurance payment didn't go through for deal 11111.
 
-So the photo is an emergency and the salaries can wait. That's a hell of a queue.
+So the typo is an emergency and the customer's payment can wait. That's a hell of a queue.
 
 And nobody did anything wrong. The requester guessed, because guessing is all the form lets them do. Which is why we got curious and asked ourselves: okay, what actually happens to a ticket between the moment it arrives and the moment someone fixes it?
 
@@ -38,7 +38,7 @@ Follow one ticket and count the places it waits.
 
 **[click]** One. It arrives with details missing, so the work waits while someone writes back to ask.
 
-**[click]** Two. The priority is the requester's guess. That's our profile photo.
+**[click]** Two. The priority is the requester's guess. That's our typo.
 
 **[click]** Three. Finding a free engineer takes a round of messages.
 
@@ -88,13 +88,13 @@ Each agent reads one thing and produces one thing. That's it. Let me show you.
 
 **[Slide 5]**
 
-Remember the Medium ticket? "Payroll run blocked." Let's follow it.
+Remember the Medium ticket? "Insurance payment didn't go through." Let's follow it.
 
 **[click]** It comes in. Mailbox, Jira or ServiceNow, it doesn't matter which.
 
 **[click]** Data Quality goes first. Rules check, then a model check. Is there enough here to act on? If not, it stops and drafts the email to the requester. This one is complete.
 
-**[click]** Triage. The requester said Medium. The rulebook says a blocked payroll run is higher. Priority set, and the SLA clock starts.
+**[click]** Triage. The requester said Medium. The rulebook says a failed insurance payment is higher. Priority set, and the SLA clock starts.
 
 **[click]** Resolution. It searches the runbooks and the closed tickets, reads what it finds, and searches again. Then it proposes the steps, each with where it came from.
 
@@ -128,7 +128,7 @@ For control: the team owns the rules. Ten operators, a run history, and a revert
 
 Fair question. So we scored it.
 
-All five agents, against cases the team labelled. 222 of 223 passed. And the whole build sits on 445 automated tests, all passing.
+All five agents, against cases the team labelled. 190 of 190 passed. And the whole build sits on 445 automated tests, all passing.
 
 Sounds great, right? Except there's a catch. I guess there's always a catch.
 
@@ -188,7 +188,7 @@ And to go from demo to pilot, we need three things. The support lead to confirm 
 
 Look, it's hard to fit the story of a support team into ten slides. But here's the strand I'd keep.
 
-The profile photo was never the problem. The payroll ticket was never the problem. The problem was the waiting in between: for details, for a priority, for a person, for an answer, for a note.
+The typo was never the problem. The payment ticket was never the problem. The problem was the waiting in between: for details, for a priority, for a person, for an answer, for a note.
 
 The console takes the waiting. The engineer keeps the decision. And that, to me, is the real story of this console.
 
