@@ -23,3 +23,6 @@ BillingEngine:
 InsightBI:
   names: [insightbi, insight bi]
   keywords: [dashboard, report]
+CreditorProtect:
+  names: [creditorprotect, creditor protect]
+  keywords: [insurance, premium, claim, certificate of insurance, deal]

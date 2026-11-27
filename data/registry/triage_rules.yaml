@@ -203,6 +203,36 @@ applications:
         match: ['\bBIL-CN-403\b', '\bcredit note\b']
         priority: 4
 
+  CreditorProtect:
+    tier: 1
+    rules:
+      - name: premium_batch_failed
+        kb: KB-CRD-002
+        about: Daily premium collection batch failed, no premiums collected
+        match: ['\bPREM_COLLECT_DAILY\b', '\bpremium (collection )?(batch|run|job) (failed|fails|did not)\b', '\bGatewayAuthError\b']
+        priority: 1
+      - name: insurance_payment_failed
+        kb: KB-CRD-001
+        about: Insurance payment did not go through for a deal; the customer's cover is at risk
+        match: ['\b(insurance|premium) payment\b.{0,40}\b(did ?n.?t|did not|not|never) (go|going|gone|went) through\b',
+                '\b(insurance|premium) payment (has )?(failed|was returned|returned|bounced)\b', '\bPAD-RET-\d+\b']
+        priority: 2                                          # many deals at once: premium_batch_failed, or a storm
+      - name: claim_payment_not_received
+        kb: KB-CRD-003
+        about: Claim payment did not reach the lender
+        match: ['\b(claim|benefit) payment\b.{0,60}\b(not|never) (received|arrived|sent)\b', '\bLND-REJ-\d+\b', '\bCLM_PAY_FILE\b']
+        priority: 2
+      - name: certificate_not_generated
+        kb: KB-CRD-004
+        about: Certificate of insurance not generated
+        match: ['\bcertificate of insurance\b', '\bDOC-GEN-\d+\b']
+        priority: 3
+      - name: form_text_mistake
+        kb: KB-CRD-005
+        about: Spelling or layout mistake on a form or page (cosmetic)
+        match: ['\b(spelling|typo|misspel\w*|wrong label|misaligned)\b']
+        priority: 5
+
   StockSense:
     tier: 1
     rules:

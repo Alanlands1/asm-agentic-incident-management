@@ -21,7 +21,7 @@ def _kb_ids_in(path: Path) -> list[str]:
 
 def test_every_issue_in_every_runbook_becomes_exactly_one_chunk_with_its_id():
     chunks = chunk_knowledge_base(KB_DIR)
-    assert len(chunks) == 7
+    assert len(chunks) == 8
     for source, items in chunks.items():
         issue_ids = [c.kb_id for c in items if c.kb_id]
         assert sorted(issue_ids) == _kb_ids_in(KB_DIR / source), source
