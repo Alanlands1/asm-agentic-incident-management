@@ -1,6 +1,6 @@
 # AMS Console: speaker script
 
-Ten slides, about 8 minutes. Read at a calm pace.
+Ten slides, about 18 minutes with the pauses. Read at a calm pace.
 
 - [pause] means stop for two seconds. Let it land.
 - [click] means press the arrow once and wait for the slide to change.
@@ -429,35 +429,111 @@ Changing a priority. Applying the fix. Sending the closure note. Publishing an a
 
 **Slide 9: Three roles**
 
-[point to each column]
+[the Engineer card is already on screen. Click once for Lead, once for Admin.]
 
-Three roles, one console.
+So who actually uses this?
 
-The **engineer** works the ticket.
+Three kinds of people. It is one console, but each of them sees a different one.
 
-The **lead** runs the team and approves high-priority closures.
+You sign in, and the menu follows your role.
 
-The **admin** writes the rules and can turn the model off.
+[pause]
+
+[point to the first card]
+
+First, the **engineer**. The person who works the ticket.
+
+They open a worklist, ordered by SLA time left. The most urgent ticket is on top.
+
+On the ticket they see the steps, the suggested fix, and the assistant.
+
+And they decide three things. Whether the priority is right. Whether the fix worked. And when the closure note goes out.
+
+[pause]
+
+[click]
+
+Second, the **lead**. The person who runs the team.
+
+They see who is working on what. Hours, leave, and how many tickets each engineer has open.
+
+They see the incidents, and the closure notes waiting for approval.
+
+And they decide three things. Who takes a ticket when the team is full. Whether a P1 or P2 closure is good enough. And when to declare a major incident.
+
+[pause]
+
+[click]
+
+Third, the **admin**. The person who sets it up.
+
+They see the rule builder, a page for each agent, and the reports.
+
+They can also view the console as any other person. That is useful when someone says "I cannot see my ticket".
+
+And they decide the rules, the thresholds and SLA targets, and whether the model is on or off.
+
+[pause]
+
+Three roles. One console. And every decision has a name next to it.
 
 ---
 
 **Slide 10: Where it stands**
 
-[point to the three columns, left to right]
+[the first column is already on screen. Click once for each of the next two, and once for the bottom strip.]
 
-Ten of eighteen capabilities work in the demo today.
+Let me finish with where we are today. Honestly.
 
-Four are in progress. Four are planned.
+There are eighteen capabilities in total.
 
-[pause, point to the bottom strip]
+[point to the first column]
 
-To move from demo to pilot, we need three things.
+**Ten** are working in this demo, right now.
 
-The support lead to confirm the labelled cases.
+All five agents. The assistant. The Lead desk. Incidents and SLA. Reports. And sign-in, with a live Jira project.
 
-Access to ServiceNow and the mailbox.
+[pause]
 
-Agreed SLA targets.
+[click]
+
+**Four** are in progress. They are built, but they run on sample or provisional data.
+
+ServiceNow loads from a spreadsheet. We need access to its API.
+
+The mailbox loads from sample emails. We need access to the shared mailbox.
+
+The SLA targets work, but the values are ours. We need to agree them with the support lead.
+
+And Resolution is scored on its first ten tickets. The full run is next.
+
+[pause]
+
+[click]
+
+**Four** are planned.
+
+Ask a question. A log analyzer. Problem records for repeat issues. And an agent for major incidents.
+
+You may have seen the first three marked "Soon" in the menu.
+
+[pause]
+
+[click, point to the bottom strip]
+
+So what do we need, to move from a demo to a pilot?
+
+Three things.
+
+The support lead confirms our test cases.
+
+We get access to ServiceNow and the mailbox.
+
+And we agree the SLA targets.
+
+[pause]
+
+That is all that stands between this demo and a pilot.
 
 ---
 
