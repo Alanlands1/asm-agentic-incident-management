@@ -4,11 +4,13 @@ import json
 from datetime import UTC, datetime, timedelta
 
 import httpx
+from sqlalchemy import select
 
 from app.api.v1.endpoints import tickets
 from app.core.config import settings
 from app.db.session import get_db
 from app.main import app
+from app.models.incident import FirstMessage
 from app.models.ticket import AgentRun, Review, Storm, Ticket
 from app.services import atlassian, incidents, jira
 from app.services.triage import sla
@@ -380,3 +382,99 @@ async def test_the_agents_say_their_verdict_on_the_issue(client, fake_jira, monk
     (copy,) = copies  # the same text; Jira's own bullets replace the "- " in front of each agent's line
     assert copy["author_email"] == jira.AGENTS_BOT
     assert [line.removeprefix("- ") for line in copy["body"].splitlines() if line] == [line for line in text.splitlines() if line]
+
+
+def _jira_site(monkeypatch, posted, answer):
+    """A made-up Jira that keeps what is posted and answers with answer[0]; writing to Jira is on."""
+    def site(request: httpx.Request) -> httpx.Response:
+        posted.append((request.url.path, request.read()))
+        return answer[0]
+
+    fake = httpx.MockTransport(site)
+    monkeypatch.setattr(atlassian, "client", lambda: httpx.AsyncClient(base_url="https://jira.test", transport=fake))
+    monkeypatch.setattr(settings, "JIRA_WRITE_BACK", True)
+
+
+async def test_the_system_sends_the_stakeholder_update_and_repeats_it(client, fake_jira, monkeypatch):  # noqa: F811
+    await _triaged_p1(client)
+    posted, answer = [], [httpx.Response(500)]
+    _jira_site(monkeypatch, posted, answer)
+    monkeypatch.setattr(settings, "STAKEHOLDER_AUTO_SEND", False)  # the default; a local .env may switch it on
+    every = timedelta(minutes=sla.config().update_every_minutes)
+    (item,) = (await client.get("/api/v1/incidents/attention")).json()["p1_p2"]
+    assert (item["auto_send"], item["next_update_at"], item["can_post_to_jira"]) == (False, None, True)  # the setting is off
+
+    async for s in app.dependency_overrides[get_db]():
+        assert await jira.send_stakeholder_updates(s) == 0 and len(posted) == 1  # Jira refused: not recorded as sent
+        assert list(await s.scalars(select(FirstMessage))) == []
+        answer[0] = httpx.Response(201, json={"id": "10001"})
+        assert await jira.send_stakeholder_updates(s) == 1
+        assert await jira.send_stakeholder_updates(s) == 0  # sent a moment ago
+        (first,) = await s.scalars(select(FirstMessage))
+        assert (first.ticket_id, first.sent_by, first.text) == ("AMS-8", jira.STAKEHOLDER_BOT, item["first_message"]["text"])
+        first.sent_at = datetime.now(UTC) - every + timedelta(minutes=1)
+        await s.commit()
+        assert await jira.send_stakeholder_updates(s) == 0  # not yet
+        first.sent_at = datetime.now(UTC) - every - timedelta(minutes=1)
+        await s.commit()
+        assert await jira.send_stakeholder_updates(s) == 1 and await jira.send_stakeholder_updates(s) == 0
+        assert len(list(await s.scalars(select(FirstMessage)))) == 2
+    assert [path for path, _ in posted] == ["/rest/api/3/issue/AMS-8/comment"] * 3
+    said = jira.adf_text(json.loads(posted[1][1])["body"]).strip()
+    assert said.startswith("Stakeholder update · P1\nPayrollPro: ") and "Next update " in said
+    assert said.startswith(jira.SYSTEM)  # so a sync reads it as the system's, not as a reply or the close notes
+    assert (await client.get("/api/v1/tickets/AMS-8")).json()["comments"] == []
+
+    monkeypatch.setattr(settings, "JIRA_WRITE_BACK", False)
+    monkeypatch.setattr(settings, "STAKEHOLDER_AUTO_SEND", True)
+    (item,) = (await client.get("/api/v1/incidents/attention")).json()["p1_p2"]
+    assert item["auto_send"] is False  # nothing is written to Jira at all
+    monkeypatch.setattr(settings, "JIRA_WRITE_BACK", True)  # its own switch: JIRA_AGENT_WRITES stays off (the exception to D8)
+    (item,) = (await client.get("/api/v1/incidents/attention")).json()["p1_p2"]
+    assert item["auto_send"] is True and item["last_sent"]["sent_by"] == jira.STAKEHOLDER_BOT
+    assert datetime.fromisoformat(item["next_update_at"]) - datetime.fromisoformat(item["last_sent"]["sent_at"]) == every
+
+
+async def test_a_ticket_not_from_jira_is_left_to_a_person(client, fake_jira, monkeypatch):  # noqa: F811
+    await _triaged_p1(client)
+    posted = []
+    _jira_site(monkeypatch, posted, [httpx.Response(201, json={"id": "10001"})])
+    monkeypatch.setattr(settings, "STAKEHOLDER_AUTO_SEND", True)
+    monkeypatch.setattr(settings, "JIRA_AGENT_WRITES", True)
+    async for s in app.dependency_overrides[get_db]():
+        (await s.get(Ticket, "AMS-8")).source = "MAILBOX"
+        await s.commit()
+        assert await jira.send_stakeholder_updates(s) == 0 and posted == []
+        assert list(await s.scalars(select(FirstMessage))) == []
+    (item,) = (await client.get("/api/v1/incidents/attention")).json()["p1_p2"]
+    assert (item["auto_send"], item["last_sent"], item["next_update_at"]) == (False, None, None)
+
+
+async def test_a_storm_gets_one_stakeholder_update_on_its_main_ticket(client, fake_jira, monkeypatch):  # noqa: F811
+    await _triaged_p1(client)
+    posted = []
+    _jira_site(monkeypatch, posted, [httpx.Response(201, json={"id": "10001"})])
+    monkeypatch.setattr(settings, "STAKEHOLDER_AUTO_SEND", True)
+    monkeypatch.setattr(settings, "JIRA_AGENT_WRITES", True)
+    async for s in app.dependency_overrides[get_db]():
+        main = await s.get(Ticket, "AMS-8")
+        other = Ticket(id="AMS-9", source="JIRA", summary=main.summary, description=main.description, status="new",
+                       pipeline_status="triaged", opened_at=main.opened_at)
+        storm = Storm(issue_key="text", main_ticket_id="AMS-8", people=5, ticket_count=2, opened_at=main.opened_at,
+                      last_ticket_at=main.opened_at, status="open")
+        s.add_all([other, storm, AgentRun(ticket_id="AMS-9", agent="triage", verdict="P1", output={"priority": 1})])
+        await s.flush()
+        main.storm_id = other.storm_id = storm.id
+        main.source = "MAILBOX"  # the main ticket has no Jira issue: nothing is sent for the storm, also not on AMS-9
+        await s.commit()
+        assert await jira.send_stakeholder_updates(s) == 0 and posted == []
+        items = (await client.get("/api/v1/incidents/attention")).json()["p1_p2"]
+        assert {i["ticket_id"]: i["auto_send"] for i in items} == {"AMS-8": False, "AMS-9": False}
+        main.source = "JIRA"
+        await s.commit()
+        assert await jira.send_stakeholder_updates(s) == 1 and await jira.send_stakeholder_updates(s) == 0
+        (message,) = await s.scalars(select(FirstMessage))
+        assert (message.ticket_id, message.storm_id) == ("AMS-8", storm.id) and "5 people have reported it" in message.text
+    assert [path for path, _ in posted] == ["/rest/api/3/issue/AMS-8/comment"]
+    items = (await client.get("/api/v1/incidents/attention")).json()["p1_p2"]
+    assert len(items) == 2 and all(i["auto_send"] and i["last_sent"]["id"] == message.id and i["next_update_at"] for i in items)

@@ -108,6 +108,18 @@ def test_map_ticket_for_the_agents():
     assert jira.map_ticket(ISSUE, None)["status"] == "closed"
 
 
+def test_map_ticket_keeps_the_reporter_account_id_through_masking():
+    reporter = {"displayName": "Jane Doe", "emailAddress": "jane.doe@example.com", "accountId": "5b10ac8d82e05b22cc7d4ef5"}
+    row = jira.map_ticket({"key": "AMS-9", "fields": {**OPEN_ISSUE["fields"], "reporter": reporter}}, None)
+    assert row["raw"]["reporter_id"] == "5b10ac8d82e05b22cc7d4ef5"
+    jira._mask(row, "reporter_name", "reporter_email", ("summary", "description", "resolution_notes"))
+    assert (row["reporter_name"], row["reporter_email"]) == ("<PERSON_1>", "<EMAIL_1>")
+    assert row["raw"]["reporter_id"] == "5b10ac8d82e05b22cc7d4ef5"  # what tells reporters apart in a storm
+    assert jira.map_ticket(OPEN_ISSUE, None)["raw"]["reporter_id"] is None  # Jira gave no account id
+    no_reporter = {"key": "AMS-9", "fields": {**OPEN_ISSUE["fields"], "reporter": None}}
+    assert jira.map_ticket(no_reporter, None)["raw"]["reporter_id"] is None
+
+
 async def test_tickets_reach_the_agents_table(client, fake_jira):
     await client.put("/api/v1/jira/projects", json=[{"key": "AMS", "name": "AMS Support"}])
     await client.post("/api/v1/jira/sync")
@@ -269,8 +281,13 @@ async def test_agents_run_off_the_event_loop_thread(monkeypatch):
     monkeypatch.setattr(jira, "run_triage", lambda db: seen.append(("triage", threading.current_thread().name)))
     monkeypatch.setattr(jira, "run_closure", lambda db: seen.append(("closure", threading.current_thread().name)))
     monkeypatch.setattr(jira, "run_knowledge", lambda db: seen.append(("knowledge", threading.current_thread().name)))
+
+    async def auto_assign(db):
+        seen.append(("assign", threading.current_thread().name))
+
+    monkeypatch.setattr("app.personas.service.auto_assign", auto_assign)
     await jira.run_agents()
-    assert [s[0] for s in seen] == ["dq", "triage", "closure", "knowledge"]  # a resolved ticket's notes, then learning
+    assert [s[0] for s in seen] == ["dq", "triage", "assign", "closure", "knowledge"]  # a resolved ticket's notes, then learning
     assert all(name != threading.current_thread().name for _, name in seen)  # the API's loop stays free
 
 

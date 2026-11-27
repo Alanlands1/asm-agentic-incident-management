@@ -3,10 +3,12 @@
 Each issue is written twice: to servicenow_tickets (what the console pages and DQ rules read) and to tickets
 (what the Data Quality and Triage agents read). Read-only towards Jira, except post_comment,
 set_priority and assign_issue, which a person triggers, send_sla_warnings, which the scheduler runs when SLA_AUTO_WARN is on,
+send_stakeholder_updates, which the scheduler runs when STAKEHOLDER_AUTO_SEND is on,
 answer_commands, which answers a person who wrote "/ams" on the issue, announce, which comments and labels an issue
 with what the agents decided, and move_triaged, which takes an issue out of the backlog once the agents have triaged it.
 Of these, only what a person sends (replies, the closure note with close_issue) is written unless JIRA_AGENT_WRITES is
-on (design D8): the automatic ones (announce*, move_triaged, answer_commands, SLA warnings) check agent_writes().
+on (design D8): the automatic ones (announce*, move_triaged, answer_commands, SLA warnings) check
+agent_writes().
 What a person sets on the issue is final: a status they chose is not moved again, and a priority they set on a triaged
 ticket is recorded as the decision.
 Uses the API token from the environment.
@@ -17,7 +19,7 @@ import contextlib
 import logging
 import math
 import re
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import func, select
@@ -31,9 +33,9 @@ from app.models.confluence import ConfluencePage
 from app.models.jira import JiraProject, JiraSync
 from app.models.kb import KBChunk
 from app.models.servicenow import ServiceNowTicket
-from app.models.ticket import AgentRun, Comment, PipelineStatus, Review, Ticket
+from app.models.ticket import AgentRun, Comment, PipelineStatus, Review, Storm, Ticket
 from app.privacy.masking import Masker
-from app.services import atlassian
+from app.services import atlassian, incidents
 from app.services.atlassian import AtlassianError
 from app.services.closure import run_closure
 from app.services.comments import add_comment
@@ -343,7 +345,8 @@ def map_ticket(issue: dict[str, Any], team: str | None) -> dict[str, Any]:
         resolution_notes=_close_notes(f) if status == "closed" else None,  # what Closure Quality checks
         # no names or text here: raw is stored unmasked
         raw={"key": issue["key"], "status": (f.get("status") or {}).get("name"), "priority": priority,
-             "components": [c["name"] for c in components]},
+             "components": [c["name"] for c in components],
+             "reporter_id": reporter.get("accountId")},  # Jira's opaque id: tells reporters apart once names are masked
     )
 
 
@@ -545,6 +548,10 @@ def _agents_in_thread() -> None:
             async with sessions() as db:
                 await announce(db, started)
                 await move_triaged(db)
+            async with sessions() as db:
+                from app.personas.service import auto_assign  # imported here: that module imports this one
+
+                await auto_assign(db)
             closing = datetime.now(UTC)
             async with sessions() as db:
                 await db.run_sync(run_closure)
@@ -626,6 +633,8 @@ def start_knowledge() -> None:
 
 
 SLA_BOT = "AMS system (SLA warning)"
+STAKEHOLDER_BOT = "AMS system (stakeholder update)"  # who sent a first message the system sent by itself
+UPDATE = "Stakeholder update · "  # how the comment starts (its heading), so a sync does not read it as a person's
 
 
 USED = re.compile(r"(\d+)% of the target")  # in every warning; the stored copies tell which level was sent
@@ -675,12 +684,51 @@ async def send_sla_warnings(db: AsyncSession) -> int:
     return len(due)
 
 
+def stakeholder_senders(db: Session, items: list[sla.SlaItem]) -> dict[str, sla.SlaItem]:
+    """Per ticket, the open P1/P2 whose Jira issue gets its stakeholder updates: its own, or its storm's main ticket's.
+    A ticket with no such Jira issue is left out: nothing can be sent for it from here, a person sends it."""
+    main = dict(db.execute(select(Storm.id, Storm.main_ticket_id).where(
+        Storm.id.in_({i.storm_id for i in items if i.storm_id}))).all())
+    in_jira = {i.ticket.id: i for i in items if i.ticket.source == "JIRA"}
+    return {i.ticket.id: in_jira[key] for i in items if (key := main.get(i.storm_id, i.ticket.id)) in in_jira}
+
+
+def _due_updates(db: Session) -> list[tuple[Ticket, str, int]]:
+    """Open P1/P2 Jira tickets (one per storm, its main ticket) with no stakeholder update yet, or whose latest one is
+    older than update_every_minutes, each with its text and priority."""
+    a = incidents.attention(db)
+    every, at = timedelta(minutes=sla.config().update_every_minutes), datetime.now(UTC)
+    due = []
+    for i in {i.ticket.id: i for i in stakeholder_senders(db, a.items).values()}.values():
+        sent = a.sent.get(i.ticket.id)
+        sent_at = sent and (sent.sent_at if sent.sent_at.tzinfo else sent.sent_at.replace(tzinfo=UTC))  # SQLite: naive
+        if sent is None or sent_at + every <= at:
+            due.append((i.ticket, i.message.text, i.priority))
+    return due
+
+
+async def send_stakeholder_updates(db: AsyncSession) -> int:
+    """Comment the stakeholder update on the Jira issue of every open P1/P2 that is due one (the first, then one every
+    update_every_minutes), and record it as sent. One per storm, on its main ticket. Returns how many were sent.
+    """
+    sent = 0
+    for ticket, text, priority in await db.run_sync(_due_updates):
+        try:
+            await post_comment(ticket.id, f"{UPDATE}P{priority}\n{text}", tone="info")
+        except AtlassianError as exc:  # not recorded as sent: the next round tries again
+            logger.warning("Stakeholder update for %s not written to Jira: %s", ticket.id, exc)
+            continue
+        await db.run_sync(incidents.record_sent, ticket, text, STAKEHOLDER_BOT)
+        sent += 1
+    return sent
+
+
 COMMAND = re.compile(r"/?ams\s*(dq|triage|agree)?")  # the whole comment: "/ams", "/ams dq", "ams triage", "/ams agree"
 COMMAND_BOT = "AMS system (asked in Jira)"
 AGENTS_BOT = "AMS agents"  # author of the stored copy of what announce wrote on the issue
 SAID = "AMS agents · "  # how every answer starts (its heading); a command with an answer after it is not answered again
 EARLIER = ("AMS agents on ", "Automatic SLA warning")  # how the system's comments started before
-SYSTEM = (SAID, "SLA warning · ", "SLA breached · ", *EARLIER)  # how every comment the system writes on an issue starts
+SYSTEM = (SAID, "SLA warning · ", "SLA breached · ", UPDATE, *EARLIER)  # how every comment the system writes on an issue starts
 
 
 def help_text() -> str:
@@ -1013,6 +1061,9 @@ async def schedule_loop(session_factory) -> None:
             if settings.SLA_AUTO_WARN and agent_writes():
                 async with session_factory() as db:
                     await send_sla_warnings(db)
+            if settings.STAKEHOLDER_AUTO_SEND and settings.JIRA_WRITE_BACK:  # its own switch: the one exception to D8
+                async with session_factory() as db:
+                    await send_stakeholder_updates(db)
             if agent_writes():
                 async with session_factory() as db:
                     await answer_commands(db)

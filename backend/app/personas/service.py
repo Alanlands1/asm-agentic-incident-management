@@ -1,14 +1,17 @@
 """One board for every persona page: the open tickets with the priority in force, SLA state, engineer and Jira link.
 
-P1/P2 and SLA come from the same functions Incidents uses, so the pages cannot disagree. Read-only: the lead assigns
-through POST /tickets/{id}/assign.
+P1/P2 and SLA come from the same functions Incidents uses, so the pages cannot disagree. After Triage, auto_assign
+gives each unassigned ticket to its suggested engineer; when nobody has room the lead assigns through
+POST /tickets/{id}/assign.
 """
 
+import logging
 import re
 from collections import Counter
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import and_, func, or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session, selectinload
 
 from app.agents.triage.config import get_config
@@ -19,12 +22,15 @@ from app.models.jira import JiraSync
 from app.models.knowledge import ResolvedCase
 from app.models.ticket import AgentRun, Comment, Feedback, PipelineStatus, Review, Ticket
 from app.personas import availability
-from app.services import jira, lead_review
+from app.services import demo_history, jira, lead_review
+from app.services.atlassian import AtlassianError
 from app.services.data_quality import AGENT as DATA_QUALITY
 from app.services.data_quality import last_run
 from app.services.jira import COMMAND_BOT, EARLIER, SAID, SLA_BOT
 from app.services.triage import sla
 from app.services.triage.run import AGENT as TRIAGE
+
+logger = logging.getLogger("app.personas")
 
 TRIAGED = sla.TRIAGED
 FIX = "resolution"
@@ -106,8 +112,9 @@ def board(db: Session, person: str | None = None, at: datetime | None = None) ->
 
 
 def people(db: Session) -> list[str]:
-    """Every engineer a ticket was ever assigned to, by name."""
-    return sorted(db.scalars(select(Ticket.assignee).where(Ticket.assignee.is_not(None)).distinct()))
+    """Every engineer a ticket was ever assigned to, by name. Demo history is left out: its engineers are made up."""
+    return sorted(db.scalars(select(Ticket.assignee).where(Ticket.assignee.is_not(None),
+                                                           Ticket.source != demo_history.SOURCE).distinct()))
 
 
 def roster(db: Session) -> list[dict]:
@@ -189,6 +196,37 @@ def suggestions(db: Session, at: datetime | None = None) -> list[dict]:
     return [{"id": ticket, "name": name, "reason": " · ".join(
         part for part in (knows, f"holds {holds[name]} now, {load[name]} after this batch", *flags) if part)}
             for ticket, name, knows, flags in picked]
+
+
+async def auto_assign(db: AsyncSession) -> int:
+    """Give each open ticket nobody has to its suggested engineer, and return how many. A ticket without a suggestion
+    (everyone holds the team's max_open tickets) stays unassigned for the lead. A Jira issue is assigned in Jira first,
+    so only when the system may write to Jira on its own; otherwise it too waits for the lead."""
+    await jira.refresh_people(db)
+    picks = await db.run_sync(suggestions)
+    sources = dict((await db.execute(select(Ticket.id, Ticket.source).where(Ticket.id.in_([p["id"] for p in picks])))).all())
+    await db.commit()  # no transaction open while Jira answers
+    done = 0
+    for pick in picks:
+        if sources[pick["id"]] == "JIRA":
+            if not jira.agent_writes():
+                continue
+            try:
+                await jira.assign_issue(pick["id"], pick["name"])
+            except AtlassianError as exc:  # one issue Jira refuses must not stop the others; the lead sees it unassigned
+                logger.warning("%s not assigned to %s in Jira: %s", pick["id"], pick["name"], exc)
+                continue
+        await db.run_sync(_give, pick["id"], pick["name"])
+        done += 1
+    return done
+
+
+def _give(db: Session, ticket_id: str, name: str) -> None:
+    ticket = db.get(Ticket, ticket_id)
+    db.add(AgentRun(ticket_id=ticket_id, agent=ASSIGNMENT, verdict="assigned",
+                    output={"to": name, "from": ticket.assignee, "by": AUTO}))
+    ticket.assignee = name
+    db.commit()
 
 
 def team_status(db: Session, at: datetime | None = None) -> dict[str, dict]:

@@ -66,7 +66,8 @@ class _Item:
     @property
     def person(self) -> str:
         t = self.ticket
-        return (t.reporter_email or t.reporter_name or t.id).strip().casefold()
+        # Jira tickets are masked to the same <PERSON_1> / <EMAIL_1>: their account id tells the reporters apart
+        return ((t.raw or {}).get("reporter_id") or t.reporter_email or t.reporter_name or t.id).strip().casefold()
 
 
 def _item(ticket: Ticket, cfg: StormConfig) -> _Item:

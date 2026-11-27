@@ -20,6 +20,7 @@ from app.privacy.masking import Masker
 from app.services.closure.run import AGENT as CLOSURE_AGENT
 from app.services.closure.run import RESOLVED, notes_for
 from app.services.data_quality import OutageBreaker, fingerprint, last_run
+from app.services.demo_history import SOURCE as DEMO_SOURCE
 from app.services.knowledge.drafts import draft_for_gap
 from app.services.knowledge.problems import detect_problems
 
@@ -116,7 +117,8 @@ def _save(db: Session, ticket: Ticket, notes: str, check: AgentRun, status: str,
 def run_knowledge(db: Session) -> RunResult:
     """Save and match every resolved ticket whose close notes passed. Safe to re-run: unchanged cases are skipped."""
     tickets = db.scalars(
-        select(Ticket).where(Ticket.status.in_(RESOLVED)).options(selectinload(Ticket.agent_runs)).order_by(Ticket.id)
+        select(Ticket).where(Ticket.status.in_(RESOLVED), Ticket.source != DEMO_SOURCE)  # demo history has no notes to learn
+        .options(selectinload(Ticket.agent_runs)).order_by(Ticket.id)
     ).all()
     result, breaker, use_model = RunResult(), OutageBreaker(settings.KNOWLEDGE_OUTAGE_BREAKER), True
     passed = _passed(db, tickets)

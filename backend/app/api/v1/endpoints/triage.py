@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.models.ticket import PipelineStatus, Ticket
+from app.personas import service as personas
 from app.schemas.storm import FirstMessageOut, SlaItemOut
 from app.schemas.triage import (
     ReviewCreate,
@@ -32,6 +33,7 @@ async def run(db: AsyncSession = Depends(get_db)) -> TriageRunResponse:
     result = await db.run_sync(run_triage)
     await jira.announce(db, started)  # every run writes its verdicts back to Jira (no-op unless JIRA_WRITE_BACK)
     await jira.move_triaged(db)
+    await personas.auto_assign(db)
     return TriageRunResponse(
         evaluated=result.evaluated, skipped=result.skipped, model_errors=result.model_errors,
         needs_review=result.needs_review, by_verdict=dict(result.by_verdict),

@@ -30,6 +30,7 @@ def no_real_model(monkeypatch):
     monkeypatch.setattr(settings, "LLM_ENABLED", False)
     monkeypatch.setattr(settings, "JIRA_WRITE_BACK", False)
     monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", SecretStr(""))
+    monkeypatch.setattr(settings, "DEMO_BASELINE_DIR", None)  # the reset restores no baseline unless a test saves one
     from app.services import jira  # noqa: PLC0415  (imported here so settings above are patched first)
 
     monkeypatch.setattr(jira, "start_resolution", lambda ticket_id=None: None)  # no Resolution left running after a test

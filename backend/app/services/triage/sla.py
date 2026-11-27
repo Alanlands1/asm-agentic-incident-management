@@ -1,7 +1,8 @@
 """SLA risk and the first message for open P1/P2 tickets.
 
 The priority used is the engineer's decision when there is one, else the Triage recommendation. Advisory only: the
-message is drafted from a template (no model, no names) and a person sends it; nothing here sends or schedules anything.
+message is drafted from a template (no model, no names) and a person sends it (or jira.send_stakeholder_updates, when
+STAKEHOLDER_AUTO_SEND is on); nothing here sends or schedules anything.
 """
 
 from dataclasses import dataclass
@@ -94,7 +95,7 @@ def _what(output: dict) -> str:
 def _who(output: dict, storm: Storm | None) -> str:
     scope = (output.get("signals") or {}).get("scope") or (output.get("answer") or {}).get("scope")
     if storm:
-        return f"{storm.people} people have reported it so far."
+        return f"{storm.people} {'person has' if storm.people == 1 else 'people have'} reported it so far."
     return {"wide": "Several users are affected.", "single": "One user has reported it."}.get(scope, "")
 
 

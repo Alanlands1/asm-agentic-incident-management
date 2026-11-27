@@ -21,6 +21,7 @@ class StormOut(BaseModel):
     declared_by: str | None
     declared_at: datetime | None
     ticket_ids: list[str] = Field(default_factory=list)
+    ticket_summaries: dict[str, str] = Field(default_factory=dict, description="Id -> summary; only on /incidents/attention")
 
 
 class StormRunResponse(BaseModel):

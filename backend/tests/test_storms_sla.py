@@ -62,6 +62,23 @@ def test_too_few_people_or_one_person_is_not_a_storm(session):
     assert not storm_of(session, one_person).storms  # the same person six times
 
 
+def masked(i: int, reporter_id: str | None) -> Ticket:
+    """A ticket as a Jira sync stores it: every reporter masked to the same placeholders."""
+    t = ticket(i, "x", "OrderHub", CHECKOUT, minute=i)
+    t.reporter_name, t.reporter_email, t.raw = "<PERSON_1>", "<EMAIL_1>", {"key": t.id, "reporter_id": reporter_id}
+    return t
+
+
+def test_masked_jira_reporters_are_told_apart_by_account_id(session):
+    (storm,) = storm_of(session, [masked(i, f"acc-{i}") for i in range(5)]).storms
+    assert (storm.people, storm.ticket_count) == (5, 5)
+
+
+def test_masked_jira_tickets_from_one_account_or_none_are_not_a_storm(session):
+    assert not storm_of(session, [masked(i, "acc-1") for i in range(6)]).storms  # the same person six times
+    assert not storm_of(session, [masked(10 + i, None) for i in range(6)]).storms  # no id: the placeholders are all alike
+
+
 def test_tickets_far_apart_in_time_do_not_group(session):
     assert not storm_of(session, [ticket(i, who, "OrderHub", CHECKOUT, minute=i * 40) for i, who in enumerate(PEOPLE)]).storms
 

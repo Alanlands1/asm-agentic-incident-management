@@ -90,6 +90,9 @@ class Settings(BaseSettings):
     ATLASSIAN_API_TOKEN: SecretStr = SecretStr("")
     JIRA_SYNC_MINUTES: int = Field(0, ge=0)  # 0 = no automatic sync, only "Sync now"
     SLA_AUTO_WARN: bool = False  # true = the system comments on a Jira issue at every 25% of its SLA target (if JIRA_WRITE_BACK)
+    # true = the system comments the stakeholder update of an open P1/P2 on its Jira issue, then again every
+    # update_every_minutes of sla.yaml (if JIRA_WRITE_BACK; its own switch, so it does not wait for JIRA_AGENT_WRITES)
+    STAKEHOLDER_AUTO_SEND: bool = False
     JIRA_WRITE_BACK: bool = False  # true = what an engineer sends goes to the Jira issue (closure note, replies)
     # true = also the automatic writes: the agents' comments and labels, the triaged status, the reviewed priority,
     # answers to /ams commands and SLA warnings. Off by design (D8): only what an engineer sends goes to Jira.
@@ -99,6 +102,13 @@ class Settings(BaseSettings):
     CONFLUENCE_SYNC_MINUTES: int = Field(0, ge=0)  # knowledge base copy; 0 = only "Sync now"
     CONFLUENCE_WRITE_BACK: bool = False  # true = an approved Knowledge Builder article can be published to its Confluence page
     CONFLUENCE_COPY_DIR: Path = REPO_DIR / "data" / "confluence_copy"  # the copied pages as runbook files, for the agents
+    # Demo reset: the folder of a saved baseline (app/services/baseline.py) that Reset restores; None = Reset starts over
+    DEMO_BASELINE_DIR: Path | None = None
+
+    @field_validator("DEMO_BASELINE_DIR")
+    @classmethod
+    def baseline_dir_in_backend(cls, v: Path | None) -> Path | None:
+        return API_DIR / v if v else None  # a relative folder is under backend/
 
     # Closure Quality run
     CLOSURE_OUTAGE_BREAKER: int = Field(5, ge=1)  # same, for the Closure Quality model stage

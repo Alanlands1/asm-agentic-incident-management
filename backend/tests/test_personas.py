@@ -383,3 +383,31 @@ def test_the_lead_decides_who_is_on_the_team(session, monkeypatch):  # noqa: F81
     assert {r["name"] for r in service.roster(session)} == {"Gone", "Meera", "New", "Priya", "Ravi"}
     # someone new has no history, so the fewest open tickets decides, and the name between equals
     assert [(s["name"], s["reason"]) for s in service.suggestions(session, at=AT)] == [("New", "holds 0 now, 1 after this batch")]
+
+
+async def test_tickets_are_assigned_without_the_lead_until_nobody_has_room(client, monkeypatch):
+    from datetime import time
+
+    from sqlalchemy import select
+
+    from app.db.session import get_db
+    from app.main import app
+    from app.personas import availability
+    from app.personas.availability import Hours, Team
+
+    team = Team(timedelta(0), Hours(frozenset(range(7)), time(0), time(23, 59)), {}, (), max_open=3)
+    monkeypatch.setattr(availability, "config", lambda: team)
+
+    def t(key, source="SERVICENOW", who=None):
+        return Ticket(id=key, source=source, summary="s", status="new", pipeline_status="pending", assignee=who,
+                      opened_at=AT - timedelta(hours=10 - int(key[-1])))
+
+    async for db in app.dependency_overrides[get_db]():
+        db.add_all([t("INC-1", who="Ravi"), t("INC-2"), t("AMS-3", "JIRA"), t("INC-4")])  # Ravi is the team
+        await db.commit()
+        assert await service.auto_assign(db) == 1
+        got = dict((await db.execute(select(Ticket.id, Ticket.assignee))).all())
+        # the Jira issue waits (the system may not write to Jira here) and counts as Ravi's third; INC-4 is for the lead
+        assert got == {"INC-1": "Ravi", "INC-2": "Ravi", "AMS-3": None, "INC-4": None}
+        run = (await db.scalars(select(AgentRun).where(AgentRun.agent == service.ASSIGNMENT))).one()
+        assert (run.ticket_id, run.output) == ("INC-2", {"to": "Ravi", "from": None, "by": service.AUTO})

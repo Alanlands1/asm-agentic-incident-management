@@ -1,6 +1,6 @@
 """Incidents: what needs attention now, and sending or recording a P1/P2 first message."""
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
@@ -15,6 +15,7 @@ from app.models.ticket import Ticket
 from app.schemas.storm import SlaItemOut, StormOut
 from app.services import incidents, jira
 from app.services.atlassian import AtlassianError
+from app.services.triage import sla
 
 # shortcut: no auth, like the other console endpoints; who sent it is as given until there are logins.
 router = APIRouter(prefix="/incidents", tags=["incidents"])
@@ -40,6 +41,8 @@ class FirstMessageSentOut(BaseModel):
 class AttentionItem(SlaItemOut):
     last_sent: FirstMessageSentOut | None = None
     can_post_to_jira: bool = False
+    auto_send: bool = Field(False, description="The system sends this ticket's updates to Jira by itself")
+    next_update_at: datetime | None = Field(None, description="Last sent plus update_every_minutes; None if nothing sent")
 
 
 class AttentionOut(BaseModel):
@@ -50,17 +53,22 @@ class AttentionOut(BaseModel):
 
 def _attention(db: Session, at: datetime | None) -> AttentionOut:
     a = incidents.attention(db, at)
-    members: dict[int, list[str]] = {}
+    members: dict[int, dict[str, str]] = {}
     ids = [s.id for s in a.storms]
-    for storm_id, ticket_id in db.execute(select(Ticket.storm_id, Ticket.id).where(Ticket.storm_id.in_(ids))):
-        members.setdefault(storm_id, []).append(ticket_id)
-    storms = [StormOut.model_validate(s).model_copy(update={"ticket_ids": sorted(members.get(s.id, []))}) for s in a.storms]
+    for storm_id, ticket_id, summary in db.execute(
+            select(Ticket.storm_id, Ticket.id, Ticket.summary).where(Ticket.storm_id.in_(ids))):
+        members.setdefault(storm_id, {})[ticket_id] = summary
+    storms = [StormOut.model_validate(s).model_copy(update={
+        "ticket_ids": sorted(members.get(s.id, {})), "ticket_summaries": members.get(s.id, {})}) for s in a.storms]
     items = []
+    auto = jira.stakeholder_senders(db, a.items) if settings.STAKEHOLDER_AUTO_SEND and settings.JIRA_WRITE_BACK else {}
+    every = timedelta(minutes=sla.config().update_every_minutes)
     for i in a.items:
         sent = a.sent.get(i.ticket.id)
         last = FirstMessageSentOut.model_validate(sent) if sent else None
         to_jira = settings.JIRA_WRITE_BACK and i.ticket.source == "JIRA"
-        items.append(AttentionItem(**_sla_item(i).model_dump(), last_sent=last, can_post_to_jira=to_jira))
+        items.append(AttentionItem(**_sla_item(i).model_dump(), last_sent=last, can_post_to_jira=to_jira,
+                                   auto_send=i.ticket.id in auto, next_update_at=sent.sent_at + every if sent else None))
     return AttentionOut(storms=storms, p1_p2=items, count=a.count)
 
 
