@@ -19,6 +19,9 @@ type ResetResult = {
   jira_moved_back: number;
   jira_priorities_restored: number;
   jira_errors: string[];
+  /** When the saved baseline was taken, if the reset restored one; otherwise the open tickets started again. */
+  restored_from?: string | null;
+  jira_closed?: number;
 };
 
 /** The trigger is a red button by default; the sidebar passes its own look and label content. */
@@ -67,9 +70,11 @@ export function ResetDemoButton({
           <DialogHeader>
             <DialogTitle>{done ? "Reset complete" : "Reset all open tickets?"}</DialogTitle>
             <DialogDescription>
-              {done
+              {done?.restored_from
+                ? `The console and Jira are back to the state saved on ${new Date(done.restored_from).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}, with every clock reading as it did then. In Jira: ${done.jira_issues} issues checked, ${done.jira_comments_deleted} later agent comments deleted, ${done.jira_moved_back} moved back, ${done.jira_priorities_restored} priorities restored, ${done.jira_closed ?? 0} newer issues closed.`
+                : done
                 ? `${done.tickets} open tickets start again with fresh SLA clocks. In Jira: ${done.jira_issues} issues cleaned, ${done.jira_comments_deleted} agent comments deleted, ${done.jira_moved_back} moved back, ${done.jira_priorities_restored} priorities restored. The agents are running again now.`
-                : "Every SLA clock restarts from now, and the agents' results, reviews and ratings on open tickets are cleared. On the open Jira issues the agents' comments and ams-* labels are deleted and each issue goes back to the status it was created in. This can't be undone in Jira. Closed tickets and people's own comments are kept."}
+                : "Every SLA clock restarts from now, and the agents' results, reviews and ratings on open tickets are cleared. On the open Jira issues the agents' comments and ams-* labels are deleted and each issue goes back to the status it was created in. This can't be undone in Jira. Closed tickets and people's own comments are kept. When a saved baseline is set up, the console and Jira go back to that saved state instead."}
             </DialogDescription>
           </DialogHeader>
           {done && done.jira_errors.length > 0 && (

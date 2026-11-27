@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
-import { BookX, Clock, Play, Search, TriangleAlert } from "lucide-react";
+import { BookX, Clock, Play, Search, Siren, TriangleAlert } from "lucide-react";
 import { AppShell } from "@/components/console/app-shell";
 import { CountUp } from "@/components/console/count-up";
 import { SyncsCard } from "@/components/console/dashboard";
@@ -42,14 +42,29 @@ export const atRisk = (t: BoardTicket) => t.sla_state === "breach_likely" || t.s
 const never = () => () => {};
 const thisMinute = () => Math.floor(Date.now() / 60000) * 60000;
 
-/** One ticket as a card: id and priority, the summary, application, its work status, age and engineer. */
-function TicketCard({ ticket, now }: { ticket: BoardTicket; now: number | null }) {
+const STACK = "absolute inset-0 origin-bottom-left transition-[translate,rotate,border-color] duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] group-hover:border-primary/60";
+
+/** One ticket as a card: id and priority, the summary, application, its work status, age and engineer.
+ *  With `stack` it stands for that many tickets of one storm: two card edges behind it show the pile and fan out on hover. */
+function TicketCard({ ticket, now, stack = 1 }: { ticket: BoardTicket; now: number | null; stack?: number }) {
   const age = now === null ? null : ageOf(ticket, now);
   return (
-    <Link href={ticketHref(ticket)} className="group block rounded-[20px] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none">
-      <Card className={cn("h-full gap-2 px-4 py-3 transition-colors duration-150 group-hover:border-border-strong group-hover:bg-muted/40", ticket.priority === 1 && "border-2 border-primary bg-selected/50")}>
+    <Link href={ticketHref(ticket)} className={cn(stack > 1 && "relative mr-2 mb-2", "keep-motion group block rounded-[20px] transition-transform duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] hover:-translate-y-1.5 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none")}>
+      {stack > 1 && (
+        <>
+          <Card aria-hidden="true" className={cn(STACK, "translate-x-2 translate-y-2 delay-75 group-hover:translate-x-4 group-hover:translate-y-2.5 group-hover:rotate-3")} />
+          <Card aria-hidden="true" className={cn(STACK, "translate-x-1 translate-y-1 group-hover:translate-x-2 group-hover:translate-y-1.5 group-hover:rotate-[1.5deg]")} />
+        </>
+      )}
+      <Card className={cn("relative h-full gap-2 px-4 py-3 transition-[color,background-color,border-color,box-shadow] duration-300 group-hover:border-primary/60 group-hover:bg-muted/40 group-hover:shadow-[0_14px_30px_rgba(25,29,56,0.16)]", ticket.priority === 1 && "border-2 border-primary bg-selected/50")}>
         <div className="flex items-center justify-between gap-2">
           <span className="font-mono text-xs text-muted-foreground">{ticket.id}</span>
+          {stack > 1 && (
+            <Badge variant="outline" className="mr-auto">
+              <Siren aria-hidden="true" />
+              {stack} tickets
+            </Badge>
+          )}
           <PriorityChip priority={ticket.priority} />
         </div>
         <p className="line-clamp-2 text-sm font-semibold">{ticket.summary || "No summary"}</p>
@@ -429,6 +444,16 @@ export function PersonaOverview({ lead, admin = false }: { lead: boolean; admin?
       ) : (
         SECTIONS.map((section) => {
           const cards = listed.filter(section.has);
+          // tickets of one storm show as one stacked card, on the main ticket when it is in this section
+          const storms = attention?.storms ?? [];
+          const stormOf = (id: string) => storms.find((s) => s.ticket_ids.includes(id));
+          const piles = cards.flatMap((x, n) => {
+            const storm = stormOf(x.id);
+            if (!storm) return [{ ticket: x, stack: 1 }];
+            const members = cards.filter((c) => storm.ticket_ids.includes(c.id));
+            if (cards.findIndex((c) => storm.ticket_ids.includes(c.id)) !== n) return [];
+            return [{ ticket: members.find((c) => c.id === storm.main_ticket_id) ?? x, stack: members.length }];
+          });
           return (
             cards.length > 0 && (
               <section key={section.title} aria-label={section.title} className="flex flex-col gap-2">
@@ -436,8 +461,8 @@ export function PersonaOverview({ lead, admin = false }: { lead: boolean; admin?
                   {section.title} <span className="font-normal text-muted-foreground tabular-nums">{cards.length}</span>
                 </h2>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                  {cards.map((x) => (
-                    <TicketCard key={x.id} ticket={x} now={now} />
+                  {piles.map(({ ticket: x, stack }) => (
+                    <TicketCard key={x.id} ticket={x} now={now} stack={stack} />
                   ))}
                 </div>
               </section>

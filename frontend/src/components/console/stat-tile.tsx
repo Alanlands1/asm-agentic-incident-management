@@ -13,15 +13,18 @@ interface StatTileProps {
   icon?: React.ComponentType<{ className?: string }>;
   /** Makes the whole tile a link. */
   href?: string;
+  /** A shorter tile with a smaller number, for pages where the tiles sit above a dense grid. */
+  compact?: boolean;
   className?: string;
 }
 
-export function StatTile({ label, value, window, variant = "secondary", icon: Icon, href, className }: StatTileProps) {
+export function StatTile({ label, value, window, variant = "secondary", icon: Icon, href, compact, className }: StatTileProps) {
   const tile = (
     <Card
       size="sm"
       className={cn(
-        "min-h-32 gap-2.5 p-[18px] transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-[0_10px_24px_rgba(25,29,56,0.14)]",
+        compact ? "gap-1.5 px-4 py-3" : "min-h-32 gap-2.5 p-[18px]",
+        "transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-[0_10px_24px_rgba(25,29,56,0.14)]",
         variant === "primary" && "border-primary bg-primary text-primary-foreground",
         className
       )}
@@ -34,7 +37,7 @@ export function StatTile({ label, value, window, variant = "secondary", icon: Ic
         className={cn(
           "font-bold tabular-nums leading-none",
           variant === "primary" ? "text-primary-foreground" : "text-foreground",
-          "text-[40px]"
+          compact ? "text-[26px]" : "text-[40px]"
         )}
       >
         {typeof value === "number" ? <CountUp value={value} /> : value}

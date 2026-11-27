@@ -12,12 +12,28 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { useAttention } from "@/hooks/use-attention";
 import { useViewAs } from "@/lib/view-as";
+import { Storm } from "@/types/incident";
+import { Siren } from "lucide-react";
 import { pipelineService } from "@/services/pipeline-service";
 import { FLAGS, ReviewQueueItem, TicketListItem } from "@/types/pipeline";
 
+/** Marks a ticket that is one of a storm. Every row here is a decision to make, so the rows are not collapsed. */
+function StormBadge({ id, storms }: { id: string; storms: Storm[] }) {
+  const storm = storms.find((s) => s.ticket_ids.includes(id));
+  if (!storm || storm.ticket_count < 2) return null;
+  return (
+    <Badge variant="outline" className="ml-2 align-middle font-sans">
+      <Siren aria-hidden="true" />
+      {storm.ticket_count} tickets
+    </Badge>
+  );
+}
+
 /** Recommendations waiting for an engineer: flagged ones first, then the most urgent. */
 export default function ReviewPage() {
+  const storms = useAttention().data?.storms ?? [];
   const [items, setItems] = useState<ReviewQueueItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Closure notes an engineer submitted: the lead approves them or sends them back (LEAD_REVIEW).
@@ -73,8 +89,14 @@ export default function ReviewPage() {
             {notes.map((t) => (
               <ListRow
                 key={t.id}
+                className="transition-colors duration-[80ms] hover:bg-accent"
                 lead={t.reported_priority ? <PriorityChip priority={t.reported_priority} /> : undefined}
-                itemKey={t.id}
+                itemKey={
+                  <>
+                    {t.id}
+                    <StormBadge id={t.id} storms={storms} />
+                  </>
+                }
                 title={t.summary}
                 meta={[t.application, t.source].filter(Boolean).join(" · ")}
                 actions={
@@ -97,11 +119,15 @@ export default function ReviewPage() {
             {items.map((i) => (
               <ListRow
                 key={i.ticket_id}
+                className="transition-colors duration-[80ms] hover:bg-accent"
                 lead={<PriorityChip priority={i.recommended_priority} />}
                 itemKey={
-                  <Link href={`/tickets/${encodeURIComponent(i.ticket_id)}`} className="underline-offset-4 hover:underline">
-                    {i.ticket_id}
-                  </Link>
+                  <>
+                    <Link href={`/tickets/${encodeURIComponent(i.ticket_id)}`} className="underline-offset-4 hover:underline">
+                      {i.ticket_id}
+                    </Link>
+                    <StormBadge id={i.ticket_id} storms={storms} />
+                  </>
                 }
                 title={i.summary}
                 meta={

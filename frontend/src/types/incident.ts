@@ -11,6 +11,7 @@ export interface Storm {
   declared_by: string | null;
   declared_at: string | null;
   ticket_ids: string[];
+  ticket_summaries?: Record<string, string>;
 }
 
 export interface FirstMessageSent {
@@ -38,6 +39,10 @@ export interface AttentionItem {
   last_sent: FirstMessageSent | null;
   /** The ticket came from Jira and writing to Jira is switched on. */
   can_post_to_jira: boolean;
+  /** The system sends this ticket's stakeholder updates by itself. Missing until the backend is restarted: treat as false. */
+  auto_send?: boolean;
+  /** When the next update is due (last sent time plus the update interval); null when nothing has been sent yet. */
+  next_update_at?: string | null;
 }
 
 export interface Attention {

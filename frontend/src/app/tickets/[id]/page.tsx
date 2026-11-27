@@ -30,7 +30,7 @@ import { incidentService } from "@/services/incident-service";
 import { jiraService } from "@/services/jira-service";
 import { pipelineService } from "@/services/pipeline-service";
 import { ticketService } from "@/services/ticket-service";
-import { AttentionItem } from "@/types/incident";
+import { AttentionItem, Storm } from "@/types/incident";
 import { AgentRun, FixOutcome, FLAGS, Outcome, PipelineTicket } from "@/types/pipeline";
 import { ServiceNowTicket } from "@/types/servicenow";
 import { Check, ChevronDown, Contrast, LoaderCircle, Play, Send, ThumbsDown, ThumbsUp, TriangleAlert } from "lucide-react";
@@ -1044,6 +1044,7 @@ function Ticket() {
   const [site, setSite] = useState<string | null>(null);
   const [writeBack, setWriteBack] = useState(false);
   const [sla, setSla] = useState<AttentionItem | null>(null);
+  const [storm, setStorm] = useState<Storm | null>(null);
   const [running, setRunning] = useState<Agent | null>(null);
   const [runFailed, setRunFailed] = useState<string | null>(null);
   const person = usePerson();
@@ -1111,7 +1112,10 @@ function Ticket() {
   useEffect(() => {
     if (ticket && !closed)
       incidentService.getAttention().then(
-        (a) => setSla(a.p1_p2.find((i) => i.ticket_id === ticket.id) ?? null),
+        (a) => {
+          setSla(a.p1_p2.find((i) => i.ticket_id === ticket.id) ?? null);
+          setStorm(a.storms.find((s) => s.ticket_ids.includes(ticket.id)) ?? null);
+        },
         () => {}
       );
   }, [ticket, closed]);
@@ -1861,6 +1865,38 @@ function Ticket() {
                   ]}
                 />
               </Card>
+              {storm && !closed && (
+                <Card className="gap-0 py-0">
+                  <SectionHead title={`Linked tickets (${storm.ticket_ids.length - 1})`}>
+                    {role !== "engineer" && (
+                      <Link href="/incidents" className="text-xs underline-offset-4 hover:underline">
+                        Open in Incidents
+                      </Link>
+                    )}
+                  </SectionHead>
+                  <p className="px-4 pt-3 text-xs text-muted-foreground">
+                    {storm.people} {storm.people === 1 ? "person" : "people"} reported the same issue at once{storm.application ? ` on ${storm.application}` : ""}.{" "}
+                    {storm.main_ticket_id === ticket.id
+                      ? "This is the main ticket: the others follow its priority."
+                      : `This ticket follows the main ticket ${storm.main_ticket_id}.`}
+                  </p>
+                  <ul role="list" className="flex flex-col gap-1.5 px-4 py-3 text-sm">
+                    {storm.ticket_ids
+                      .filter((t) => t !== ticket.id)
+                      .map((t) => (
+                        <li key={t} className="flex flex-col gap-0.5">
+                          <span className="flex items-center gap-2">
+                            <Link href={`/tickets/${encodeURIComponent(t)}`} className="font-mono underline-offset-4 hover:underline">
+                              {t}
+                            </Link>
+                            {t === storm.main_ticket_id && <Badge variant="secondary">Main ticket</Badge>}
+                          </span>
+                          {storm.ticket_summaries?.[t] && <span className="text-xs text-muted-foreground">{storm.ticket_summaries[t]}</span>}
+                        </li>
+                      ))}
+                  </ul>
+                </Card>
+              )}
               <Activity ticket={ticket} />
             </div>
           </div>

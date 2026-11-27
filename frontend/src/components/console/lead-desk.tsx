@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Siren } from "lucide-react";
 import { AppShell } from "@/components/console/app-shell";
 import { AssignControl } from "@/components/console/assign-control";
 import { ListRow } from "@/components/console/list-row";
@@ -13,11 +13,13 @@ import { PriorityChip } from "@/components/console/priority-chip";
 import { StatTile } from "@/components/console/stat-tile";
 import { SectionHead, span } from "@/components/console/sync-parts";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { useAttention } from "@/hooks/use-attention";
 import { usePerson } from "@/lib/view-as";
 import { incidentService } from "@/services/incident-service";
 import { pipelineService } from "@/services/pipeline-service";
@@ -45,10 +47,23 @@ function TicketRow({
   actions: React.ReactNode;
 }) {
   const sla = atRisk(ticket) && slaWords(ticket);
+  // Each row here is a decision for the lead, so a storm's tickets stay one row each: the badge only says they belong together.
+  const storm = useAttention().data?.storms.find((s) => s.ticket_ids.includes(ticket.id));
   return (
     <ListRow
+      className="transition-colors duration-[80ms] hover:bg-accent"
       lead={<PriorityChip priority={ticket.priority} />}
-      itemKey={ticket.id}
+      itemKey={
+        <>
+          {ticket.id}
+          {storm && storm.ticket_count > 1 && (
+            <Badge variant="outline" className="ml-2 align-middle font-sans">
+              <Siren aria-hidden="true" />
+              {storm.ticket_count} tickets
+            </Badge>
+          )}
+        </>
+      }
       title={
         <Link href={ticketHref(ticket)} className="underline-offset-4 hover:underline">
           {ticket.summary || "No summary"}

@@ -6,7 +6,9 @@ import { PageHeader } from "@/components/console/page-header";
 import { ListRow } from "@/components/console/list-row";
 import { StatTile } from "@/components/console/stat-tile";
 import { STAGES } from "@/components/console/dashboard";
+import { useAttention } from "@/hooks/use-attention";
 import { apiClient } from "@/lib/api-client";
+import { stormGroups, stormRows } from "@/lib/storm-rows";
 import { ticketService } from "@/services/ticket-service";
 import { ServiceNowTicket } from "@/types/servicenow";
 import { Card } from "@/components/ui/card";
@@ -30,6 +32,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ArrowRight,
+  Siren,
 } from "lucide-react";
 import Link from "next/link";
 import { PriorityChip } from "@/components/console/priority-chip";
@@ -162,13 +165,18 @@ export default function TicketsPage() {
     });
   }, [tickets, searchTerm, serviceFilter, dqFilter, statusFilter, kbFilter, agents]);
 
+  // Tickets of one storm show as one row, which opens to list the others under it. No storm data: one row per ticket, as before.
+  const storms = useAttention().data?.storms;
+  const [openStorms, setOpenStorms] = useState<number[]>([]);
+  const groups = useMemo(() => stormGroups(filteredTickets, (t) => t.ticket_id, storms ?? []), [filteredTickets, storms]);
+
   // Paginated slice
   const paginatedTickets = useMemo(() => {
     const start = (page - 1) * pageSize;
-    return filteredTickets.slice(start, start + pageSize);
-  }, [filteredTickets, page, pageSize]);
+    return stormRows(groups.slice(start, start + pageSize), openStorms);
+  }, [groups, page, pageSize, openStorms]);
 
-  const totalPages = Math.ceil(filteredTickets.length / pageSize) || 1;
+  const totalPages = Math.ceil(groups.length / pageSize) || 1;
 
   // Counts for KPI summary
   const flaggedCount = useMemo(() => tickets.filter((t) => t.dq_flag).length, [tickets]);
@@ -305,24 +313,51 @@ export default function TicketsPage() {
               No incident tickets match the filters.
             </li>
           ) : (
-            paginatedTickets.map((ticket) => (
+            paginatedTickets.map(({ item: ticket, storm, tickets: n, child }) => (
               <ListRow
                 key={ticket.ticket_id}
+                className={`transition-colors duration-[80ms] hover:bg-accent ${child ? "bg-muted/40 pl-10" : ""}`}
                 lead={<PriorityChip priority={agents[ticket.ticket_id]?.priority ?? ticket.priority} />}
                 itemKey={
-                  <Link href={`/tickets/${encodeURIComponent(ticket.ticket_id)}`} className="underline-offset-4 hover:underline">
-                    {ticket.ticket_id}
-                  </Link>
+                  <>
+                    <Link href={`/tickets/${encodeURIComponent(ticket.ticket_id)}`} className="underline-offset-4 hover:underline">
+                      {ticket.ticket_id}
+                    </Link>
+                    {storm && (
+                      <Badge variant="outline" className="ml-2 align-middle font-sans">
+                        <Siren aria-hidden="true" />
+                        {n} tickets
+                      </Badge>
+                    )}
+                  </>
                 }
                 title={ticket.short_description || "No short description"}
-                meta={[
-                  ticket.service || null,
-                  masked(ticket.caller) ? null : ticket.caller || "Unknown requester",
-                  ticket.priority ? `Requester set ${ticket.priority.replace(/^Importance: /, "importance ")}` : null,
-                  ticket.closed_at ? "Closed" : "Open",
-                ]
-                  .filter(Boolean)
-                  .join(" · ")}
+                meta={
+                  <>
+                    <span>
+                      {[
+                        ticket.service || null,
+                        masked(ticket.caller) ? null : ticket.caller || "Unknown requester",
+                        ticket.priority ? `Requester set ${ticket.priority.replace(/^Importance: /, "importance ")}` : null,
+                        ticket.closed_at ? "Closed" : "Open",
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </span>
+                    {storm && (
+                      <Button
+                        variant="ghost"
+                        size="xs"
+                        aria-expanded={openStorms.includes(storm.id)}
+                        onClick={() => setOpenStorms((o) => (o.includes(storm.id) ? o.filter((id) => id !== storm.id) : [...o, storm.id]))}
+                      >
+                        <ChevronRight className={openStorms.includes(storm.id) ? "rotate-90 transition-transform duration-150" : "transition-transform duration-150"} aria-hidden="true" />
+                        {openStorms.includes(storm.id) ? "Hide" : "Show"} the other {n - 1}
+                        <span className="sr-only"> of the storm with {ticket.ticket_id}</span>
+                      </Button>
+                    )}
+                  </>
+                }
                 trailing={
                   ticket.dq_flag ? (
                     <span className="inline-flex items-center gap-1.5 text-foreground">
@@ -362,7 +397,8 @@ export default function TicketsPage() {
         <div className="flex flex-col items-center justify-between gap-3 border-t border-border px-4 py-3 sm:flex-row">
           <span className="text-xs text-muted-foreground tabular-nums">
             Showing {paginatedTickets.length > 0 ? (page - 1) * pageSize + 1 : 0} to{" "}
-            {Math.min(page * pageSize, filteredTickets.length)} of {filteredTickets.length} tickets
+            {Math.min(page * pageSize, groups.length)} of{" "}
+            {groups.length === filteredTickets.length ? `${groups.length} tickets` : `${groups.length} rows (${filteredTickets.length} tickets)`}
             {filteredTickets.length !== totalCount && ` (filtered from ${totalCount} total)`}
           </span>
           <div className="flex items-center gap-2">

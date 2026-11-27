@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
-import { Check } from "lucide-react";
+import { Check, ChevronRight, Siren } from "lucide-react";
 import { AppShell } from "@/components/console/app-shell";
 import { CountUp } from "@/components/console/count-up";
 import { ListRow } from "@/components/console/list-row";
@@ -19,7 +19,9 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { useAttention } from "@/hooks/use-attention";
 import { apiClient } from "@/lib/api-client";
+import { stormGroups, stormRows } from "@/lib/storm-rows";
 import { usePerson, useViewAs } from "@/lib/view-as";
 import { pipelineService } from "@/services/pipeline-service";
 import { cn } from "cn";
@@ -93,6 +95,10 @@ export function MyWorklist() {
   const listed = (chosen ? tickets.filter((x) => chosen.stages.includes(x.stage)) : tickets.filter((x) => x !== hero)).sort(
     (a, b) => (a.priority ?? 9) - (b.priority ?? 9) || (a.minutes_left ?? Infinity) - (b.minutes_left ?? Infinity)
   );
+  // Tickets of one storm show as one row, which opens to list the others under it. No storm data: the list as it is.
+  const storms = useAttention().data?.storms ?? [];
+  const [openStorms, setOpenStorms] = useState<number[]>([]);
+  const rows = stormRows(stormGroups(listed, (x) => x.id, storms), openStorms);
   const tasks: Task[] = [
     ...(lead ? toReview : []).map((x) => ({ key: `review ${x.id}`, ticket: x.id, what: `Review closure note on ${x.id}`, from: x.summary })),
     ...tasksOf(tickets),
@@ -203,17 +209,36 @@ export function MyWorklist() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {listed.map((x) => (
-                  <TableRow key={x.id}>
+                {rows.map(({ item: x, storm, tickets: n, child }) => (
+                  <TableRow key={x.id} className={cn(child && "bg-muted/40")}>
                     <TableCell className="pl-4">
                       <PriorityChip priority={x.priority} />
                     </TableCell>
-                    <TableCell className="min-w-48 whitespace-normal">
+                    <TableCell className={cn("min-w-48 whitespace-normal", child && "pl-6")}>
                       <Link href={ticketHref(x)} className="font-medium underline-offset-4 hover:underline">
                         {x.summary || "No summary"}
                       </Link>
                       <span className="block text-xs text-muted-foreground">
                         <span className="font-mono">{x.id}</span> · {appOf(x)}
+                        {storm && (
+                          <>
+                            <Badge variant="outline" className="ml-2 align-middle">
+                              <Siren aria-hidden="true" />
+                              {n} tickets
+                            </Badge>
+                            <Button
+                              variant="ghost"
+                              size="xs"
+                              className="ml-1 align-middle"
+                              aria-expanded={openStorms.includes(storm.id)}
+                              onClick={() => setOpenStorms((o) => (o.includes(storm.id) ? o.filter((id) => id !== storm.id) : [...o, storm.id]))}
+                            >
+                              <ChevronRight className={cn("transition-transform duration-150", openStorms.includes(storm.id) && "rotate-90")} aria-hidden="true" />
+                              {openStorms.includes(storm.id) ? "Hide" : "Show"} the other {n - 1}
+                              <span className="sr-only"> of the storm with {x.id}</span>
+                            </Button>
+                          </>
+                        )}
                       </span>
                     </TableCell>
                     <TableCell className="hidden sm:table-cell">
